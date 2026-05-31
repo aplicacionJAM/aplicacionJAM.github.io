@@ -1,20 +1,23 @@
-const CACHE_NAME = "mi-app-cache-v1";
+const CACHE_NAME = "jampos-cache-v2";
 const STATIC_ASSETS = [
   "/",
   "/index.html",
+  "/offline.html",
   "/style.css",
   "/app.js",
-  "/offline.html",
   "/manifest.json",
   "/icon.svg",
   "/icon-192.svg",
-  "/icon-512.svg"
+  "/icon-512.svg",
+  "https://cdn.tailwindcss.com",
+  "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css",
+  "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"
 ];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(STATIC_ASSETS);
+    caches.open(CACHE_NAME).then(function(cache) {
+      return cache.addAll(STATIC_ASSETS).catch(function() {});
     })
   );
   self.skipWaiting();
@@ -22,11 +25,11 @@ self.addEventListener("install", (event) => {
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => {
+    caches.keys().then(function(keys) {
       return Promise.all(
         keys
-          .filter((key) => key !== CACHE_NAME)
-          .map((key) => caches.delete(key))
+          .filter(function(key) { return key !== CACHE_NAME; })
+          .map(function(key) { return caches.delete(key); })
       );
     })
   );
@@ -34,28 +37,29 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("fetch", (event) => {
-  const { request } = event;
-  const url = new URL(request.url);
-
-  if (url.origin !== self.location.origin) {
+  if (event.request.mode === "navigate") {
     event.respondWith(
-      caches.match(request).then((cached) => cached || fetch(request))
+      caches.match("/index.html").then(function(cached) {
+        return fetch(event.request).catch(function() {
+          return cached || caches.match("/offline.html");
+        });
+      })
     );
     return;
   }
 
   event.respondWith(
-    caches.match(request).then((cached) => {
-      const fetchPromise = fetch(request).then((response) => {
-        if (response && response.status === 200) {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(request, clone);
+    caches.match(event.request).then(function(cached) {
+      var fetchPromise = fetch(event.request).then(function(response) {
+        if (response && response.status === 200 && response.type === "basic") {
+          var clone = response.clone();
+          caches.open(CACHE_NAME).then(function(cache) {
+            cache.put(event.request, clone);
           });
         }
         return response;
-      }).catch(() => {
-        return caches.match("/offline.html");
+      }).catch(function() {
+        return cached;
       });
       return cached || fetchPromise;
     })
