@@ -1104,6 +1104,7 @@
         document.getElementById('searchInv').addEventListener('keydown', e => { if(e.key === 'Enter') buscarPorCodigoInventario(e.target.value.trim()); });
         document.getElementById('barcodeInvInput').addEventListener('keydown', e => { if(e.key === 'Enter') buscarPorCodigoInventario(e.target.value.trim()); });
         setTimeout(() => document.getElementById('barcodeInvInput')?.focus(), 300);
+        document.getElementById('btnScanInv').onclick = () => abrirEscanerCamara('barcodeInvInput', cod => { document.getElementById('barcodeInvInput').value = cod; buscarPorCodigoInventario(cod); });
         document.getElementById('nuevoProducto').onclick = () => mostrarFormProducto(null);
         renderListaProductos('');
     }
