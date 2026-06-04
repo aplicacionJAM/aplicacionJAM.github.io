@@ -1254,9 +1254,12 @@
         let p = D.productos.find(x => x.id === id);
         if (!p) return;
         let h = new Date().getHours();
+        let hoy = new Date().toLocaleDateString();
         let saludo = h < 12 ? '¡Buenos días' : h < 18 ? '¡Buenas tardes' : '¡Buenas noches';
         let hayStock = p.stock > 0;
-        let msg = `${saludo}, estimado cliente! 🌟\n\n${hayStock ? '📦 SÍ tenemos en existencia:' : '❌ Por ahora NO tenemos en stock este producto. Le avisaremos cuando se reponga.\n\n'}\n📌 *${p.nombre.toUpperCase()}*\n${p.codigo ? '🔖 Código: ' + p.codigo + '\n' : ''}${hayStock ? '💰 *Precio por unidad:*' : '💰 *Precio de referencia:*'} ${p.precioVentaUsd ? fmtPrecio(p.precioVentaBs) + ' Bs  |  $' + p.precioVentaUsd + ' USD' : fmtPrecio(p.precioVentaBs) + ' Bs'}${hayStock ? '\n\n✅ Por favor confirme su pedido para gestionarlo con anticipación y le estaremos enviando su confirmación después de verificar su pago. 🙏' : ''}`;
+        let bsPrecio = fmtPrecio(p.precioVentaBs);
+        let usdPrecio = p.precioVentaUsd ? '$' + p.precioVentaUsd + ' USD' : '';
+        let msg = `${saludo}, estimado cliente! 🌟\n\n${hayStock ? '📦 SÍ tenemos en existencia:' : '❌ Por ahora NO tenemos en stock este producto. Le avisaremos cuando se reponga.'}\n\n📌 *${p.nombre.toUpperCase()}*\n${p.codigo ? '🔖 Código: ' + p.codigo + '\n' : ''}${hayStock ? '💰 *Precio por unidad:*' : '💰 *Precio de referencia:*'} ${bsPrecio} Bs  |  ${usdPrecio}\n📅 Precio en Bs válido solo para el ${hoy} (sujeto a cambios tasa BCV).\n💵 El precio en USD se mantiene fijo.\n\n${hayStock ? '✅ Por favor confirme su pedido para gestionarlo con anticipación. Le enviaremos confirmación una vez verificado el pago. 🙏' : ''}`;
         navigator.clipboard.writeText(msg).then(() => mostrarNotificacion('✅ Copiado al portapapeles', 'success')).catch(() => {});
     };
     
