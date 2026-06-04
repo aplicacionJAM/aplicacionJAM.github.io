@@ -16,7 +16,9 @@
     <link rel="stylesheet" href="fontawesome.min.css">
     <script src="html2canvas.min.js"></script>
     <style>
-        *{transition:all .2s ease;user-select:none;-webkit-tap-highlight-color:transparent;box-sizing:border-box}
+        *{transition:all .2s ease;-webkit-tap-highlight-color:transparent;box-sizing:border-box}
+        input,textarea,select,[contenteditable]{user-select:auto;-webkit-user-select:auto}
+        button,.btn-redondeado,.sidebar-item,.main-module-btn,.color-circle,.bg-option{cursor:pointer;user-select:none}
         body{font-family:'Inter',system-ui,sans-serif;margin:0;padding:0;min-height:100vh;overflow-x:hidden}
         .main-container{max-width:100%;margin:0 auto;padding:0;min-height:100vh}
         .page-header-fixed{position:sticky;top:0;z-index:100;background:inherit;padding:12px 12px;margin-bottom:16px}
@@ -147,6 +149,7 @@
         .btn-nuevo-cliente-icon { background: var(--accent); border: none; border-radius: 40px; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: white; font-size: 1.1rem; transition: 0.1s linear; flex-shrink: 0; }
         .btn-nuevo-cliente-icon:active { transform: scale(0.94); }
         .sugerencias-clientes { position: absolute; z-index: 150; background: inherit; border: 1px solid var(--accent); border-radius: 20px; max-height: 200px; overflow-y: auto; width: calc(100% - 50px); margin-top: 2px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); top: 100%; left: 0; }
+        .cliente-search-wrap { position: relative; }
         .ventas-top #sugerencias{position:absolute;z-index:150;border:1px solid var(--accent);border-radius:20px;max-height:200px;overflow-y:auto;width:100%;margin-top:2px;box-shadow:0 4px 6px rgba(0,0,0,0.1);top:100%;left:0}
         body.light-mode .ventas-top #sugerencias{background:#fff}
         body.gray-mode .ventas-top #sugerencias{background:#3a3a3a}
@@ -546,7 +549,7 @@
             <div class="page-header-fixed"><div class="module-header"><h2 id="tituloModule" class="module-title ${bloqueado?'module-title-bloqueado':''}" style="color:${accent}" onmousedown="iniciarBloqueo(this,'Ventas')" onmouseup="cancelarBloqueo()" onmouseleave="cancelarBloqueo()">Ventas</h2><div id="btnVolverModule" class="btn-back ${bloqueado?'btn-back-bloqueado':''}" onclick="${bloqueado?'':'backToHome()'}">${bloqueado?'<i class="fas fa-lock"></i> Bloqueado':'<i class="fas fa-arrow-left"></i> Volver'}</div></div></div>
             <div class="page-container ventas-layout">
                 <div class="ventas-top">
-                    <div class="mb-2"><label class="text-xs">Cliente</label>
+                    <div class="cliente-search-wrap"><label class="text-xs">Cliente</label>
                         <div class="cliente-wrapper">
                             <input type="text" id="clienteInput" placeholder="Buscar por nombre o cédula..." class="border rounded-xl p-2 w-full" autocomplete="off" value="${escapeHtml(clienteInputText)}">
                             <button id="btnNuevoClienteIcon" class="btn-nuevo-cliente-icon" title="Nuevo cliente"><i class="fas fa-plus"></i></button>
@@ -593,11 +596,11 @@
         };
         inputCliente.addEventListener('input', e => { clienteInputText = e.target.value; buscarClientes(); guardarSesionVenta(); });
         
-        document.getElementById('btnNuevoClienteIcon').onclick = async () => { await window.mostrarFormCrud('clientes', null, ['cedula','nombre','telefono','direccion','email'], true); D.clientes = getAll('clientes'); inputCliente.value = ''; hiddenId.value = ''; clienteSeleccionadoId = null; clienteInputText = ''; guardarSesionVenta(); };
+        document.getElementById('btnNuevoClienteIcon').onclick = async () => { await window.mostrarFormCrud('clientes', null, ['cedula','nombre','telefono','direccion','email'], true); D.clientes = getAll('clientes'); };
         
         document.getElementById('buscarProducto').addEventListener('input', e => buscarProductos(e.target.value));
         document.getElementById('buscarProducto').addEventListener('keydown', e => { if(e.key === 'Enter') agregarPorCodigoBarras(e.target.value.trim()); });
-        setTimeout(() => document.getElementById('buscarProducto')?.focus(), 300);
+        if(!('ontouchstart' in window)) setTimeout(() => document.getElementById('buscarProducto')?.focus(), 300);
         document.getElementById('btnScanVentas').onclick = () => abrirEscanerCamara('buscarProducto', agregarPorCodigoBarras);
         document.getElementById('finalizarVenta').onclick = () => finalizarVenta();
         const tipoPagoSelect = document.getElementById('tipoPago');
@@ -681,7 +684,7 @@
             else carrito.push({...prod, cantidad:1});
             actualizarCarritoUI();
             let bp = document.getElementById('buscarProducto');
-            if(bp){ bp.value = ''; document.getElementById('sugerencias').classList.add('hidden'); }
+            if(bp){ bp.value = '';             document.getElementById('sugerencias')?.classList.add('hidden'); }
             guardarSesionVenta();
         }
     };
@@ -728,7 +731,7 @@
                         clearInterval(escanear);
                         if(stream) stream.getTracks().forEach(t => t.stop());
                         modal.remove();
-                        document.getElementById(inputId).value = cod;
+                        let inp = document.getElementById(inputId); if(inp) inp.value = cod;
                         if(callback) callback(cod);
                     }
                 } catch(e) { /* aún detectando */ }
@@ -759,7 +762,7 @@
         let iva = D.config.ivaActivo ? suma * 0.16 : 0, total = suma + iva;
         sub.innerText = `${fmtPrecio(suma)} Bs`;
         if(ivaSpan) ivaSpan.innerText = `${fmtPrecio(iva)} Bs`;
-        tot.innerText = `${fmtPrecio(total)} Bs`;
+            if(tot) tot.innerText = `${fmtPrecio(total)} Bs`;
         totalVenta = total;
         window.eliminarDelCarrito = i => { carrito.splice(i,1); actualizarCarritoUI(); guardarSesionVenta(); };
     }
@@ -792,7 +795,7 @@
     window.eliminarSplit = (i) => { if(pagosDivididos.length > 1) { pagosDivididos.splice(i,1); renderPagosDivididosUI(); } };
     
     function calcularCambio(){
-        let pagado = parseFloat(document.getElementById('montoPagado').value);
+        let pagado = parseFloat(document.getElementById('montoPagado')?.value || '0');
         let cambio = document.getElementById('cambioMensaje');
         if(!isNaN(pagado) && pagado >= totalVenta) cambio.innerHTML = `Cambio: ${fmtPrecio(pagado - totalVenta)} Bs`;
         else cambio.innerHTML = 'Monto insuficiente';
@@ -917,6 +920,7 @@
         t += cen(D.config.empresa.nombre) + '\n';
         // Abrir ventana para impresion con estilo minimo
         let v = window.open('', '_blank', 'width=380,height=600');
+        if(!v) { mostrarNotificacion('Permite ventanas emergentes para imprimir', 'error'); return; }
         v.document.write(
             '<html><head><meta charset="UTF-8"><title>Ticket</title>' +
             '<style>' +
@@ -1112,8 +1116,12 @@
         cli.slice(0,3).forEach(c => html += `<div class="global-result p-3 cursor-pointer" onclick="alert('👤 ${escapeHtml(c.nombre)} - ${escapeHtml(c.cedula||'')}')"><i class="fas fa-user mr-2"></i>${escapeHtml(c.nombre)}</div>`);
         if(!html) html = '<div class="p-3 text-center">Sin resultados</div>';
         div.innerHTML = html; div.classList.remove('hidden');
-        let close = e => { if(!div.contains(e.target) && e.target !== document.getElementById('searchGlobalInput')){ div.classList.add('hidden'); document.removeEventListener('click', close); } };
-        setTimeout(() => document.addEventListener('click', close), 100);
+        if(window._closeGlobalSearch) { document.removeEventListener('click', window._closeGlobalSearch); }
+        window._closeGlobalSearch = e => {
+            let inp = document.getElementById('searchGlobalInput');
+            if(!div.contains(e.target) && e.target !== inp && !inp?.contains(e.target)){ div.classList.add('hidden'); document.removeEventListener('click', window._closeGlobalSearch); window._closeGlobalSearch = null; }
+        };
+        setTimeout(() => document.addEventListener('click', window._closeGlobalSearch), 100);
     }
     
     window.editarProductoDesdeBusqueda = id => mostrarFormProducto(id, true);
@@ -1141,7 +1149,7 @@
         document.getElementById('searchInv').addEventListener('input', e => renderListaProductos(e.target.value.toLowerCase()));
         document.getElementById('searchInv').addEventListener('keydown', e => { if(e.key === 'Enter') buscarPorCodigoInventario(e.target.value.trim()); });
         document.getElementById('barcodeInvInput').addEventListener('keydown', e => { if(e.key === 'Enter') buscarPorCodigoInventario(e.target.value.trim()); });
-        setTimeout(() => document.getElementById('barcodeInvInput')?.focus(), 300);
+        if(!('ontouchstart' in window)) setTimeout(() => document.getElementById('barcodeInvInput')?.focus(), 300);
         document.getElementById('btnScanInv').onclick = () => abrirEscanerCamara('barcodeInvInput', cod => { document.getElementById('barcodeInvInput').value = cod; buscarPorCodigoInventario(cod); });
         document.getElementById('nuevoProducto').onclick = () => mostrarFormProducto(null);
         renderListaProductos('');
@@ -1272,7 +1280,7 @@
         let search = document.getElementById('searchCrud'), agregar = document.getElementById('agregarBtn');
         let renderLista = filtro => {
             let norm = normalizeText(filtro);
-            let filt = items.filter(i => { let val = i[campos[0]] || ''; return normalizeText(val.toString()).includes(norm); });
+            let filt = items.filter(i => { let texto = campos.map(c => (i[c]!==undefined && i[c]!==null ? String(i[c]) : '')).join(' '); return normalizeText(texto).includes(norm); });
             let cont = document.getElementById('listaCrud'); if(!cont) return;
             if(!filt.length){ cont.innerHTML = '<div class="text-center py-4 text-gray-500">No hay registros</div>'; return; }
             cont.innerHTML = filt.map(i => {
@@ -1365,7 +1373,7 @@
         let totalHoy = ventasHoy.reduce((a,b)=>a+(b.total||0),0);
         let gananciaHoy = ventasHoy.reduce((a,b)=>a+(b.gananciaTotal||0),0);
         let gastosHoy = D.gastos.reduce((a,b)=>a+(b.montoBs||0),0);
-        let utilidadHoy = gananciaHoy;
+        let utilidadHoy = gananciaHoy - gastosHoy;
         let clientesUnicos = new Set(ventas.map(v => v.clienteId)).size;
         let stockBajo = D.productos.filter(p => p.stock < 5).length;
         let formasPago = { 'efectivo_bs':'EFECTIVO Bs','pago_movil':'PAGO MÓVIL','transferencia':'TRANSFERENCIA','tarjeta_debito':'TARJETA DÉBITO','dolares':'DÓLARES','pago_dividido':'PAGO DIVIDIDO' };
