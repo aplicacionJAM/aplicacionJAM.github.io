@@ -12,9 +12,9 @@
     <link rel="manifest" href="/manifest.json" id="manifestLink">
     <link rel="apple-touch-icon" href="/icon-192.svg">
     <title>JAM POS · Tienda Profesional</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    <script src="tailwind.js"></script>
+    <link rel="stylesheet" href="fontawesome.min.css">
+    <script src="html2canvas.min.js"></script>
     <style>
         *{transition:all .2s ease;user-select:none;-webkit-tap-highlight-color:transparent;box-sizing:border-box}
         body{font-family:'Inter',system-ui,sans-serif;margin:0;padding:0;min-height:100vh;overflow-x:hidden}
@@ -1091,7 +1091,7 @@
         let cont = document.getElementById('listaProductos'); if(!cont) return;
         cont.innerHTML = filt.map(p => {
             let checked = productosSeleccionados.has(p.id);
-            return `<div class="product-card"><div class="flex items-start gap-2"><input type="checkbox" class="product-checkbox mt-1" data-id="${p.id}" ${checked?'checked':''} onchange="toggleProductoSeleccionado('${p.id}',this.checked)"><div class="flex-1"><div class="flex justify-between flex-wrap"><span class="font-bold">${escapeHtml(p.nombre)}</span><span class="text-xs">${escapeHtml(p.codigo||'')}</span></div><div class="text-sm">💰 ${fmtPrecio(p.precioVentaBs)} Bs / $${p.precioVentaUsd} | 📦 Stock: ${p.stock}</div><div class="text-xs break-words">🏷️ ${escapeHtml(p.categoria||'')} | 🚚 ${escapeHtml(p.proveedor||'—')}</div><div class="flex gap-2 mt-2"><button onclick="mostrarFormProducto('${p.id}')" class="btn-editar-redondeado">✏️ Editar</button><button onclick="eliminarProducto('${p.id}')" class="btn-eliminar-redondeado">🗑️ Eliminar</button></div></div></div></div>`;
+            return `<div class="product-card"><div class="flex items-start gap-2"><input type="checkbox" class="product-checkbox mt-1" data-id="${p.id}" ${checked?'checked':''} onchange="toggleProductoSeleccionado('${p.id}',this.checked)"><div class="flex-1"><div class="flex justify-between flex-wrap"><span class="font-bold">${escapeHtml(p.nombre)}</span><span class="text-xs">${escapeHtml(p.codigo||'')}</span></div><div class="text-sm">💰 ${fmtPrecio(p.precioVentaBs)} Bs / $${p.precioVentaUsd} | 📦 Stock: ${p.stock}</div><div class="text-xs break-words">🏷️ ${escapeHtml(p.categoria||'')} | 🚚 ${escapeHtml(p.proveedor||'—')}</div><div class="flex gap-2 mt-2"><button onclick="mostrarFormProducto('${p.id}')" class="btn-editar-redondeado">✏️ Editar</button><button onclick="copiarProducto('${p.id}')" class="btn-redondeado" style="background:var(--accent,#3b82f6);color:#fff;padding:4px 10px;font-size:12px">📋 Copiar</button><button onclick="eliminarProducto('${p.id}')" class="btn-eliminar-redondeado">🗑️ Eliminar</button></div></div></div></div>`;
         }).join('');
         actualizarToolbarBatch();
     }
@@ -1187,6 +1187,16 @@
     }
     
     window.eliminarProducto = async id => { if(confirm('¿Eliminar producto?')){ await deleteItem('productos', id); D.productos = D.productos.filter(p => p.id !== id); renderInventario(); } };
+    
+    window.copiarProducto = (id) => {
+        let p = D.productos.find(x => x.id === id);
+        if (!p) return;
+        let h = new Date().getHours();
+        let saludo = h < 12 ? '¡Buenos días' : h < 18 ? '¡Buenas tardes' : '¡Buenas noches';
+        let hayStock = p.stock > 0;
+        let msg = `${saludo}, estimado cliente! 🌟\n\n${hayStock ? '📦 SÍ tenemos en existencia:' : '❌ Por ahora NO tenemos en stock este producto. Le avisaremos cuando se reponga.\n\n'}\n📌 *${p.nombre.toUpperCase()}*\n${p.codigo ? '🔖 Código: ' + p.codigo + '\n' : ''}${hayStock ? '💰 *Precio por unidad:*' : '💰 *Precio de referencia:*'} ${p.precioVentaUsd ? fmtPrecio(p.precioVentaBs) + ' Bs  |  $' + p.precioVentaUsd + ' USD' : fmtPrecio(p.precioVentaBs) + ' Bs'}${hayStock ? '\n\n✅ Por favor confirme su pedido para gestionarlo con anticipación y le estaremos enviando su confirmación después de verificar su pago. 🙏' : ''}`;
+        navigator.clipboard.writeText(msg).then(() => mostrarNotificacion('✅ Copiado al portapapeles', 'success')).catch(() => {});
+    };
     
     // ==================== CRUD GENÉRICO ====================
     async function renderCrud(store, titulo, campos){
@@ -1666,9 +1676,10 @@
     
     // ==================== SERVICE WORKER Y PWA ====================
     (function setupPWA() {
-        if ('serviceWorker' in navigator) {
+        var esTauri = window.__TAURI__ !== undefined || navigator.userAgent.includes('Tauri');
+        if (!esTauri && 'serviceWorker' in navigator) {
             navigator.serviceWorker.register('/sw.js').catch(function(err) {
-                console.log('SW registration failed:', err);
+                console.log('SW registration failed (non-critical):', err);
             });
         }
 

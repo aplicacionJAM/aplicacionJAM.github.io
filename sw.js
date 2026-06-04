@@ -1,17 +1,23 @@
-const CACHE_NAME = "jampos-cache-v2";
+const CACHE_NAME = "jampos-cache-v3";
 const STATIC_ASSETS = [
   "/",
   "/index.html",
   "/offline.html",
-  "/style.css",
-  "/app.js",
   "/manifest.json",
   "/icon.svg",
   "/icon-192.svg",
   "/icon-512.svg",
-  "https://cdn.tailwindcss.com",
-  "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css",
-  "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"
+  "/tailwind.js",
+  "/fontawesome.min.css",
+  "/html2canvas.min.js",
+  "/fa-brands-400.woff2",
+  "/fa-brands-400.ttf",
+  "/fa-regular-400.woff2",
+  "/fa-regular-400.ttf",
+  "/fa-solid-900.woff2",
+  "/fa-solid-900.ttf",
+  "/fa-v4compatibility.woff2",
+  "/fa-v4compatibility.ttf"
 ];
 
 self.addEventListener("install", (event) => {
