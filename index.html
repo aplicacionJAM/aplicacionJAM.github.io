@@ -857,14 +857,64 @@
     
     // ==================== TICKET ====================
     function imprimirTicket(venta) {
-        const formasPago = { 'efectivo_bs':'EFECTIVO Bs','pago_movil':'PAGO MÓVIL','transferencia':'TRANSFERENCIA','tarjeta_debito':'TARJETA DÉBITO','dolares':'DÓLARES','pago_dividido':'PAGO DIVIDIDO' };
-        const etiqMetodo = {'efectivo_bs':'Efectivo Bs','dolares':'Dólares','tarjeta_debito':'Tarjeta Débito','transferencia':'Transferencia','pago_movil':'Pago Móvil'};
-        const itemsHtml = venta.items.map(item => `<div class="item"><span>${item.cantidad}x ${escapeHtml(item.nombre)}</span><span>${fmtPrecio(item.subtotal)} Bs</span></div>`).join('');
-        const logoHtml = D.config.empresa.logo ? `<img src="${D.config.empresa.logo}" style="max-width:80px; max-height:80px; margin:0 auto;">` : '';
-        const ticketHTML = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Ticket ${D.config.empresa.nombre}</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Courier New',monospace;background:#fff;display:flex;justify-content:center;align-items:center;min-height:100vh;padding:20px}.ticket{width:280px;background:#fff;color:#000;padding:15px;border:1px solid #ccc}.logo{text-align:center;margin-bottom:8px}.logo img{max-width:80px;max-height:80px}.header{text-align:center;border-bottom:1px dashed #000;padding-bottom:8px;margin-bottom:8px}.header h3{margin:0;font-size:14px;font-weight:bold}.header p{margin:2px 0;font-size:9px}.items{border-bottom:1px dashed #000;padding-bottom:8px;margin-bottom:8px}.item{display:flex;justify-content:space-between;margin-bottom:4px}.line{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed #ddd}.total{font-weight:bold;border-top:1px dashed #000;padding-top:8px;margin-top:8px}.footer{text-align:center;border-top:1px dashed #000;padding-top:8px;margin-top:8px;font-size:9px}@media print{body{padding:0;margin:0}.ticket{margin:0;padding:10px;box-shadow:none;border:none}}</style></head><body><div class="ticket"><div class="logo">${logoHtml}</div><div class="header"><h3>${escapeHtml(D.config.empresa.nombre)}</h3>${D.config.empresa.direccion ? `<p>${escapeHtml(D.config.empresa.direccion)}</p>` : ''}${D.config.empresa.telefono ? `<p>📞 ${escapeHtml(D.config.empresa.telefono)}</p>` : ''}${D.config.empresa.rif ? `<p>RIF: ${escapeHtml(D.config.empresa.rif)}</p>` : ''}<p>${new Date(venta.fecha).toLocaleString()}</p><p>Ticket: ${venta.id}</p><p>Cliente: ${escapeHtml(venta.cliente)}</p></div><div class="items">${itemsHtml}</div><div class="line"><span>SUBTOTAL</span><span>${fmtPrecio(venta.subtotal)} Bs</span></div>${venta.iva ? `<div class="line"><span>IVA (16%)</span><span>${fmtPrecio(venta.iva)} Bs</span></div>` : ''}<div class="line total"><span>TOTAL</span><span>${fmtPrecio(venta.total)} Bs</span></div><div class="line"><span>PAGO</span><span>${fmtPrecio(venta.pago)} Bs</span></div><div class="line"><span>CAMBIO</span><span>${fmtPrecio(venta.cambio)} Bs</span></div><div class="line"><span>FORMA DE PAGO</span><span>${formasPago[venta.tipoPago] || venta.tipoPago}</span></div>${venta.detallePagos ? venta.detallePagos.map(d => `<div class="line" style="font-size:9px;border-bottom:1px dashed #ddd"><span>${etiqMetodo[d.metodo]||d.metodo}</span><span>${fmtPrecio(d.monto)} Bs</span></div>`).join('') : ''}<div class="footer"><p>¡Gracias por su compra!</p><p>${D.config.empresa.nombre}</p></div></div><script>window.onload=function(){setTimeout(function(){window.print();setTimeout(function(){window.close()},500)},200}<\/script></body></html>`;
-        const ventana = window.open();
-        ventana.document.write(ticketHTML);
-        ventana.document.close();
+        // 42 columnas = estandar 80mm; cambiar a 32 si es ticketera 58mm
+        const W = 42;
+        const formasPago = { 'efectivo_bs':'EFECTIVO Bs','pago_movil':'PAGO MOVIL','transferencia':'TRANSFERENCIA','tarjeta_debito':'TARJETA DEBITO','dolares':'DOLARES','pago_dividido':'PAGO DIVIDIDO' };
+        const etiqMetodo = {'efectivo_bs':'Efectivo Bs','dolares':'Dolares','tarjeta_debito':'Tjta Debito','transferencia':'Transferencia','pago_movil':'Pago Movil'};
+        const rep = (c, n) => { let r = ''; for (let i=0; i<n; i++) r += c; return r; };
+        const padR = (s, n) => { s = String(s); return s.length >= n ? s.slice(0,n) : s + rep(' ', n - s.length); };
+        const padL = (s, n) => { s = String(s); return s.length >= n ? s.slice(-n) : rep(' ', n - s.length) + s; };
+        const cen = (s) => { s = String(s); let p = Math.max(0, W - s.length); return rep(' ', Math.floor(p/2)) + s + rep(' ', Math.ceil(p/2)); };
+        const eq  = rep('=', W);
+        const gui = rep('-', W);
+        const esc = (v) => v ? String(v).replace(/[<>&"']/g, '') : '';
+        let t = '';
+        // Header centrado (como ticket virtual)
+        t += cen(D.config.empresa.nombre.toUpperCase()) + '\n';
+        if (D.config.empresa.direccion) t += cen(esc(D.config.empresa.direccion)) + '\n';
+        if (D.config.empresa.telefono) t += cen('TEL: ' + esc(D.config.empresa.telefono)) + '\n';
+        if (D.config.empresa.rif) t += cen('RIF: ' + esc(D.config.empresa.rif)) + '\n';
+        t += eq + '\n';
+        t += cen(new Date(venta.fecha).toLocaleString()) + '\n';
+        t += cen('Ticket: ' + venta.id) + '\n';
+        t += 'Cliente: ' + esc(venta.cliente) + '\n';
+        t += eq + '\n';
+        // Items: nombre a izq, precio a der
+        venta.items.forEach(item => {
+            let nom = item.cantidad + 'x ' + esc(item.nombre);
+            let pre = fmtPrecio(item.subtotal) + ' Bs';
+            t += padR(nom, W - 10) + padL(pre, 10) + '\n';
+        });
+        t += gui + '\n';
+        t += padR('SUBTOTAL', W - 10) + padL(fmtPrecio(venta.subtotal) + ' Bs', 10) + '\n';
+        if (venta.iva) t += padR('IVA (16%)', W - 10) + padL(fmtPrecio(venta.iva) + ' Bs', 10) + '\n';
+        t += padR('TOTAL', W - 10) + padL(fmtPrecio(venta.total) + ' Bs', 10) + '\n';
+        t += gui + '\n';
+        t += padR('PAGO', W - 10) + padL(fmtPrecio(venta.pago) + ' Bs', 10) + '\n';
+        t += padR('CAMBIO', W - 10) + padL(fmtPrecio(venta.cambio) + ' Bs', 10) + '\n';
+        if (venta.detallePagos) {
+            t += padR('FORMA DE PAGO:', W - 10) + padL('DIVIDIDO', 10) + '\n';
+            venta.detallePagos.forEach(d => {
+                t += '  ' + padR(etiqMetodo[d.metodo]||d.metodo, W - 22) + padL(fmtPrecio(d.monto)+' Bs', 10) + '\n';
+            });
+        } else {
+            t += padR('FORMA DE PAGO:', W - 10) + padL(formasPago[venta.tipoPago]||venta.tipoPago, 10) + '\n';
+        }
+        t += eq + '\n';
+        t += cen('GRACIAS POR SU COMPRA!') + '\n';
+        t += cen(D.config.empresa.nombre) + '\n';
+        // Abrir ventana para impresion con estilo minimo
+        let v = window.open('', '_blank', 'width=380,height=600');
+        v.document.write(
+            '<html><head><meta charset="UTF-8"><title>Ticket</title>' +
+            '<style>' +
+            'body{font-family:"Courier New",monospace;font-size:11px;line-height:1.3;margin:0;padding:8px;white-space:pre;color:#000;background:#fff}' +
+            '@media print{@page{margin:0}body{padding:0}}' +
+            '</style></head><body>' + t.replace(/\n/g, '<br>') +
+            '</body></html>'
+        );
+        v.document.close();
+        setTimeout(() => { try { v.focus(); v.print(); } catch(e){} }, 500);
     }
     
     function mostrarTicket(venta) {
