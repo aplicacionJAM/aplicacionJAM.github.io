@@ -509,21 +509,33 @@
     const mqModoOscuro = window.matchMedia('(prefers-color-scheme: dark)');
     mqModoOscuro.addEventListener('change', () => aplicarModoSistema());
     
-    // Prevenir cierre
+    // Control de navegacion movil: back siempre a home
+    let salirCount = 0;
     window.addEventListener('beforeunload', function(e) {
         if (D.config?.prevenirCierre !== false) {
             guardarSesionVenta();
             e.preventDefault();
-            e.returnValue = '¿Estás seguro de salir? La venta en curso se perderá.';
-            return '¿Estás seguro de salir? La venta en curso se perderá.';
+            e.returnValue = '';
+            return '';
         }
     });
     
     history.pushState(null, null, location.href);
     window.addEventListener('popstate', function(e) {
-        if (D.config?.prevenirCierre !== false) {
+        if (D.config?.prevenirCierre === false) return;
+        if (currentModule !== 'home') {
+            salirCount = 0;
+            if (window.backToHome) window.backToHome();
             history.pushState(null, null, location.href);
-            if (confirm('¿Deseas salir de la aplicación?')) window.close();
+        } else {
+            salirCount++;
+            if (salirCount >= 2) {
+                if (confirm('Presiona OK para salir de la aplicacion')) {
+                    if (window.close) window.close();
+                }
+                salirCount = 0;
+            }
+            history.pushState(null, null, location.href);
         }
     });
     
