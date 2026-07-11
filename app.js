@@ -1762,6 +1762,6 @@
         clearTimeout(resizeTimer);
         resizeTimer = setTimeout(() => {
             actualizarModoLayout();
-            if(currentModule === 'home') renderHome();
+            if(currentModule === 'home' && document.activeElement?.id !== 'searchGlobalInput') renderHome();
         }, 300);
     });
