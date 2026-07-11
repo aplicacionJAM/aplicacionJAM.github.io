@@ -1,0 +1,11 @@
+window.escapeHtml = s => s ? s.replace(/[&<>"']/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])) : '';
+window.fmtPrecio = v => { let n = Number(v); if(isNaN(n)) n = 0; let p = n.toFixed(2).split('.'); p[0] = p[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.'); return p.join(','); };
+window.fmtDolar = v => Number(v).toLocaleString('en-US', { minimumFractionDigits:2, maximumFractionDigits:2 });
+window.parseBs = v => parseFloat(String(v).replace(/\./g, '').replace(',', '.')) || 0;
+window.esOscuro = c => { let r=parseInt(c.slice(1,3),16), g=parseInt(c.slice(3,5),16), b=parseInt(c.slice(5,7),16); return(.299*r + .587*g + .114*b) < 128; };
+window.normalizeText = s => (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+window.capitalizeWords = s => s.replace(/\b\w/g, c => c.toUpperCase());
+window.mostrarNotificacion = (mensaje, tipo='info') => { const n = document.createElement('div'); n.className='notificacion-flotante'; n.style.backgroundColor=tipo==='success'?'#10b981':(tipo==='error'?'#ef4444':'#3b82f6'); n.style.color='white'; n.innerText=mensaje; document.body.appendChild(n); setTimeout(()=>n.remove(),3000); };
+window.msToDateStr = ms => { let d = new Date(ms); return d.getFullYear()+'-'+(d.getMonth()+1).toString().padStart(2,'0')+'-'+d.getDate().toString().padStart(2,'0'); };
+window.generarDiasSemana = () => { let d = []; for(let i=6; i>=0; i--){ let a = new Date(); a.setDate(a.getDate()-i); d.push({fecha:window.msToDateStr(a.getTime()),label:a.toLocaleDateString('es-ES',{weekday:'short'}),ventas:[]}); } return d; };
+window.parseCSVLine = str => { let r=[],c='',q=false; for(let i=0; i<str.length; i++){ let ch=str[i]; if(q){if(ch==='"'&&str[i+1]==='"'){c+='"';i++;}else if(ch==='"')q=false;else c+=ch;}else{if(ch==='"')q=true;else if(ch===','){r.push(c);c='';}else c+=ch;}} r.push(c); return r; };
