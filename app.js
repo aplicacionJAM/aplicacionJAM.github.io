@@ -1025,11 +1025,19 @@
         });
         cli.slice(0,3).forEach(c => html += `<div class="global-result p-3 cursor-pointer" onclick="alert('👤 ${escapeHtml(c.nombre)} - ${escapeHtml(c.cedula||'')}')"><i class="fas fa-user mr-2"></i>${escapeHtml(c.nombre)}</div>`);
         if(!html) html = '<div class="p-3 text-center">Sin resultados</div>';
-        div.innerHTML = html; div.classList.remove('hidden');
+        let inp = document.getElementById('searchGlobalInput');
+        if(window._gsTimer) cancelAnimationFrame(window._gsTimer);
+        window._gsTimer = requestAnimationFrame(() => {
+            div.textContent = '';
+            div.insertAdjacentHTML('beforeend', html);
+            div.classList.remove('hidden');
+            if(inp && document.activeElement !== inp) inp.focus();
+            window._gsTimer = null;
+        });
         if(window._closeGlobalSearch) { document.removeEventListener('click', window._closeGlobalSearch); }
         window._closeGlobalSearch = e => {
-            let inp = document.getElementById('searchGlobalInput');
-            if(!div.contains(e.target) && e.target !== inp && !inp?.contains(e.target)){ div.classList.add('hidden'); document.removeEventListener('click', window._closeGlobalSearch); window._closeGlobalSearch = null; }
+            let inp2 = document.getElementById('searchGlobalInput');
+            if(!div.contains(e.target) && e.target !== inp2 && !inp2?.contains(e.target)){ div.classList.add('hidden'); document.removeEventListener('click', window._closeGlobalSearch); window._closeGlobalSearch = null; }
         };
         setTimeout(() => document.addEventListener('click', window._closeGlobalSearch), 100);
     }
