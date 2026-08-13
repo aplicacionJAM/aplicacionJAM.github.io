@@ -1,26 +1,29 @@
-const CACHE_NAME = "jampos-cache-v9";
+const CACHE_NAME = "jampos-web-cache-v4";
 const STATIC_ASSETS = [
-  "/",
-  "/index.html",
-  "/offline.html",
-  "/manifest.json",
-  "/icon.svg",
-  "/icon-192.svg",
-  "/icon-512.svg",
-  "/tailwind.js",
-  "/html2canvas.min.js",
-  "/fontawesome.min.css",
-  "/fa-brands-400.woff2",
-  "/fa-brands-400.ttf",
-  "/fa-regular-400.woff2",
-  "/fa-regular-400.ttf",
-  "/fa-solid-900.woff2",
-  "/fa-solid-900.ttf",
-  "/fa-v4compatibility.woff2",
-  "/fa-v4compatibility.ttf",
-  "/style.css",
-  "/quagga.min.js",
-  "/app.js"
+  "./",
+  "./index.html",
+  "./offline.html",
+  "./manifest.json",
+  "./icon.svg",
+  "./icon-192.svg",
+  "./icon-192.png",
+  "./icon-512.png",
+  "./icon-512.svg",
+  "./tailwind.js",
+  "./html2canvas.min.js",
+  "./fontawesome.min.css",
+  "./fa-brands-400.woff2",
+  "./fa-brands-400.ttf",
+  "./fa-regular-400.woff2",
+  "./fa-regular-400.ttf",
+  "./fa-solid-900.woff2",
+  "./fa-solid-900.ttf",
+  "./fa-v4compatibility.woff2",
+  "./fa-v4compatibility.ttf",
+  "./style.css",
+  "./quagga.min.js",
+  "./web-bridge.js",
+  "./app.js"
 ];
 
 self.addEventListener("install", (event) => {
@@ -51,8 +54,8 @@ self.addEventListener("message", function(event) {
   if (data && data.type === "showNotification") {
     self.registration.showNotification(data.title, {
       body: data.body,
-      icon: "/icon-192.png",
-      badge: "/icon-192.png",
+      icon: "./icon-192.png",
+      badge: "./icon-192.png",
       tag: data.tag || "jampos",
       vibrate: [200, 100, 200],
       requireInteraction: true
@@ -67,7 +70,7 @@ self.addEventListener("notificationclick", function(event) {
       for (var i = 0; i < clientList.length; i++) {
         if (clientList[i].url && "focus" in clientList[i]) return clientList[i].focus();
       }
-      if (clients.openWindow) return clients.openWindow("/");
+      if (clients.openWindow) return clients.openWindow(self.registration.scope);
     })
   );
 });
@@ -80,12 +83,12 @@ self.addEventListener("sync", function(event) {
 
 self.addEventListener("fetch", (event) => {
   var req = event.request;
-  
+
   if (req.mode === "navigate") {
     event.respondWith(
       fetch(req).catch(function() {
-        return caches.match("/index.html").then(function(cached) {
-          return cached || caches.match("/offline.html");
+        return caches.match("./index.html").then(function(cached) {
+          return cached || caches.match("./offline.html");
         });
       })
     );
@@ -93,9 +96,9 @@ self.addEventListener("fetch", (event) => {
   }
 
   var url = new URL(req.url);
-  
+
   if (url.origin !== location.origin) return;
-  
+
   event.respondWith(
     caches.match(req).then(function(cached) {
       var fetchPromise = fetch(req).then(function(response) {
@@ -107,7 +110,7 @@ self.addEventListener("fetch", (event) => {
         }
         return response;
       }).catch(function() {
-        return cached || caches.match("/offline.html");
+        return cached || caches.match("./offline.html");
       });
       return cached || fetchPromise;
     })
