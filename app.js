@@ -165,8 +165,8 @@
 
     function abrirBaseDatos() {
         return new Promise((resolve, reject) => {
-            const req = indexedDB.open('jampos_db', 2);
-            req.onupgradeneeded = e => { const db = e.target.result; DATA_STORES.forEach(s => { if (!db.objectStoreNames.contains(s)) db.createObjectStore(s); }); };
+            const req = indexedDB.open('jampos_db', 3);
+            req.onupgradeneeded = e => { const db = e.target.result; DATA_STORES.forEach(s => { if (!db.objectStoreNames.contains(s)) db.createObjectStore(s); }); if (!db.objectStoreNames.contains('session')) db.createObjectStore('session'); };
             req.onsuccess = e => resolve(e.target.result);
             req.onerror = e => reject(e.target.error);
         });
@@ -262,15 +262,85 @@
     let pagosDivididos = [{ metodo: 'efectivo_bs', monto: 0 }];
     
     // ==================== PERSISTENCIA DE SESIÓN DE VENTA ====================
+    let _timerSesionIDB = null;
     function guardarSesionVenta() {
         saveToStorage(STORAGE_KEYS.session_cart, carrito);
         saveToStorage(STORAGE_KEYS.session_meta, { tipoPago, clienteSeleccionadoId, clienteInputText });
+        // Espejo en IndexedDB con debounce: sobrevive a cierres sin beforeunload.
+        if (_timerSesionIDB) clearTimeout(_timerSesionIDB);
+        _timerSesionIDB = setTimeout(guardarSesionVentaIDB, 400);
     }
     function cargarSesionVenta() {
         const savedCart = loadFromStorage(STORAGE_KEYS.session_cart, null);
         if(savedCart && Array.isArray(savedCart)) carrito = savedCart;
         const savedMeta = loadFromStorage(STORAGE_KEYS.session_meta, null);
         if(savedMeta) { tipoPago = savedMeta.tipoPago || 'pago_movil'; clienteSeleccionadoId = savedMeta.clienteSeleccionadoId || null; clienteInputText = savedMeta.clienteInputText || ''; }
+        if(carrito.length === 0) cargarSesionVentaIDB();
+    }
+    async function guardarSesionVentaIDB() {
+        try {
+            const db = await abrirBaseDatos();
+            return new Promise((resolve) => {
+                try {
+                    const tx = db.transaction('session', 'readwrite');
+                    const st = tx.objectStore('session');
+                    st.put(carrito, 'cart');
+                    st.put({ tipoPago, clienteSeleccionadoId, clienteInputText }, 'meta');
+                    tx.oncomplete = () => { db.close(); resolve(); };
+                    tx.onerror = () => { db.close(); resolve(); };
+                } catch(e) { resolve(); }
+            });
+        } catch(e) {}
+    }
+    async function cargarSesionVentaIDB() {
+        try {
+            const db = await abrirBaseDatos();
+            return new Promise((resolve) => {
+                try {
+                    const tx = db.transaction('session', 'readonly');
+                    const st = tx.objectStore('session');
+                    const gc = st.get('cart');
+                    gc.onsuccess = () => {
+                        if (gc.result && Array.isArray(gc.result) && carrito.length === 0) carrito = gc.result;
+                        const gm = st.get('meta');
+                        gm.onsuccess = () => {
+                            if (gm.result) {
+                                if (gm.result.tipoPago) tipoPago = gm.result.tipoPago;
+                                if (gm.result.clienteSeleccionadoId) clienteSeleccionadoId = gm.result.clienteSeleccionadoId;
+                                if (gm.result.clienteInputText) clienteInputText = gm.result.clienteInputText;
+                            }
+                            db.close(); resolve();
+                        };
+                    };
+                    tx.onerror = () => { db.close(); resolve(); };
+                } catch(e) { resolve(); }
+            });
+        } catch(e) {}
+    }
+    function flushSesionIDB() {
+        if (_timerSesionIDB) { clearTimeout(_timerSesionIDB); _timerSesionIDB = null; }
+        guardarSesionVentaIDB();
+    }
+
+    // ==================== WAKE LOCK (no apagar pantalla en ventas) ====================
+    let wakeLockObj = null;
+    async function activarWakeLock() {
+        if (!('wakeLock' in navigator)) return;
+        if (currentModule !== 'ventas') return;
+        if (document.visibilityState !== 'visible') return;
+        if (wakeLockObj) return;
+        try {
+            wakeLockObj = await navigator.wakeLock.request('screen');
+            wakeLockObj.addEventListener('release', () => { wakeLockObj = null; });
+        } catch(e) { wakeLockObj = null; }
+    }
+    function liberarWakeLock() {
+        try { if (wakeLockObj) wakeLockObj.release(); } catch(e) {}
+        wakeLockObj = null;
+    }
+    function sincronizarWakeLock() {
+        if (currentModule === 'ventas' && document.visibilityState === 'visible') activarWakeLock();
+        else liberarWakeLock();
     }
     function sincronizarUIVenta() {
         if(document.getElementById('clienteIdHidden')) document.getElementById('clienteIdHidden').value = clienteSeleccionadoId || '';
@@ -463,9 +533,14 @@
     const mqModoOscuro = window.matchMedia('(prefers-color-scheme: dark)');
     mqModoOscuro.addEventListener('change', () => aplicarModoSistema());
     
-    // Control de navegacion movil: el botón atrás NUNCA agota el historial (así el navegador no puede cerrar la app).
-    // En móviles Chrome/Safari el navegador ignora beforeunload y cierra la pestaña en silencio cuando el historial se agota;
-    // por eso aquí SIEMPRE se re-empuja una entrada al instante. El cierre real solo ocurre con el botón "Cerrar" del popup.
+    // Control de navegación móvil:
+    // - APK nativa: el botón atrás del sistema lo maneja Kotlin y SIEMPRE
+    //   minimiza la app (moveTaskToBack), nunca la cierra ni muestra popup.
+    // - PWA instalada (display-mode: standalone): el atrás del sistema minimiza
+    //   la ventana de la app (vuelve al launcher); NO se re-empuja historial
+    //   para evitar bucles.
+    // - Navegador (pestaña): se re-empuja historial para que la pestaña no se
+    //   cierre con el atrás (en una pestaña no existe "minimizar").
     function guardarYPrevenirCierre(e) {
         guardarSesionVenta();
         localStorage.setItem('jam_last_module', currentModule || '');
@@ -475,56 +550,31 @@
         return '';
     }
     window.addEventListener('beforeunload', guardarYPrevenirCierre);
-    
-    function cerrarAplicacion() {
-        window._permitirSalida = true;
-        guardarSesionVenta();
-        localStorage.setItem('jam_last_module', '');
-        try {
-            if (window.AndroidBridge && AndroidBridge.cerrarApp) {
-                AndroidBridge.cerrarApp();
-                return;
-            }
-        } catch(e) {}
-        setTimeout(() => { try { if (window.close) window.close(); } catch(e) {} }, 50);
-        setTimeout(() => {
-            try { if (!document.hidden) location.replace('about:blank'); } catch(e) {}
-        }, 400);
+
+    function esPWAInstalada() {
+        return window.matchMedia && window.matchMedia('(display-mode: standalone)').matches;
     }
-    
-    let dialogoSalidaAbierto = false;
-    function mostrarDialogoSalida() {
-        dialogoSalidaAbierto = true;
-        return jamDialogo({
-            titulo: '¿Salir de la aplicación?',
-            mensaje: 'Al cerrar la aplicación se guardará el trabajo actual. Solo podrás salir con el botón "Cerrar"; usa "Volver" para continuar.',
-            tipo: 'pregunta',
-            botones: [
-                { texto: 'Volver', valor: false },
-                { texto: 'Cerrar', valor: true, destacado: true }
-            ]
-        }).then(decision => {
-            if (decision === true) cerrarAplicacion();
-        }).finally(() => {
-            dialogoSalidaAbierto = false;
-        });
-    }
-    // Expuesto para que el WebView nativo (Kotlin) lance el popup desde el botón atrás
-    window.mostrarDialogoSalida = mostrarDialogoSalida;
-    
-    // El listener se registra ANTES de empujar historial y el push va en try/catch,
-    // para que ningún error de pushState deje a la app sin protección.
+    // ¿Es el WebView real del APK? window.__JAM_WEB__ lo marca web-bridge.js
+    // (emulación web del puente), así que con esa bandera NO es app nativa.
+    function esNativo() { return !!(window.AndroidBridge && !window.__JAM_WEB__); }
+
     function empujarHistorial() {
         try { history.pushState(null, null, location.href); } catch(e) {}
     }
-    empujarHistorial();
-    window.addEventListener('popstate', async function(e) {
-        empujarHistorial();
-        if (currentModule !== 'home') {
-            if (window.backToHome) window.backToHome();
+    // Web (pestaña o PWA): una entrada para que atrás en un módulo vuelva a home.
+    // El APK nativo no empuja nada: Kotlin maneja el atrás directamente.
+    if (!esNativo()) empujarHistorial();
+    window.addEventListener('popstate', function(e) {
+        // APK nativa: el atrás ya lo maneja Kotlin (minimiza). No intervenir.
+        if (esNativo()) return;
+        // PWA instalada: no re-empujar; el siguiente atrás minimiza la app.
+        if (esPWAInstalada()) {
+            if (currentModule !== 'home' && window.backToHome) window.backToHome();
             return;
         }
-        if (!dialogoSalidaAbierto) await mostrarDialogoSalida();
+        // Pestaña de navegador: mantener la página abierta y volver a home.
+        empujarHistorial();
+        if (currentModule !== 'home' && window.backToHome) window.backToHome();
     });
     
     // ==================== VENTAS ====================
@@ -1186,6 +1236,7 @@
         // Cache current module DOM
         cacheModuleDOM(currentModule);
         currentModule = m;
+        sincronizarWakeLock();
         localStorage.setItem('jam_last_module', m);
         history.pushState(null, null, location.href);
         
@@ -1225,6 +1276,7 @@
         if(currentModule === 'ventas') guardarSesionVenta();
         cacheModuleDOM(currentModule);
         currentModule = 'home'; volverBloqueado = false;
+        sincronizarWakeLock();
         localStorage.setItem('jam_last_module', '');
         renderHome();
     };
@@ -1293,6 +1345,7 @@
     function renderHome(){
         if(window.fechaHoraInterval) { clearInterval(window.fechaHoraInterval); window.fechaHoraInterval = null; }
         currentModule = 'home'; volverBloqueado = false;
+        sincronizarWakeLock();
         document.querySelectorAll('[id^="_cache_"]').forEach(el => el.remove());
         let accent = D.config.theme;
         let mostrarDolarHtml = D.config.mostrarDolar ? 
@@ -2928,36 +2981,74 @@
             });
         }
 
-        let deferredPrompt;
+        // Web Install API: el nuevo estándar (Chrome/Edge 143-150+, en origin trial) que
+        // reemplazará a beforeinstallprompt. Requiere manifest con "id" y un gesto del
+        // usuario. Se detecta por feature para que el código corra en ambos mundos.
+        var webInstallDisponible = typeof navigator !== 'undefined' && typeof navigator.install === 'function';
+        var deferredPrompt = null;
+
+        function esInstalada() {
+            return window.matchMedia && window.matchMedia('(display-mode: standalone)').matches;
+        }
+
+        function quitarBotonInstalar() {
+            var btn = document.querySelector('.install-btn');
+            if (btn && btn.parentNode) btn.remove();
+        }
+
+        function mostrarBotonInstalar() {
+            if (esInstalada() || document.querySelector('.install-btn')) return;
+            var btn = document.createElement('button');
+            btn.innerText = '📲 Instalar App';
+            btn.className = 'install-btn';
+            btn.style.setProperty('background', D.config.theme);
+            btn.style.setProperty('color', '#ffffff');
+            btn.onclick = function() {
+                if (webInstallDisponible) {
+                    // El clic es la activación transitoria que exige navigator.install().
+                    navigator.install().then(function() {
+                        quitarBotonInstalar();
+                    }).catch(function(err) {
+                        if (err && (err.name === 'AbortError' || err.name === 'NotAllowedError')) {
+                            quitarBotonInstalar();
+                            return;
+                        }
+                        // DataError u otro fallo: caer al mecanismo clásico si existe.
+                        if (deferredPrompt) {
+                            deferredPrompt.prompt();
+                            deferredPrompt.userChoice.then(function() { quitarBotonInstalar(); });
+                        } else {
+                            quitarBotonInstalar();
+                        }
+                    });
+                } else if (deferredPrompt) {
+                    deferredPrompt.prompt();
+                    deferredPrompt.userChoice.then(function() { quitarBotonInstalar(); });
+                } else {
+                    quitarBotonInstalar();
+                }
+            };
+            document.body.appendChild(btn);
+        }
+
         window.addEventListener('beforeinstallprompt', function(e) {
             e.preventDefault();
             deferredPrompt = e;
-            var btn = document.querySelector('.install-btn');
-            if (!btn) {
-                btn = document.createElement('button');
-                btn.innerText = '📲 Instalar App';
-                btn.className = 'install-btn';
-                btn.style.setProperty('background', D.config.theme);
-                btn.style.setProperty('color', '#ffffff');
-                btn.onclick = function() {
-                    if (deferredPrompt) {
-                        deferredPrompt.prompt();
-                        deferredPrompt.userChoice.then(function() {
-                            if (btn && btn.parentNode) btn.remove();
-                        });
-                    } else if (btn && btn.parentNode) {
-                        btn.remove();
-                    }
-                };
-                document.body.appendChild(btn);
-            }
+            mostrarBotonInstalar();
         });
 
         window.addEventListener('appinstalled', function() {
-            var btn = document.querySelector('.install-btn');
-            if (btn) btn.remove();
+            quitarBotonInstalar();
             console.log('JAM POS instalada como PWA');
         });
+
+        // Respaldo a futuro: si beforeinstallprompt desaparece, con la Web Install API
+        // todavía se puede instalar (no exige la heurística de 30 s / 1 clic del evento).
+        if (webInstallDisponible) {
+            setTimeout(function() {
+                if (!document.querySelector('.install-btn')) mostrarBotonInstalar();
+            }, 8000);
+        }
     })();
     
         function askPin(callback){
@@ -3296,4 +3387,18 @@
             actualizarModoLayout();
             if(currentModule === 'home' && document.activeElement?.id !== 'searchGlobalInput') renderHome();
         }, 300);
+    });
+
+    // Guardado inmediato al pasar la app a segundo plano (apagado, cerrar, matar)
+    document.addEventListener('visibilitychange', () => {
+        if(document.hidden) {
+            guardarSesionVenta();
+            flushSesionIDB();
+        } else {
+            sincronizarWakeLock();
+        }
+    });
+    window.addEventListener('pagehide', () => {
+        guardarSesionVenta();
+        flushSesionIDB();
     });
