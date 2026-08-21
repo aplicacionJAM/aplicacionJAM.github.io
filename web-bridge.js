@@ -239,10 +239,6 @@
         if (h) { carpetaHandle = h; carpetaNombre = h.name || 'Carpeta'; }
     }).catch(function () {});
 
-    // Bandera para distinguir la emulación web del puente nativo real:
-    // el APK inyecta window.AndroidBridge sin esta marca.
-    window.__JAM_WEB__ = true;
-
     window.AndroidBridge = {
         cerrarApp: cerrarApp,
         toast: toast,

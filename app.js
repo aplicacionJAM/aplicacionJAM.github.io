@@ -165,8 +165,8 @@
 
     function abrirBaseDatos() {
         return new Promise((resolve, reject) => {
-            const req = indexedDB.open('jampos_db', 3);
-            req.onupgradeneeded = e => { const db = e.target.result; DATA_STORES.forEach(s => { if (!db.objectStoreNames.contains(s)) db.createObjectStore(s); }); if (!db.objectStoreNames.contains('session')) db.createObjectStore('session'); };
+            const req = indexedDB.open('jampos_db', 2);
+            req.onupgradeneeded = e => { const db = e.target.result; DATA_STORES.forEach(s => { if (!db.objectStoreNames.contains(s)) db.createObjectStore(s); }); };
             req.onsuccess = e => resolve(e.target.result);
             req.onerror = e => reject(e.target.error);
         });
@@ -249,9 +249,9 @@
     let D = {
         productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas: [],
         config: { 
-            key:'mainConfig', theme:'#3b82f6', dolarRate:67.85, lastUpdate:new Date().toLocaleDateString(), 
+            key:'mainConfig', theme:'#3b82f6', dolarRate:777.42, lastUpdate:new Date().toLocaleDateString(), 
             ivaActivo:false, ivaPorcentaje:16, usarMargen:false, backgroundMode:'light', autoOscuro:true, prevenirCierre:true,
-            mostrarDolar: true, tasaManual: false, tasaManualValue: 67.85,
+            mostrarDolar: true, tasaManual: false, tasaManualValue: 777.42,
             empresa: { nombre:'JAM POS', direccion:'', telefono:'', rif:'', logo:'' },
             alertaStockBajo: true, alertaTasa: true, sonidoAlertas: true
         }
@@ -262,85 +262,15 @@
     let pagosDivididos = [{ metodo: 'efectivo_bs', monto: 0 }];
     
     // ==================== PERSISTENCIA DE SESIÓN DE VENTA ====================
-    let _timerSesionIDB = null;
     function guardarSesionVenta() {
         saveToStorage(STORAGE_KEYS.session_cart, carrito);
         saveToStorage(STORAGE_KEYS.session_meta, { tipoPago, clienteSeleccionadoId, clienteInputText });
-        // Espejo en IndexedDB con debounce: sobrevive a cierres sin beforeunload.
-        if (_timerSesionIDB) clearTimeout(_timerSesionIDB);
-        _timerSesionIDB = setTimeout(guardarSesionVentaIDB, 400);
     }
     function cargarSesionVenta() {
         const savedCart = loadFromStorage(STORAGE_KEYS.session_cart, null);
         if(savedCart && Array.isArray(savedCart)) carrito = savedCart;
         const savedMeta = loadFromStorage(STORAGE_KEYS.session_meta, null);
         if(savedMeta) { tipoPago = savedMeta.tipoPago || 'pago_movil'; clienteSeleccionadoId = savedMeta.clienteSeleccionadoId || null; clienteInputText = savedMeta.clienteInputText || ''; }
-        if(carrito.length === 0) cargarSesionVentaIDB();
-    }
-    async function guardarSesionVentaIDB() {
-        try {
-            const db = await abrirBaseDatos();
-            return new Promise((resolve) => {
-                try {
-                    const tx = db.transaction('session', 'readwrite');
-                    const st = tx.objectStore('session');
-                    st.put(carrito, 'cart');
-                    st.put({ tipoPago, clienteSeleccionadoId, clienteInputText }, 'meta');
-                    tx.oncomplete = () => { db.close(); resolve(); };
-                    tx.onerror = () => { db.close(); resolve(); };
-                } catch(e) { resolve(); }
-            });
-        } catch(e) {}
-    }
-    async function cargarSesionVentaIDB() {
-        try {
-            const db = await abrirBaseDatos();
-            return new Promise((resolve) => {
-                try {
-                    const tx = db.transaction('session', 'readonly');
-                    const st = tx.objectStore('session');
-                    const gc = st.get('cart');
-                    gc.onsuccess = () => {
-                        if (gc.result && Array.isArray(gc.result) && carrito.length === 0) carrito = gc.result;
-                        const gm = st.get('meta');
-                        gm.onsuccess = () => {
-                            if (gm.result) {
-                                if (gm.result.tipoPago) tipoPago = gm.result.tipoPago;
-                                if (gm.result.clienteSeleccionadoId) clienteSeleccionadoId = gm.result.clienteSeleccionadoId;
-                                if (gm.result.clienteInputText) clienteInputText = gm.result.clienteInputText;
-                            }
-                            db.close(); resolve();
-                        };
-                    };
-                    tx.onerror = () => { db.close(); resolve(); };
-                } catch(e) { resolve(); }
-            });
-        } catch(e) {}
-    }
-    function flushSesionIDB() {
-        if (_timerSesionIDB) { clearTimeout(_timerSesionIDB); _timerSesionIDB = null; }
-        guardarSesionVentaIDB();
-    }
-
-    // ==================== WAKE LOCK (no apagar pantalla en ventas) ====================
-    let wakeLockObj = null;
-    async function activarWakeLock() {
-        if (!('wakeLock' in navigator)) return;
-        if (currentModule !== 'ventas') return;
-        if (document.visibilityState !== 'visible') return;
-        if (wakeLockObj) return;
-        try {
-            wakeLockObj = await navigator.wakeLock.request('screen');
-            wakeLockObj.addEventListener('release', () => { wakeLockObj = null; });
-        } catch(e) { wakeLockObj = null; }
-    }
-    function liberarWakeLock() {
-        try { if (wakeLockObj) wakeLockObj.release(); } catch(e) {}
-        wakeLockObj = null;
-    }
-    function sincronizarWakeLock() {
-        if (currentModule === 'ventas' && document.visibilityState === 'visible') activarWakeLock();
-        else liberarWakeLock();
     }
     function sincronizarUIVenta() {
         if(document.getElementById('clienteIdHidden')) document.getElementById('clienteIdHidden').value = clienteSeleccionadoId || '';
@@ -365,7 +295,7 @@
         if(D.config.mostrarDolar === undefined) D.config.mostrarDolar = true;
         if(D.config.prevenirCierre === undefined) D.config.prevenirCierre = true;
         if(D.config.tasaManual === undefined) D.config.tasaManual = false;
-        if(!D.config.tasaManualValue) D.config.tasaManualValue = D.config.dolarRate || 67.85;
+        if(!D.config.tasaManualValue) D.config.tasaManualValue = D.config.dolarRate || 777.42;
         if(D.config.autoOscuro === undefined) D.config.autoOscuro = true;
         if(D.config.ivaActivo === undefined) D.config.ivaActivo = false;
         
@@ -482,7 +412,7 @@
             saveConfig();
             if(forzar) mostrarNotificacion(`Tasa actualizada: ${fmtDolar(tasaNueva)} Bs/USD`, 'success');
             notificarTasaActualizada(tasaPrevia, tasaNueva);
-        } else if(!D.config.dolarRate) D.config.dolarRate = 67.85;
+        } else if(!D.config.dolarRate) D.config.dolarRate = 777.42;
         actualizarDisplayTasa();
         recalcularPreciosPorTasa();
     }
@@ -533,14 +463,9 @@
     const mqModoOscuro = window.matchMedia('(prefers-color-scheme: dark)');
     mqModoOscuro.addEventListener('change', () => aplicarModoSistema());
     
-    // Control de navegación móvil:
-    // - APK nativa: el botón atrás del sistema lo maneja Kotlin y SIEMPRE
-    //   minimiza la app (moveTaskToBack), nunca la cierra ni muestra popup.
-    // - PWA instalada (display-mode: standalone): el atrás del sistema minimiza
-    //   la ventana de la app (vuelve al launcher); NO se re-empuja historial
-    //   para evitar bucles.
-    // - Navegador (pestaña): se re-empuja historial para que la pestaña no se
-    //   cierre con el atrás (en una pestaña no existe "minimizar").
+    // Control de navegacion movil: el botón atrás NUNCA agota el historial (así el navegador no puede cerrar la app).
+    // En móviles Chrome/Safari el navegador ignora beforeunload y cierra la pestaña en silencio cuando el historial se agota;
+    // por eso aquí SIEMPRE se re-empuja una entrada al instante. El cierre real solo ocurre con el botón "Cerrar" del popup.
     function guardarYPrevenirCierre(e) {
         guardarSesionVenta();
         localStorage.setItem('jam_last_module', currentModule || '');
@@ -550,31 +475,56 @@
         return '';
     }
     window.addEventListener('beforeunload', guardarYPrevenirCierre);
-
-    function esPWAInstalada() {
-        return window.matchMedia && window.matchMedia('(display-mode: standalone)').matches;
+    
+    function cerrarAplicacion() {
+        window._permitirSalida = true;
+        guardarSesionVenta();
+        localStorage.setItem('jam_last_module', '');
+        try {
+            if (window.AndroidBridge && AndroidBridge.cerrarApp) {
+                AndroidBridge.cerrarApp();
+                return;
+            }
+        } catch(e) {}
+        setTimeout(() => { try { if (window.close) window.close(); } catch(e) {} }, 50);
+        setTimeout(() => {
+            try { if (!document.hidden) location.replace('about:blank'); } catch(e) {}
+        }, 400);
     }
-    // ¿Es el WebView real del APK? window.__JAM_WEB__ lo marca web-bridge.js
-    // (emulación web del puente), así que con esa bandera NO es app nativa.
-    function esNativo() { return !!(window.AndroidBridge && !window.__JAM_WEB__); }
-
+    
+    let dialogoSalidaAbierto = false;
+    function mostrarDialogoSalida() {
+        dialogoSalidaAbierto = true;
+        return jamDialogo({
+            titulo: '¿Salir de la aplicación?',
+            mensaje: 'Al cerrar la aplicación se guardará el trabajo actual. Solo podrás salir con el botón "Cerrar"; usa "Volver" para continuar.',
+            tipo: 'pregunta',
+            botones: [
+                { texto: 'Volver', valor: false },
+                { texto: 'Cerrar', valor: true, destacado: true }
+            ]
+        }).then(decision => {
+            if (decision === true) cerrarAplicacion();
+        }).finally(() => {
+            dialogoSalidaAbierto = false;
+        });
+    }
+    // Expuesto para que el WebView nativo (Kotlin) lance el popup desde el botón atrás
+    window.mostrarDialogoSalida = mostrarDialogoSalida;
+    
+    // El listener se registra ANTES de empujar historial y el push va en try/catch,
+    // para que ningún error de pushState deje a la app sin protección.
     function empujarHistorial() {
         try { history.pushState(null, null, location.href); } catch(e) {}
     }
-    // Web (pestaña o PWA): una entrada para que atrás en un módulo vuelva a home.
-    // El APK nativo no empuja nada: Kotlin maneja el atrás directamente.
-    if (!esNativo()) empujarHistorial();
-    window.addEventListener('popstate', function(e) {
-        // APK nativa: el atrás ya lo maneja Kotlin (minimiza). No intervenir.
-        if (esNativo()) return;
-        // PWA instalada: no re-empujar; el siguiente atrás minimiza la app.
-        if (esPWAInstalada()) {
-            if (currentModule !== 'home' && window.backToHome) window.backToHome();
+    empujarHistorial();
+    window.addEventListener('popstate', async function(e) {
+        empujarHistorial();
+        if (currentModule !== 'home') {
+            if (window.backToHome) window.backToHome();
             return;
         }
-        // Pestaña de navegador: mantener la página abierta y volver a home.
-        empujarHistorial();
-        if (currentModule !== 'home' && window.backToHome) window.backToHome();
+        if (!dialogoSalidaAbierto) await mostrarDialogoSalida();
     });
     
     // ==================== VENTAS ====================
@@ -1138,7 +1088,34 @@
             imprimirTicket(venta);
         }
     };
-    window.enviarTicketPorWhatsApp = async (ventaId) => { const venta = D.ventas.find(v => v.id === ventaId); if(!venta) return; const formasPago = { 'efectivo_bs':'EFECTIVO Bs','pago_movil':'PAGO MÓVIL','transferencia':'TRANSFERENCIA','tarjeta_debito':'TARJETA DÉBITO','dolares':'DÓLARES','pago_dividido':'PAGO DIVIDIDO' }; const etiqMetodo = {'efectivo_bs':'Efectivo Bs','dolares':'Dólares','tarjeta_debito':'Tarjeta Débito','transferencia':'Transferencia','pago_movil':'Pago Móvil'}; let mensaje = `🏪 *${D.config.empresa.nombre}* 🏪\n`; if(D.config.empresa.direccion) mensaje += `📍 ${D.config.empresa.direccion}\n`; if(D.config.empresa.telefono) mensaje += `📞 ${D.config.empresa.telefono}\n`; mensaje += `━━━━━━━━━━━━━━━━━━━━\n📅 ${textoFechaVenta(venta)}\n🧾 *${venta.id}*\n👤 Cliente: ${venta.cliente}\n━━━━━━━━━━━━━━━━━━━━\n`; venta.items.forEach(item => { mensaje += `${item.cantidad}x ${item.nombre} → ${fmtPrecio(item.subtotal)} Bs\n`; }); mensaje += `━━━━━━━━━━━━━━━━━━━━\n💰 *SUBTOTAL:* ${fmtPrecio(venta.subtotal)} Bs\n`; if(venta.iva) mensaje += `📊 *IVA:* ${fmtPrecio(venta.iva)} Bs\n`; mensaje += `💵 *TOTAL:* ${fmtPrecio(venta.total)} Bs\n💸 *PAGO:* ${fmtPrecio(venta.pago)} Bs\n${esPagoEfectivo(venta) ? `🔄 *CAMBIO:* ${fmtPrecio(venta.cambio)} Bs\n` : ''}`; if(venta.detallePagos) { venta.detallePagos.forEach(d => { mensaje += `└ ${etiqMetodo[d.metodo]||d.metodo}: ${fmtPrecio(d.monto)} Bs\n`; }); } else { mensaje += `💳 *FORMA DE PAGO:* ${formasPago[venta.tipoPago] || venta.tipoPago}\n`; } mensaje += `━━━━━━━━━━━━━━━━━━━━\n🙏 ¡Gracias por su compra!\n${D.config.empresa.nombre}`; const telefono = await jamPrompt("📱 Ingrese el número de teléfono (ej: 584121234567):"); if(telefono) { let numeroLimpio = telefono.replace(/[^0-9]/g, ''); if(numeroLimpio.startsWith('0')) numeroLimpio = '58' + numeroLimpio.substring(1); if(!numeroLimpio.startsWith('58')) numeroLimpio = '58' + numeroLimpio; window.open(`https://wa.me/${numeroLimpio}?text=${encodeURIComponent(mensaje)}`, '_blank'); } };
+    window.enviarTicketPorWhatsApp = async (ventaId) => {
+        const venta = D.ventas.find(v => v.id === ventaId);
+        if(!venta) return;
+        const formasPago = { 'efectivo_bs':'EFECTIVO Bs','pago_movil':'PAGO MÓVIL','transferencia':'TRANSFERENCIA','tarjeta_debito':'TARJETA DÉBITO','dolares':'DÓLARES','pago_dividido':'PAGO DIVIDIDO' };
+        const etiqMetodo = {'efectivo_bs':'Efectivo Bs','dolares':'Dólares','tarjeta_debito':'Tarjeta Débito','transferencia':'Transferencia','pago_movil':'Pago Móvil'};
+        let mensaje = `🏪 *${D.config.empresa.nombre}* 🏪\n`;
+        if(D.config.empresa.direccion) mensaje += `📍 ${D.config.empresa.direccion}\n`;
+        if(D.config.empresa.telefono) mensaje += `📞 ${D.config.empresa.telefono}\n`;
+        mensaje += `━━━━━━━━━━━━━━━━━━━━\n📅 ${textoFechaVenta(venta)}\n🧾 *${venta.id}*\n👤 Cliente: ${venta.cliente}\n━━━━━━━━━━━━━━━━━━━━\n`;
+        venta.items.forEach(item => { mensaje += `${item.cantidad}x ${item.nombre} → ${fmtPrecio(item.subtotal)} Bs\n`; });
+        mensaje += `━━━━━━━━━━━━━━━━━━━━\n💰 *SUBTOTAL:* ${fmtPrecio(venta.subtotal)} Bs\n`;
+        if(venta.iva) mensaje += `📊 *IVA:* ${fmtPrecio(venta.iva)} Bs\n`;
+        mensaje += `💵 *TOTAL:* ${fmtPrecio(venta.total)} Bs\n💸 *PAGO:* ${fmtPrecio(venta.pago)} Bs\n${esPagoEfectivo(venta) ? `🔄 *CAMBIO:* ${fmtPrecio(venta.cambio)} Bs\n` : ''}`;
+        if(venta.detallePagos) {
+            venta.detallePagos.forEach(d => { mensaje += `└ ${etiqMetodo[d.metodo]||d.metodo}: ${fmtPrecio(d.monto)} Bs\n`; });
+        } else {
+            mensaje += `💳 *FORMA DE PAGO:* ${formasPago[venta.tipoPago] || venta.tipoPago}\n`;
+        }
+        mensaje += `━━━━━━━━━━━━━━━━━━━━\n🙏 ¡Gracias por su compra!\n${D.config.empresa.nombre}`;
+        try { await navigator.clipboard.writeText(mensaje); mostrarNotificacion('📋 Ticket copiado al portapapeles', 'success'); } catch(e) {}
+        const telefono = await jamPrompt("📱 Ingrese el número de teléfono (ej: 584121234567):");
+        if(telefono) {
+            let numeroLimpio = telefono.replace(/[^0-9]/g, '');
+            if(numeroLimpio.startsWith('0')) numeroLimpio = '58' + numeroLimpio.substring(1);
+            if(!numeroLimpio.startsWith('58')) numeroLimpio = '58' + numeroLimpio;
+            window.open(`https://wa.me/${numeroLimpio}?text=${encodeURIComponent(mensaje)}`, '_blank');
+        }
+    };
     async function capturarTicketImagen() {
         const ticket = document.getElementById('ticketParaImprimir');
         if(!ticket) return null;
@@ -1236,7 +1213,6 @@
         // Cache current module DOM
         cacheModuleDOM(currentModule);
         currentModule = m;
-        sincronizarWakeLock();
         localStorage.setItem('jam_last_module', m);
         history.pushState(null, null, location.href);
         
@@ -1276,7 +1252,6 @@
         if(currentModule === 'ventas') guardarSesionVenta();
         cacheModuleDOM(currentModule);
         currentModule = 'home'; volverBloqueado = false;
-        sincronizarWakeLock();
         localStorage.setItem('jam_last_module', '');
         renderHome();
     };
@@ -1345,7 +1320,6 @@
     function renderHome(){
         if(window.fechaHoraInterval) { clearInterval(window.fechaHoraInterval); window.fechaHoraInterval = null; }
         currentModule = 'home'; volverBloqueado = false;
-        sincronizarWakeLock();
         document.querySelectorAll('[id^="_cache_"]').forEach(el => el.remove());
         let accent = D.config.theme;
         let mostrarDolarHtml = D.config.mostrarDolar ? 
@@ -1984,6 +1958,7 @@
         }
         return dias;
     }
+    let _barsInfo = [];
     function renderGraficoVentas(ventas){
         let dias = generarDiasSemana();
         ventas.forEach(v => {
@@ -1996,7 +1971,7 @@
             if(!canvas) return;
             let ctx = canvas.getContext('2d');
             let W = canvas.parentElement.clientWidth - 24;
-            let H = 160;
+            let H = 180;
             canvas.width = W * 2; canvas.height = H * 2;
             canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
             ctx.scale(2,2);
@@ -2005,20 +1980,24 @@
             let barW = Math.max(16, (W - 40) / dias.length - 8);
             let gap = 8;
             ctx.clearRect(0,0,W,H);
+            _barsInfo = [];
             dias.forEach((d,i) => {
                 let val = d.ventas.reduce((a,b)=>a+b,0);
-                let barH = (val / maxVal) * (H - 30);
+                let barH = Math.max(4, (val / maxVal) * (H - 36));
                 let x = 20 + i * (barW + gap) + (W - 40 - dias.length*(barW+gap) + gap)/2;
-                let y = H - 10 - barH;
+                let y = H - 16 - barH;
+                _barsInfo.push({x, y, w: barW, h: barH, fecha: d.fecha, label: d.label, val});
                 ctx.fillStyle = accent;
+                ctx.globalAlpha = 0.85;
                 ctx.beginPath();
                 if (ctx.roundRect) ctx.roundRect(x, y, barW, barH, [4,4,0,0]);
                 else ctx.rect(x, y, barW, barH);
                 ctx.fill();
+                ctx.globalAlpha = 1;
                 ctx.fillStyle = getComputedStyle(document.body).color;
                 ctx.font = '9px sans-serif';
                 ctx.textAlign = 'center';
-                ctx.fillText(d.label, x + barW/2, H - 2);
+                ctx.fillText(d.label, x + barW/2, H - 3);
                 if(val > 0){
                     ctx.fillStyle = accent;
                     ctx.font = 'bold 8px sans-serif';
@@ -2027,37 +2006,63 @@
             });
         }, 50);
     }
+
+    function mostrarKPIsDelDia(fecha, label){
+        document.querySelectorAll('.kpi-popup').forEach(e => e.remove());
+        let ventasAll = D.ventas || [];
+        let ventasDia = ventasAll.filter(v => msToDateStr(v.timestamp || new Date(v.fecha).getTime()) === fecha);
+        let totalVentasAll = ventasAll.reduce((a,b)=>a+(b.total||0),0);
+        let totalGananciaAll = ventasAll.reduce((a,b)=>a+(b.gananciaTotal||0),0);
+        let totalGastosAll = D.gastos.reduce((a,b)=>a+(b.montoBs||0),0);
+        let utilidadAll = totalGananciaAll - totalGastosAll;
+        let cnt = ventasDia.length;
+        let total = ventasDia.reduce((a,b)=>a+(b.total||0),0);
+        let ganancia = ventasDia.reduce((a,b)=>a+(b.gananciaTotal||0),0);
+        let gastos = D.gastos.filter(g => msToDateStr(g.timestamp || new Date(g.fecha).getTime()) === fecha).reduce((a,b)=>a+(b.montoBs||0),0);
+        let utilidad = ganancia - gastos;
+        let accent = D.config.theme;
+        let overlay = document.createElement('div');
+        overlay.className = 'kpi-popup-overlay';
+        overlay.onclick = e => { if(e.target === overlay) overlay.remove(); };
+        let popup = document.createElement('div');
+        popup.className = 'kpi-popup';
+        popup.innerHTML = `<div class="kpi-popup-titulo" style="color:${accent}"><i class="fas fa-chart-bar"></i> ${label} <button class="kpi-popup-cerrar" onclick="this.closest('.kpi-popup-overlay').remove()">✕</button></div>
+        <div class="kpi-popup-grid">
+            <div class="kpi-popup-card"><div class="kpi-popup-icon">💰</div><div class="kpi-popup-val">${fmtPrecio(total)} Bs</div><div class="kpi-popup-lbl">Ventas</div></div>
+            <div class="kpi-popup-card"><div class="kpi-popup-icon">🧾</div><div class="kpi-popup-val">${cnt}</div><div class="kpi-popup-lbl">Ticket(s)</div></div>
+            <div class="kpi-popup-card"><div class="kpi-popup-icon">📈</div><div class="kpi-popup-val">${fmtPrecio(ganancia)} Bs</div><div class="kpi-popup-lbl">Ganancia</div></div>
+            <div class="kpi-popup-card"><div class="kpi-popup-icon">💸</div><div class="kpi-popup-val">${fmtPrecio(gastos)} Bs</div><div class="kpi-popup-lbl">Gastos</div></div>
+            <div class="kpi-popup-card"><div class="kpi-popup-icon">📊</div><div class="kpi-popup-val" style="color:${utilidad >= 0 ? '#10b981' : '#ef4444'}">${fmtPrecio(utilidad)} Bs</div><div class="kpi-popup-lbl">Utilidad</div></div>
+            <div class="kpi-popup-card"><div class="kpi-popup-icon">👥</div><div class="kpi-popup-val">${new Set(ventasDia.map(v => v.clienteId)).size}</div><div class="kpi-popup-lbl">Clientes</div></div>
+        </div>
+        <div class="kpi-popup-totales"><span>Acumulado: ${fmtPrecio(totalVentasAll)} Bs</span><span>Ganancia: ${fmtPrecio(totalGananciaAll)} Bs</span><span>Gastos: ${fmtPrecio(totalGastosAll)} Bs</span><span>Utilidad: <b style="color:${utilidadAll >= 0 ? '#10b981' : '#ef4444'}">${fmtPrecio(utilidadAll)} Bs</b></span></div>`;
+        overlay.appendChild(popup);
+        document.body.appendChild(overlay);
+    }
     async function renderReportes(){
         let ventas = await getAll('ventas');
-        let totalVentas = ventas.reduce((a,b)=>a+(b.total||0),0);
-        let totalGanancia = ventas.reduce((a,b)=>a+(b.gananciaTotal||0),0);
-        let totalGastos = D.gastos.reduce((a,b)=>a+(b.montoBs||0),0);
-        let utilidad = totalGanancia - totalGastos;
-        let hoy = msToDateStr(Date.now());
-        let ventasHoy = ventas.filter(v => msToDateStr(v.timestamp || new Date(v.fecha).getTime()) === hoy);
-        let totalHoy = ventasHoy.reduce((a,b)=>a+(b.total||0),0);
-        let gananciaHoy = ventasHoy.reduce((a,b)=>a+(b.gananciaTotal||0),0);
-        let gastosHoy = D.gastos.filter(g => { let t = g.timestamp || new Date(g.fecha).getTime(); return !isNaN(t) && msToDateStr(t) === hoy; }).reduce((a,b)=>a+(b.montoBs||0),0);
-        let utilidadHoy = gananciaHoy - gastosHoy;
-        let clientesUnicos = new Set(ventas.map(v => v.clienteId)).size;
-        let stockBajo = D.productos.filter(p => p.stock < 5).length;
         let bloqueado = volverBloqueado, accent = D.config.theme;
+        let histTasa = cargarHistorialTasa();
+        let histSemana = histTasa.slice(-7).reverse();
+        let tasaHtml = histSemana.length > 0 ? histSemana.map(h => {
+            let prev = histTasa.filter(x => x.fecha < h.fecha).slice(-1)[0];
+            let flecha = '';
+            if(prev){
+                let diff = h.tasa - prev.tasa;
+                if(diff > 0.001) flecha = '<span style="color:#ef4444">▲</span>';
+                else if(diff < -0.001) flecha = '<span style="color:#10b981">▼</span>';
+            }
+            return `<div class="flex justify-between items-center" style="padding:5px 0;border-bottom:1px solid rgba(128,128,128,.1)"><span class="text-xs" style="opacity:.6">${fmtFechaDisplay(h.fecha)}</span><span class="text-xs font-bold" style="color:${accent}">${flecha} ${fmtDolar(h.tasa)} Bs</span></div>`;
+        }).join('') : '<div class="text-xs" style="opacity:.5;text-align:center;padding:8px">Sin datos de tasa esta semana</div>';
         document.getElementById('appRoot').innerHTML = `
             <div class="page-header-fixed"><div class="module-header"><h2 id="tituloModule" class="module-title ${bloqueado?'module-title-bloqueado':''}" style="color:${accent}" onmousedown="iniciarBloqueo(this,'Reportes')" onmouseup="cancelarBloqueo()" onmouseleave="cancelarBloqueo()">Reportes</h2><div id="btnVolverModule" class="btn-back ${bloqueado?'btn-back-bloqueado':''}" onclick="${bloqueado?'':'backToHome()'}">${bloqueado?'<i class="fas fa-lock"></i> Bloqueado':'<i class="fas fa-arrow-left"></i> Volver'}</div></div></div>
             <div class="page-container">
-                <div class="kpi-grid">
-                    <div class="kpi-card"><div class="kpi-icon">💰</div><div class="kpi-value">${fmtPrecio(totalHoy)} Bs</div><div class="kpi-label">Ventas hoy</div></div>
-                    <div class="kpi-card"><div class="kpi-icon">📈</div><div class="kpi-value">${fmtPrecio(gananciaHoy)} Bs</div><div class="kpi-label">Ganancia hoy</div></div>
-                    <div class="kpi-card"><div class="kpi-icon">📊</div><div class="kpi-value">${fmtPrecio(utilidadHoy)} Bs</div><div class="kpi-label">Utilidad hoy</div></div>
-                    <div class="kpi-card"><div class="kpi-icon">🧾</div><div class="kpi-value">${ventasHoy.length}</div><div class="kpi-label">Ventas hoy (cnt)</div></div>
-                    <div class="kpi-card"><div class="kpi-icon">📦</div><div class="kpi-value">${fmtPrecio(totalVentas)} Bs</div><div class="kpi-label">Ventas totales</div></div>
-                    <div class="kpi-card"><div class="kpi-icon">📈</div><div class="kpi-value">${fmtPrecio(totalGanancia)} Bs</div><div class="kpi-label">Ganancia bruta total</div></div>
-                    <div class="kpi-card"><div class="kpi-icon">💸</div><div class="kpi-value">${fmtPrecio(totalGastos)} Bs</div><div class="kpi-label">Gastos totales</div></div>
-                    <div class="kpi-card"><div class="kpi-icon">📊</div><div class="kpi-value">${fmtPrecio(utilidad)} Bs</div><div class="kpi-label">Utilidad neta total</div></div>
-                    <div class="kpi-card"><div class="kpi-icon">👥</div><div class="kpi-value">${clientesUnicos}</div><div class="kpi-label">Clientes</div></div>
-                    <div class="kpi-card ${stockBajo > 0 ? 'kpi-low-stock' : ''}"><div class="kpi-icon">⚠️</div><div class="kpi-value">${stockBajo}</div><div class="kpi-label">Stock bajo (&lt;5)</div></div>
-                </div>
+                <div class="chart-hint" style="text-align:center;font-size:.75rem;opacity:.5;margin-bottom:6px">Toca una barra para ver los indicadores del día</div>
                 <div class="chart-container"><canvas id="chartVentas"></canvas></div>
+                <div class="config-section" style="margin-bottom:16px">
+                    <div class="config-section-title" style="font-size:.75rem;font-weight:700;opacity:.6;margin-bottom:8px">💱 Tasa del dólar — últimos 7 días</div>
+                    ${tasaHtml}
+                </div>
                 <h3 class="font-bold mb-2">Registro de ventas</h3>
                 <div class="flex gap-2 mb-2">
                     <div class="buscador" style="flex:1">
@@ -2068,19 +2073,27 @@
                 </div>
                 <div class="text-xs opacity-60 mb-2" id="contadorVentas">${ventas.length} venta(s)</div>
                 <div id="listaVentasReporte" class="max-h-64 overflow-auto">${ventas.slice().reverse().map(v => ventaCardReporte(v)).join('')}</div>
-                <h3 class="font-bold mt-4 mb-2">💱 Historial de la tasa del dólar</h3>
-                <div class="flex gap-2 mb-2">
-                    <div class="buscador" style="flex:1">
-                        <i class="fas fa-search icono-busqueda"></i>
-                        <input id="buscarHistTasa" type="search" placeholder="🔍 Buscar por fecha..." oninput="window.onBuscarHistTasaTexto()" class="w-full" autocomplete="off">
-                        <button id="btnCalendarioTasa" class="btn-icon-cuadrado" title="Ver cambios de tasa por fecha" onclick="window.abrirCalendarioTasa()"><i class="fas fa-calendar-alt"></i></button>
-                    </div>
-                </div>
-                <div class="text-xs opacity-60 mb-2" id="contadorHistTasa">${cargarHistorialTasa().length} cambio(s) de tasa</div>
-                <div id="listaHistTasa" class="max-h-64 overflow-auto">${renderTarjetasHistTasa()}</div>
             </div>`;
         if(volverBloqueado) document.getElementById('btnVolverModule').onclick = () => mostrarOverlayBloqueo();
         renderGraficoVentas(ventas);
+        D.ventas = ventas;
+        setTimeout(() => {
+            let canvas = document.getElementById('chartVentas');
+            if(!canvas) return;
+            let handler = (ex, ey) => {
+                let r = canvas.getBoundingClientRect();
+                let cx = ex - r.left, cy = ey - r.top;
+                for(let b of _barsInfo){
+                    if(cx >= b.x && cx <= b.x + b.w && cy >= b.y - 10 && cy <= b.y + b.h + 14){
+                        document.querySelectorAll('.kpi-popup-overlay').forEach(e => e.remove());
+                        mostrarKPIsDelDia(b.fecha, b.label);
+                        return;
+                    }
+                }
+            };
+            canvas.addEventListener('click', e => handler(e.clientX, e.clientY));
+            canvas.addEventListener('touchstart', e => { e.preventDefault(); handler(e.touches[0].clientX, e.touches[0].clientY); }, {passive:false});
+        }, 100);
     }
     
     const formasPagoGlobal = { 'efectivo_bs':'EFECTIVO Bs','pago_movil':'PAGO MÓVIL','transferencia':'TRANSFERENCIA','tarjeta_debito':'TARJETA DÉBITO','dolares':'DÓLARES','pago_dividido':'PAGO DIVIDIDO' };
@@ -2164,13 +2177,24 @@
         const semana = ['Do','Lu','Ma','Mi','Ju','Vi','Sá'];
         let celdas = semana.map(d => `<div class="cal-cabecera">${d}</div>`).join('');
         for(let i = 0; i < primerDia; i++) celdas += `<div class="cal-vacio"></div>`;
+        let prevTasa = 0;
         for(let d = 1; d <= numDias; d++){
             const iso = prefijo + '-' + String(d).padStart(2, '0');
             const n = ventasMes.filter(v => isoFechaVenta(v) === iso).length;
-            celdas += `<button class="cal-dia ${n > 0 ? 'cal-dia-venta' : ''}" onclick="window.aplicarFiltroDia('${iso}')"><span class="cal-dia-num">${d}</span>${n > 0 ? `<span class="cal-badge">${n}</span>` : ''}</button>`;
+            const info = tasaParaFecha(iso);
+            const conTasa = info.tasa > 0;
+            let flecha = '';
+            if(conTasa){
+                if(prevTasa > 0 && info.tasa > prevTasa) flecha = '<span class="cal-flecha cal-flecha-up">▲</span>';
+                else if(prevTasa > 0 && info.tasa < prevTasa) flecha = '<span class="cal-flecha cal-flecha-down">▼</span>';
+                prevTasa = info.tasa;
+            }
+            const tasaHtml = conTasa ? `<span class="cal-tasa">${flecha}${fmtDolar(info.tasa)}</span>` : '';
+            celdas += `<button class="cal-dia ${n > 0 ? 'cal-dia-venta' : ''}" onclick="window.aplicarFiltroDia('${iso}')"><span class="cal-dia-num">${d}</span>${n > 0 ? `<span class="cal-badge">${n}</span>` : ''}${tasaHtml}</button>`;
         }
         modal.innerHTML = `<div class="modal-form-content" style="max-width:340px">
             <h3 class="font-bold text-lg mb-1" style="color:${D.config.theme}">📅 Ventas por fecha</h3>
+            <p class="text-xs opacity-70 mb-2">La tasa del día aparece en cada casilla.</p>
             <div class="cal-nav"><button onclick="window._calMonth--;if(window._calMonth<0){window._calMonth=11;window._calYear--;}renderCalendarioVentas()">◀</button><div class="cal-titulo">${mesNombre(m)} ${a}</div><button onclick="window._calMonth++;if(window._calMonth>11){window._calMonth=0;window._calYear++;}renderCalendarioVentas()">▶</button></div>
             <div class="cal-nav cal-nav-ano"><button onclick="window._calYear--;renderCalendarioVentas()">◀ Año</button><div class="cal-titulo">${ventasMes.length} venta(s) · ${fmtPrecio(totalMes)} Bs</div><button onclick="window._calYear++;renderCalendarioVentas()">Año ▶</button></div>
             <div class="cal-grid">${celdas}</div>
@@ -2191,176 +2215,6 @@
         modal.onclick = e => { if(e.target === modal) modal.remove(); };
         document.body.appendChild(modal);
         renderCalendarioVentas();
-    };
-    
-    // ==================== HISTORIAL TASA DEL DÓLAR ====================
-    let filtroTasaCalendario = null;
-    function tarjetaHistTasa(h){
-        return `<div class="border rounded-xl p-3 mb-2" style="border-color:var(--accent)"><div class="flex justify-between items-center"><span class="text-sm font-bold" style="color:var(--accent)">💲 1 USD = ${fmtDolar(h.tasa)} Bs</span><span class="text-xs opacity-60">📅 ${fmtFechaDisplay(h.fecha)} · 🕐 ${h.hora || ''}</span></div></div>`;
-    }
-    function baseHistTasa(){
-        let hist = cargarHistorialTasa();
-        if(filtroTasaCalendario){
-            return hist.filter(h => filtroTasaCalendario.tipo === 'dia' ? h.fecha === filtroTasaCalendario.valor : h.fecha.startsWith(filtroTasaCalendario.valor));
-        }
-        return hist;
-    }
-    function renderTarjetasHistTasa(){
-        let base = baseHistTasa();
-        if(base.length === 0) return `<div class="text-sm opacity-60 text-center py-4">Sin registros de cambio de tasa. La tasa se registra aquí cada vez que cambia (mínimo un céntimo).</div>`;
-        return base.slice().reverse().map(tarjetaHistTasa).join('');
-    }
-    window.filtrarHistTasa = () => {
-        const input = document.getElementById('buscarHistTasa');
-        const lista = document.getElementById('listaHistTasa');
-        const contador = document.getElementById('contadorHistTasa');
-        const btnCal = document.getElementById('btnCalendarioTasa');
-        if(!lista) return;
-        let q = (input ? input.value : '').toLowerCase().trim();
-        let hist = cargarHistorialTasa();
-        let base = filtroTasaCalendario ? hist.filter(h => filtroTasaCalendario.tipo === 'dia' ? h.fecha === filtroTasaCalendario.valor : h.fecha.startsWith(filtroTasaCalendario.valor)) : hist;
-        let result = base;
-        if(!filtroTasaCalendario && q) result = base.filter(h => (h.fecha||'').includes(q));
-        lista.innerHTML = result.length ? result.slice().reverse().map(tarjetaHistTasa).join('') : `<div class="text-sm opacity-60 text-center py-4">Sin registros.</div>`;
-        if(contador) contador.innerText = result.length + ' cambio(s) de tasa';
-        if(btnCal) btnCal.style.background = filtroTasaCalendario ? (D.config.theme || '#3b82f6') : '';
-    };
-    window.onBuscarHistTasaTexto = () => { if(filtroTasaCalendario) filtroTasaCalendario = null; window.filtrarHistTasa(); };
-    window.aplicarFiltroTasaDia = (iso) => {
-        filtroTasaCalendario = { tipo:'dia', valor: iso };
-        const input = document.getElementById('buscarHistTasa');
-        if(input) input.value = iso;
-        window.filtrarHistTasa();
-        const modal = document.getElementById('modalCalendarioTasa');
-        if(modal) modal.remove();
-    };
-    window.aplicarFiltroTasaMes = (prefix, etiqueta) => {
-        filtroTasaCalendario = { tipo:'mes', valor: prefix };
-        const input = document.getElementById('buscarHistTasa');
-        if(input) input.value = etiqueta;
-        window.filtrarHistTasa();
-        const modal = document.getElementById('modalCalendarioTasa');
-        if(modal) modal.remove();
-    };
-    window.quitarFiltroTasa = () => {
-        filtroTasaCalendario = null;
-        const input = document.getElementById('buscarHistTasa');
-        if(input) input.value = '';
-        window.filtrarHistTasa();
-        const modal = document.getElementById('modalCalendarioTasa');
-        if(modal) modal.remove();
-    };
-    function renderCalendarioTasa(){
-        const modal = document.getElementById('modalCalendarioTasa');
-        if(!modal) return;
-        const a = window._calTasaYear, m = window._calTasaMonth;
-        const primerDia = new Date(a, m, 1).getDay();
-        const numDias = new Date(a, m + 1, 0).getDate();
-        const prefijo = a + '-' + String(m + 1).padStart(2, '0');
-        const hoy = hoyISO();
-        let registradosMes = cacheTasaDiaria.filter(x => x.fecha.startsWith(prefijo));
-        let diasConTasa = new Set(registradosMes.map(h => h.fecha));
-        const semana = ['Do','Lu','Ma','Mi','Ju','Vi','Sá'];
-        let celdas = semana.map(d => `<div class="cal-cabecera">${d}</div>`).join('');
-        for(let i = 0; i < primerDia; i++) celdas += `<div class="cal-vacio"></div>`;
-        let prevTasa = 0;
-        for(let d = 1; d <= numDias; d++){
-            const iso = prefijo + '-' + String(d).padStart(2, '0');
-            const info = tasaParaFecha(iso);
-            const conTasa = info.tasa > 0;
-            const esHoy = iso === hoy;
-            const clase = conTasa ? 'cal-dia-venta' : '';
-            const candado = info.fijada ? '<span class="cal-lock">🔒</span>' : '';
-            const etiquetaHoy = esHoy ? '<span class="cal-hoy">HOY</span>' : '';
-            let flecha = '';
-            if(conTasa){
-                if(prevTasa > 0 && info.tasa > prevTasa) flecha = '<span class="cal-flecha cal-flecha-up">▲</span>';
-                else if(prevTasa > 0 && info.tasa < prevTasa) flecha = '<span class="cal-flecha cal-flecha-down">▼</span>';
-                prevTasa = info.tasa;
-            }
-            celdas += `<button class="cal-dia ${clase} ${esHoy ? 'cal-dia-hoy' : ''}" onclick="window.verTasaDia('${iso}')"><span class="cal-dia-num">${d}</span>${conTasa ? `<span class="cal-tasa">${flecha}${fmtDolar(info.tasa)}</span>${candado}` : ''}${etiquetaHoy}</button>`;
-        }
-        modal.innerHTML = `<div class="modal-form-content" style="max-width:340px">
-            <h3 class="font-bold text-lg mb-1" style="color:${D.config.theme}">💱 Tasa del dólar por fecha</h3>
-            <p class="text-xs opacity-70 mb-2">Cada día imprime su propia tasa. Los días fijados (🔒) son inamovibles para siempre.</p>
-            <div class="cal-nav"><button onclick="window._calTasaMonth--;if(window._calTasaMonth<0){window._calTasaMonth=11;window._calTasaYear--;}renderCalendarioTasa()">◀</button><div class="cal-titulo">${mesNombre(m)} ${a}</div><button onclick="window._calTasaMonth++;if(window._calTasaMonth>11){window._calTasaMonth=0;window._calTasaYear++;}renderCalendarioTasa()">▶</button></div>
-            <div class="cal-nav cal-nav-ano"><button onclick="window._calTasaYear--;renderCalendarioTasa()">◀ Año</button><div class="cal-titulo">${diasConTasa.size} día(s) con tasa</div><button onclick="window._calTasaYear++;renderCalendarioTasa()">Año ▶</button></div>
-            <div class="cal-grid">${celdas}</div>
-            <div class="flex gap-2 mt-3">
-                <button class="btn-azul-redondeado btn-redondeado flex-1 py-2 text-sm" onclick="window.aplicarFiltroTasaMes('${prefijo}','${mesNombre(m)} ${a}')">📆 Ver todo ${mesNombre(m)}</button>
-                <button class="btn-redondeado flex-1 py-2 bg-gray-200 text-sm" onclick="window.quitarFiltroTasa()">🗑 Quitar</button>
-            </div>
-            <button class="w-full mt-2 py-2 rounded-xl bg-gray-200" onclick="document.getElementById('modalCalendarioTasa').remove()">Cerrar</button>
-        </div>`;
-    }
-    window.verTasaDia = async (iso) => {
-        const info = tasaParaFecha(iso);
-        const d = new Date(iso + 'T12:00:00');
-        const fechaLegible = isNaN(d.getTime()) ? iso : d.toLocaleDateString('es-ES', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
-        const hoy = hoyISO();
-        const sinTasa = info.tasa <= 0;
-        let variacion = '';
-        if(!sinTasa){
-            const prev = new Date(iso + 'T12:00:00');
-            prev.setDate(prev.getDate() - 1);
-            const infoPrev = tasaParaFecha(msToDateStr(prev.getTime()));
-            if(infoPrev.tasa > 0){
-                const diff = info.tasa - infoPrev.tasa;
-                if(diff > 0.001) variacion = `<div class="text-sm mt-2" style="color:#ef4444">▲ Aumentó ${fmtDolar(diff)} Bs/USD vs el día anterior</div>`;
-                else if(diff < -0.001) variacion = `<div class="text-sm mt-2" style="color:#10b981">▼ Bajó ${fmtDolar(-diff)} Bs/USD vs el día anterior</div>`;
-                else variacion = `<div class="text-xs opacity-60 mt-2">Igual que el día anterior</div>`;
-            }
-        }
-        let detalle = document.createElement('div'); detalle.className = 'modal-form';
-        detalle.id = 'modalDetalleTasa';
-        detalle.innerHTML = `<div class="modal-form-content" style="max-width:320px">
-            <h3 class="font-bold text-lg mb-1" style="color:${D.config.theme}">💱 Tasa del día</h3>
-            <p class="text-sm capitalize opacity-80 mb-2">${fechaLegible}</p>
-            <div class="text-center py-3">
-                ${sinTasa ? `<div class="text-sm opacity-70 py-4">Este día no tiene tasa impresa.</div>` : `<div class="text-4xl font-black" style="color:${D.config.theme}">${fmtDolar(info.tasa)}</div>
-                <div class="text-xs opacity-60">Bs/USD</div>
-                <div class="mt-2 text-sm">${info.fijada ? '<span style="color:#10b981">🔒 Impresa (inamovible)</span>' : '<span style="color:#f59e0b">🕓 HOY editable (aún puede cambiar)</span>'}</div>
-                ${info.hora ? `<div class="text-xs opacity-60 mt-1">Imprimida a las ${escapeHtml(info.hora)}</div>` : ''}
-                ${variacion}`}
-            </div>
-            <div class="flex flex-col gap-2">
-                ${iso === hoy && !info.fijada ? `<button id="fijarHoyBtn" class="btn-azul-redondeado btn-redondeado w-full py-2 font-bold">🔒 Fijar tasa del día</button>` : ''}
-                <button id="verHistBtn" class="btn-redondeado w-full py-2 bg-gray-200">📆 Ver cambios de este día en el historial</button>
-            </div>
-            <button id="cerrarDetTasa" class="w-full mt-2 py-2 rounded-xl bg-gray-200">Cerrar</button>
-        </div>`;
-        document.body.appendChild(detalle);
-        const cerrar = () => { if(document.getElementById('modalDetalleTasa')) detalle.remove(); };
-        detalle.querySelector('#cerrarDetTasa').onclick = cerrar;
-        detalle.querySelector('#verHistBtn').onclick = () => { cerrar(); window.aplicarFiltroTasaDia(iso); };
-        const fijarBtn = document.getElementById('fijarHoyBtn');
-        if(fijarBtn){
-            fijarBtn.onclick = async () => {
-                const ok = await fijarTasaDia(iso);
-                cerrar();
-                if(ok){
-                    D.tasaDiaria = await cargarTasaDiaria();
-                    refrescarCacheTasaDiaria();
-                    renderCalendarioTasa();
-                    mostrarNotificacion('🔒 Tasa del día fijada. Ya no se modificará.', 'success');
-                } else {
-                    mostrarNotificacion('ℹ️ La tasa del día ya estaba fijada', 'info');
-                }
-            };
-        }
-        detalle.onclick = e => { if(e.target === detalle) cerrar(); };
-    };
-    window.abrirCalendarioTasa = () => {
-        refrescarCacheTasaDiaria();
-        const ahora = new Date();
-        window._calTasaYear = ahora.getFullYear();
-        window._calTasaMonth = ahora.getMonth();
-        const modal = document.createElement('div');
-        modal.className = 'modal-form';
-        modal.id = 'modalCalendarioTasa';
-        modal.onclick = e => { if(e.target === modal) modal.remove(); };
-        document.body.appendChild(modal);
-        renderCalendarioTasa();
     };
     
     window.mostrarTicketDesdeReporte = (ventaId) => {
@@ -2780,6 +2634,7 @@
                                 <span>Bs/USD</span>
                             </div>
                             <div class="text-xs text-gray-500 mt-1">Actualizado: ${D.config.lastUpdate}</div>
+                            ${D.config.tasaManual ? `<div class="text-xs mt-1 p-2 rounded" style="background:rgba(239,68,68,.1);color:#ef4444;font-weight:600">⚠️ Modo manual activo. Verifique siempre el valor actual en el BCV antes de fijar un precio.</div>` : `<div class="text-xs mt-1 p-2 rounded" style="background:rgba(16,185,129,.1);color:#10b981;font-weight:600">✅ Modo automático — la tasa se actualiza sola al abrir la app.</div>`}
                         </div>
                         <div class="flex flex-col gap-3">
                             <label class="flex items-center gap-2 cursor-pointer">
@@ -2787,7 +2642,7 @@
                                 <span>🔒 Usar tasa manual (fija, sin internet)</span>
                             </label>
                             <div id="tasaManualDiv" style="${D.config.tasaManual ? 'display:flex' : 'display:none'}" class="flex gap-2 items-center">
-                                <input type="number" id="tasaManualInput" step="0.01" value="${D.config.tasaManualValue}" placeholder="Ej: 68.50" class="border rounded-xl p-2 flex-1">
+                                <input type="number" id="tasaManualInput" step="0.01" value="${D.config.tasaManualValue}" placeholder="Ej: 777.42" class="border rounded-xl p-2 flex-1">
                                 <button id="guardarTasaManualBtn" class="btn-azul-redondeado btn-redondeado py-2 px-4">Fijar</button>
                             </div>
                             <button id="actualizarTasaInternetBtn" class="btn-redondeado py-2 px-4" style="background:#3b82f6; color:white;">
@@ -2981,74 +2836,36 @@
             });
         }
 
-        // Web Install API: el nuevo estándar (Chrome/Edge 143-150+, en origin trial) que
-        // reemplazará a beforeinstallprompt. Requiere manifest con "id" y un gesto del
-        // usuario. Se detecta por feature para que el código corra en ambos mundos.
-        var webInstallDisponible = typeof navigator !== 'undefined' && typeof navigator.install === 'function';
-        var deferredPrompt = null;
-
-        function esInstalada() {
-            return window.matchMedia && window.matchMedia('(display-mode: standalone)').matches;
-        }
-
-        function quitarBotonInstalar() {
-            var btn = document.querySelector('.install-btn');
-            if (btn && btn.parentNode) btn.remove();
-        }
-
-        function mostrarBotonInstalar() {
-            if (esInstalada() || document.querySelector('.install-btn')) return;
-            var btn = document.createElement('button');
-            btn.innerText = '📲 Instalar App';
-            btn.className = 'install-btn';
-            btn.style.setProperty('background', D.config.theme);
-            btn.style.setProperty('color', '#ffffff');
-            btn.onclick = function() {
-                if (webInstallDisponible) {
-                    // El clic es la activación transitoria que exige navigator.install().
-                    navigator.install().then(function() {
-                        quitarBotonInstalar();
-                    }).catch(function(err) {
-                        if (err && (err.name === 'AbortError' || err.name === 'NotAllowedError')) {
-                            quitarBotonInstalar();
-                            return;
-                        }
-                        // DataError u otro fallo: caer al mecanismo clásico si existe.
-                        if (deferredPrompt) {
-                            deferredPrompt.prompt();
-                            deferredPrompt.userChoice.then(function() { quitarBotonInstalar(); });
-                        } else {
-                            quitarBotonInstalar();
-                        }
-                    });
-                } else if (deferredPrompt) {
-                    deferredPrompt.prompt();
-                    deferredPrompt.userChoice.then(function() { quitarBotonInstalar(); });
-                } else {
-                    quitarBotonInstalar();
-                }
-            };
-            document.body.appendChild(btn);
-        }
-
+        let deferredPrompt;
         window.addEventListener('beforeinstallprompt', function(e) {
             e.preventDefault();
             deferredPrompt = e;
-            mostrarBotonInstalar();
+            var btn = document.querySelector('.install-btn');
+            if (!btn) {
+                btn = document.createElement('button');
+                btn.innerText = '📲 Instalar App';
+                btn.className = 'install-btn';
+                btn.style.setProperty('background', D.config.theme);
+                btn.style.setProperty('color', '#ffffff');
+                btn.onclick = function() {
+                    if (deferredPrompt) {
+                        deferredPrompt.prompt();
+                        deferredPrompt.userChoice.then(function() {
+                            if (btn && btn.parentNode) btn.remove();
+                        });
+                    } else if (btn && btn.parentNode) {
+                        btn.remove();
+                    }
+                };
+                document.body.appendChild(btn);
+            }
         });
 
         window.addEventListener('appinstalled', function() {
-            quitarBotonInstalar();
+            var btn = document.querySelector('.install-btn');
+            if (btn) btn.remove();
             console.log('JAM POS instalada como PWA');
         });
-
-        // Respaldo a futuro: si beforeinstallprompt desaparece, con la Web Install API
-        // todavía se puede instalar (no exige la heurística de 30 s / 1 clic del evento).
-        if (webInstallDisponible) {
-            setTimeout(function() {
-                if (!document.querySelector('.install-btn')) mostrarBotonInstalar();
-            }, 8000);
-        }
     })();
     
         function askPin(callback){
@@ -3173,7 +2990,7 @@
         { sel: null, titulo: '¡Listo!', texto: 'Ya sabes manejar inventario y sus conversiones. ¡Agrega tu primer producto!' }
     ];
     const GUIA_REPORTES = [
-        { sel: '.kpi-grid', titulo: '1. Indicadores', texto: 'Aquí ves de un vistazo: ventas de hoy, ganancia, utilidad, ventas totales, gastos y stock bajo. Todo en Bs.' },
+        { sel: '.chart-container', titulo: '1. Gráfico diario', texto: 'Toca cualquier barra del gráfico para ver las ventas, ganancia y utilidad de ese día.' },
         { sel: '#chartVentas', titulo: '2. Gráfico', texto: 'Gráfica de tus ventas en el tiempo para detectar tendencias de un vistazo.' },
         { sel: '#buscarVentas', titulo: '3. Buscar ventas', texto: 'Escribe para filtrar por fecha, artículo, cliente o número de venta. También puedes usar el calendario de la derecha.' },
         { sel: '#btnCalendarioVentas', titulo: '4. Calendario', texto: 'Abre un calendario para ver las ventas de un día o de un mes específicos.' },
@@ -3387,18 +3204,4 @@
             actualizarModoLayout();
             if(currentModule === 'home' && document.activeElement?.id !== 'searchGlobalInput') renderHome();
         }, 300);
-    });
-
-    // Guardado inmediato al pasar la app a segundo plano (apagado, cerrar, matar)
-    document.addEventListener('visibilitychange', () => {
-        if(document.hidden) {
-            guardarSesionVenta();
-            flushSesionIDB();
-        } else {
-            sincronizarWakeLock();
-        }
-    });
-    window.addEventListener('pagehide', () => {
-        guardarSesionVenta();
-        flushSesionIDB();
     });
