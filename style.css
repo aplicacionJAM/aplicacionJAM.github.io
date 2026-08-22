@@ -124,7 +124,7 @@ body.dark-mode{background:#000!important}
         .buscador { position: relative; display: flex; align-items: center; }
         .buscador input { flex: 1; min-width: 0; padding-left: 36px; padding-right: 52px; }
         .buscador .icono-busqueda { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #9ca3af; pointer-events: none; z-index: 1; }
-        .buscador .btn-icon-cuadrado { position: absolute; right: 0; top: 0; bottom: 0; height: auto; width: 42px; min-width: 0; min-height: 0; border-radius: 0 18px 18px 0; z-index: 1; }
+        .buscador .btn-icon-cuadrado { position: absolute; right: 0; top: 0; bottom: 0; height: auto; width: 42px; min-width: 0; min-height: 0; border-radius: 0 12px 12px 0; z-index: 1; }
         .sugerencias-clientes { position: absolute; z-index: 150; border: 1px solid var(--accent); border-radius: 20px; max-height: 200px; overflow-y: auto; width: 100%; margin-top: 2px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); top: 100%; left: 0; }
         body.light-mode .sugerencias-clientes{background:#fff}
         body.dark-mode .sugerencias-clientes{background:#0a0a0a}
@@ -171,9 +171,9 @@ body.dark-mode{background:#000!important}
             
             /* === CONTENIDO CENTRADO Y PROPORCIONAL === */
             body.has-sidebar .home-container{max-width:720px;margin:0 auto;padding:0 24px 20px 24px}
-            body.has-sidebar .page-container{max-width:720px;margin:0 auto;padding:0 20px 20px 20px;width:100%}
-            body.has-sidebar .page-header-fixed{max-width:720px;margin:0 auto 16px auto;padding:12px 0}
-            body.has-sidebar .home-container > .mb-4{max-width:500px;margin-left:auto;margin-right:auto}
+            body.has-sidebar .page-container{max-width:600px;margin:0 auto;padding:0 20px 20px 20px;width:100%}
+            body.has-sidebar .page-header-fixed{max-width:600px;margin:0 auto 16px auto;padding:12px 0}
+            body.has-sidebar .home-container > .mb-4{max-width:450px;margin-left:auto;margin-right:auto}
 
             body.has-sidebar .config-section{max-width:600px;margin-left:auto;margin-right:auto}
             body.has-sidebar .product-card,body.has-sidebar .client-card{max-width:600px;margin-left:auto;margin-right:auto}
@@ -273,7 +273,7 @@ body.dark-mode{background:#000!important}
         .dialogo-input{border-radius:20px;padding:10px 14px;width:100%;outline:none;border:2px solid rgba(128,128,128,.3);background:#fff;color:#111;margin-bottom:14px}
         body.dark-mode .dialogo-input{background:#111;color:#e0e0e0;border-color:#3a3a3a}
         .ventas-layout{display:flex;flex-direction:column;height:calc(100vh - 80px);max-height:calc(100vh - 80px);overflow:hidden}
-        body.has-sidebar .ventas-layout{max-width:720px;margin:0 auto;padding:0 20px 0 20px;width:100%;height:calc(100vh - 100px)}
+        body.has-sidebar .ventas-layout{max-width:600px;margin:0 auto;padding:0 20px 0 20px;width:100%;height:calc(100vh - 100px)}
         .ventas-top{flex-shrink:0;padding-bottom:8px}
         .ventas-cart-scroll{flex:1;overflow-y:auto;min-height:0;scroll-behavior:smooth;padding:0 2px}
         .ventas-cart-scroll::-webkit-scrollbar{width:4px}
@@ -313,7 +313,7 @@ body.dark-mode{background:#000!important}
         .module-header-izq{display:flex;align-items:center;min-width:0;gap:2px}
         .btn-ayuda-modulo{margin:0 10px 0 2px;width:36px;height:36px;border-radius:50%;border:none;background:transparent;color:var(--accent,#3b82f6);font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center}
         .btn-ayuda-modulo:active{transform:scale(.9)}
-        body.teclado-abierto, body.teclado-abierto #appRoot{position:fixed;inset:0;width:100%;overflow:hidden}
+        @media(max-width:1023px){body.teclado-abierto, body.teclado-abierto #appRoot{position:fixed;inset:0;width:100%;overflow:hidden}}
         .guia-fondo{position:fixed;inset:0;background:rgba(0,0,0,.55);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:15000;padding:16px}
         .guia-caja{max-width:440px;width:100%;max-height:88vh;overflow:auto;border-radius:28px;padding:20px;background:#fff;color:#1e1e1e}
         body.dark-mode .guia-caja{background:#1f1f1f;color:#e0e0e0}

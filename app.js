@@ -215,6 +215,7 @@
     async function saveItem(store, item) {
         const key = STORAGE_KEYS[store];
         if (DATA_STORES.includes(store)) {
+            item.updatedAt = Date.now();
             D[store] = D[store] || [];
             const i = D[store].findIndex(x => x.id === item.id);
             if (i !== -1) D[store][i] = item; else D[store].push(item);
@@ -256,6 +257,12 @@
             alertaStockBajo: true, alertaTasa: true, sonidoAlertas: true
         }
     };
+    window.D = D;
+    window.jamSaveIDB = async function(store, data) { await saveToIDB(store, data); };
+    window.jamLoadIDB = async function(store) { return await loadFromIDB(store); };
+    window.jamLoadAll = async function() { await loadAllData(); };
+    window.jamGetAllDatos = async function() { return await obtenerTodosLosDatos(); };
+    window.jamCombinarImportacion = function(dest, src, campo) { return combinarImportacion(dest, src, campo); };
     let currentModule = 'home', volverBloqueado = false, timeoutTitulo = null;
     let carrito = [], tipoPago = 'pago_movil', clienteSeleccionadoId = null, clienteInputText = '', totalVenta = 0;
     let productosSeleccionados = new Set(), selectAllChecked = false;
@@ -547,7 +554,7 @@
                         <div class="buscador">
                             <i class="fas fa-search icono-busqueda"></i>
                             <input type="text" id="buscarProducto" placeholder="Buscar por nombre o código de barras..." class="border-2 rounded-xl p-2 w-full" style="border-color:${accent}" autocomplete="off">
-                            <button id="btnScanVentas" class="btn-icon-cuadrado" title="Escanear con cámara">📷</button>
+                            <button id="btnScanVentas" class="btn-icon-cuadrado" title="Escanear con cámara"><i class="fas fa-camera"></i></button>
                         </div>
                         <div id="sugerencias" class="hidden"></div>
                     </div>
@@ -1302,7 +1309,7 @@
         {icon:"fa-coins", label:"Gastos", id:"gastos"},
         {icon:"fa-user-tie", label:"Empleados", id:"empleados"},
         {icon:"fa-chart-line", label:"Reportes", id:"reportes"},
-        {icon:"fa-palette", label:"Config", id:"config"}
+        {icon:"fa-palette", label:"Configuración", id:"config"}
     ];
     
     function renderSidebar() {
@@ -1332,7 +1339,7 @@
                 <div class="mb-4">
                     <div class="relative">
                         <i class="fas fa-search absolute left-4 top-3.5 text-gray-400"></i>
-                        <input type="text" id="searchGlobalInput" placeholder="Buscar productos, clientes..." class="w-full pl-10 pr-12 py-3 rounded-2xl border-2 shadow-sm" style="border-color:${accent}">
+                        <input type="text" id="searchGlobalInput" placeholder="Buscar productos, clientes..." class="w-full pl-10 pr-12 p-2 rounded-2xl border-2 shadow-sm" style="border-color:${accent}">
                         <button class="btn-ayuda-home" onclick="mostrarGuiaApp()" title="Guía de la app"><i class="fas fa-circle-question"></i></button>
                         <div id="globalResults" class="absolute z-30 w-full mt-2 rounded-2xl shadow-xl max-h-72 overflow-auto hidden" style="border:1px solid var(--accent);"></div>
                     </div>
@@ -1437,7 +1444,7 @@
     async function renderInventario(){
         let bloqueado = volverBloqueado, accent = D.config.theme;
         productosSeleccionados = new Set(); selectAllChecked = false;
-        document.getElementById('appRoot').innerHTML = `<div class="page-header-fixed"><div class="module-header"><h2 id="tituloModule" class="module-title ${bloqueado?'module-title-bloqueado':''}" style="color:${accent}" onmousedown="iniciarBloqueo(this,'Inventario')" onmouseup="cancelarBloqueo()" onmouseleave="cancelarBloqueo()">Inventario</h2><div id="btnVolverModule" class="btn-back ${bloqueado?'btn-back-bloqueado':''}" onclick="${bloqueado?'':'backToHome()'}">${bloqueado?'<i class="fas fa-lock"></i> Bloqueado':'<i class="fas fa-arrow-left"></i> Volver'}</div></div></div><div class="page-container"><div class="mb-3"><div class="buscador"><i class="fas fa-search icono-busqueda"></i><input type="text" id="searchInv" placeholder="Buscar producto o código de barras..." class="border-2 rounded-xl p-2 w-full" style="border-color:${accent}" autocomplete="off"><button id="btnScanInv" class="btn-icon-cuadrado" title="Escanear con cámara">📷</button></div></div><div class="batch-toolbar"><label class="flex items-center gap-2 text-sm"><input type="checkbox" id="selectAllCheckbox" class="select-all-checkbox" onchange="toggleSelectAll(this.checked)"> Seleccionar todo</label><button id="nuevoProducto" class="btn-azul-redondeado btn-redondeado py-2 px-4">+ Nuevo</button><button id="btnEditarLote" class="btn-azul-redondeado btn-redondeado py-2 px-4" onclick="editarSeleccionLote()" style="display:none">✏️ Editar selección</button><span id="batchCount" class="batch-count"></span></div><div id="listaProductos" class="scroll-area"></div></div>`;
+        document.getElementById('appRoot').innerHTML = `<div class="page-header-fixed"><div class="module-header"><h2 id="tituloModule" class="module-title ${bloqueado?'module-title-bloqueado':''}" style="color:${accent}" onmousedown="iniciarBloqueo(this,'Inventario')" onmouseup="cancelarBloqueo()" onmouseleave="cancelarBloqueo()">Inventario</h2><div id="btnVolverModule" class="btn-back ${bloqueado?'btn-back-bloqueado':''}" onclick="${bloqueado?'':'backToHome()'}">${bloqueado?'<i class="fas fa-lock"></i> Bloqueado':'<i class="fas fa-arrow-left"></i> Volver'}</div></div></div><div class="page-container"><div class="mb-3"><div class="buscador"><i class="fas fa-search icono-busqueda"></i><input type="text" id="searchInv" placeholder="Buscar producto o código de barras..." class="border-2 rounded-xl p-2 w-full" style="border-color:${accent}" autocomplete="off"><button id="btnScanInv" class="btn-icon-cuadrado" title="Escanear con cámara"><i class="fas fa-camera"></i></button></div></div><div class="batch-toolbar"><label class="flex items-center gap-2 text-sm"><input type="checkbox" id="selectAllCheckbox" class="select-all-checkbox" onchange="toggleSelectAll(this.checked)"> Seleccionar todo</label><button id="nuevoProducto" class="btn-azul-redondeado btn-redondeado py-2 px-4">+ Nuevo</button><button id="btnEditarLote" class="btn-azul-redondeado btn-redondeado py-2 px-4" onclick="editarSeleccionLote()" style="display:none">✏️ Editar selección</button><span id="batchCount" class="batch-count"></span></div><div id="listaProductos" class="scroll-area"></div></div>`;
         if(volverBloqueado) document.getElementById('btnVolverModule').onclick = () => mostrarOverlayBloqueo();
         document.getElementById('searchInv').addEventListener('input', e => renderListaProductos(e.target.value.toLowerCase()));
         document.getElementById('searchInv').addEventListener('keydown', e => { if(e.key === 'Enter') buscarPorCodigoInventario(e.target.value.trim()); });
@@ -1567,7 +1574,7 @@
         let modal = document.createElement('div'); modal.className = 'modal-form';
         modal.innerHTML = `<div class="modal-form-content" style="max-width:420px"><h3 class="text-xl font-bold mb-4">${esNuevo ? 'Nuevo Producto' : 'Editar Producto'}</h3>
             <div class="mb-3"><label>Nombre</label><input id="nombre" value="${escapeHtml(prod?.nombre||'')}" class="border rounded-xl p-2 w-full"></div>
-            <div class="mb-3"><label>📷 Código de barras</label><div class="flex gap-2"><input id="codigo" value="${escapeHtml(prod?.codigo||'')}" class="border-2 rounded-xl p-2 flex-1" style="border-color:var(--accent,#3b82f6)"><button id="btnScanProducto" class="btn-icon-cuadrado" title="Escanear con cámara">📷</button></div></div>
+            <div class="mb-3"><label>📷 Código de barras</label><div class="flex gap-2"><input id="codigo" value="${escapeHtml(prod?.codigo||'')}" class="border-2 rounded-xl p-2 flex-1" style="border-color:var(--accent,#3b82f6)"><button id="btnScanProducto" class="btn-icon-cuadrado" title="Escanear con cámara"><i class="fas fa-camera"></i></button></div></div>
             <div class="mb-3"><label>Categoría</label><input id="categoria" value="${escapeHtml(prod?.categoria||'')}" class="border rounded-xl p-2 w-full"></div>
             <div class="mb-3"><label>Proveedor</label><input id="proveedor" value="${escapeHtml(prod?.proveedor||'')}" class="border rounded-xl p-2 w-full"></div>
             <div class="mb-3"><label>Stock</label><input type="number" id="stock" value="${prod?.stock||0}" class="border rounded-xl p-2 w-full"></div>
@@ -2067,7 +2074,7 @@
                 <div class="flex gap-2 mb-2">
                     <div class="buscador" style="flex:1">
                         <i class="fas fa-search icono-busqueda"></i>
-                        <input id="buscarVentas" type="search" placeholder="🔍 Buscar por fecha, artículo o cliente..." oninput="window.onBuscarVentasTexto()" class="w-full" autocomplete="off">
+                        <input id="buscarVentas" type="text" placeholder="Buscar por fecha, artículo o cliente..." oninput="window.onBuscarVentasTexto()" class="border-2 rounded-xl p-2 w-full" autocomplete="off">
                         <button id="btnCalendarioVentas" class="btn-icon-cuadrado" title="Ver ventas por fecha" onclick="window.abrirCalendarioVentas()"><i class="fas fa-calendar-alt"></i></button>
                     </div>
                 </div>
@@ -2610,7 +2617,7 @@
     
     // ==================== CONFIGURACIÓN ====================
     async function renderConfig(){
-        let colores = ['#3b82f6','#8b5cf6','#10b981','#f59e0b','#ef4444','#ec4899','#000000','#22c55e','#a855f7','#f97316','#ff69b4','#00ced1'];
+        let colores = ['#ef4444','#f97316','#f59e0b','#10b981','#22c55e','#3b82f6','#00ced1','#8b5cf6','#a855f7','#ec4899','#ff69b4','#000000'];
         let bloqueado = volverBloqueado, accent = D.config.theme;
         const filaOpcion = (icono, nombre, desc, id, checked) => `
             <label class="opcion-fila">
@@ -2678,9 +2685,9 @@
                     <p class="text-xs text-center mt-3 opacity-60">Las alertas aparecen como notificaciones al iniciar y al realizar acciones clave</p>
                 </div></div>
                 <div class="config-section"><button id="btnToggleSeguridad" class="btn-azul-redondeado btn-redondeado w-full mb-2 py-2">🔒 Seguridad (PIN)</button><div id="panelSeguridad" style="display:none;" class="mt-2 config-inner"><div class="mb-2"><label>PIN de acceso (4 dígitos, dejar vacío para deshabilitar)</label><input type="password" id="pinInput" value="${escapeHtml(D.config.pin)}" maxlength="4" pattern="[0-9]*" inputmode="numeric" class="border rounded-xl p-2 w-full text-center text-2xl tracking-widest" placeholder="****"></div><button id="guardarPinBtn" class="btn-azul-redondeado btn-redondeado w-full py-2">🔐 Guardar PIN</button><p class="text-xs text-center mt-2 opacity-60">${D.config.pin ? '✅ PIN activo. Se pedirá al abrir la app.' : 'ℹ️ Sin PIN. Cualquiera puede acceder.'}</p></div></div>
-                <div class="config-section"><button id="btnToggleColores" class="btn-azul-redondeado btn-redondeado w-full mb-2 py-2">🎨 Temas de color</button><div id="panelColores" style="display:none;" class="mt-2 config-inner"><div class="flex flex-wrap justify-center gap-2" id="paletaColores"></div></div></div>
+                <div class="config-section"><button id="btnToggleColores" class="btn-azul-redondeado btn-redondeado w-full mb-2 py-2">🎨 Temas de color</button><div id="panelColores" style="display:none;" class="mt-2 config-inner"><div class="flex flex-wrap justify-center gap-2" id="paletaColores" style="max-width:290px;margin:0 auto"></div></div></div>
                 <div class="config-section"><button id="btnToggleBackup" class="btn-azul-redondeado btn-redondeado w-full mb-2 py-2">💾 Copia de seguridad</button><div id="panelBackup" style="display:none;" class="mt-2 config-inner"><div class="flex flex-col gap-3">${esAppNativa() ? `<div class="rounded-xl p-3" style="background:rgba(14,165,233,0.08);border:1px solid rgba(14,165,233,0.3)"><p class="text-sm font-semibold mb-1">📁 Carpeta de la aplicación</p><p id="carpetaEstado" class="text-xs opacity-70 mb-2">ℹ️ Elija una carpeta para guardar tickets y respaldos (se creará la subcarpeta JAMPOS).</p><button id="elegirCarpetaBtn" class="btn-redondeado py-2 px-4 w-full" style="background:#0ea5e9;color:#fff">📂 Elegir carpeta</button></div>` : `<p class="text-xs text-center opacity-60">💡 En la app Android podrás elegir una carpeta donde guardar los archivos.</p>`}<button id="exportJsonBtn" class="btn-redondeado py-2 px-4" style="background:#3b82f6;color:#fff">📥 Exportar todo (JSON)</button><button id="exportCsvBtn" class="btn-redondeado py-2 px-4" style="background:#10b981;color:#fff">📥 Exportar todo (CSV / Excel)</button><button id="importJsonBtn" class="btn-redondeado py-2 px-4" style="background:#8b5cf6;color:#fff">📤 Importar desde JSON</button><button id="importCsvBtn" class="btn-redondeado py-2 px-4" style="background:#f59e0b;color:#fff">📤 Importar desde CSV / Excel</button>${esAppNativa() ? `<button id="importCarpetaBtn" class="btn-redondeado py-2 px-4" style="background:#14b8a6;color:#fff">📂 Importar desde la carpeta JAMPOS</button>` : ''}<input type="file" id="importFileInput" accept=".json" style="display:none"><input type="file" id="importCsvFileInput" accept=".csv,.xlsx,.xls,.txt" style="display:none"><p class="text-xs text-center mt-2 opacity-60">Los archivos CSV se abren directamente en Excel</p></div></div></div>
-                <div class="mt-4 text-xs text-center">💰 POS Profesional</div>
+                <div class="config-section"><button id="btnToggleSync" class="btn-azul-redondeado btn-redondeado w-full mb-2 py-2">🔄 Sincronizar terminales</button><div id="panelSync" style="display:none;" class="mt-2 config-inner">${window.JAMSync && window.JAMSync.isConnected() ? `<div class="mb-3 p-3 rounded-xl" style="background:rgba(16,185,129,0.1);border:1px solid #10b98140"><div class="flex items-center gap-2"><span style="color:#10b981;font-size:1.2rem">&#9679;</span><div><div class="text-sm font-bold" style="color:#10b981">Conectado a ${window.JAMSync.getName()}</div><div class="text-xs opacity-70">Sync automatico cada 30s</div></div></div></div><div class="mb-2 p-2 rounded-lg" style="background:rgba(139,92,246,0.1);border:1px solid #8b5cf640"><div class="text-xs opacity-70 mb-1">URL de conexion</div><div class="text-sm font-mono font-bold" style="color:#8b5cf6">${window.JAMSync.getUrl()}</div></div><button id="syncNowBtn" class="btn-redondeado w-full py-3 mb-2" style="background:#3b82f6;color:#fff"><i class="fas fa-sync-alt mr-1"></i> Sincronizar ahora</button><button id="syncStopBtn" class="btn-redondeado w-full py-2" style="background:#ef4444;color:#fff">Desconectar</button>` : `<div class="mb-2"><label class="text-sm font-semibold">Nombre de este dispositivo</label><div class="flex gap-2 mt-1"><input type="text" id="syncNameInput" placeholder="Nombre de la tienda..." class="border rounded-xl p-2 flex-1" value="${window.JAMSync ? window.JAMSync.getName() : ''}"><button id="syncNowBtn" class="btn-redondeado px-3 py-2" style="background:#3b82f6;color:#fff" title="Sincronizar datos"><i class="fas fa-sync-alt"></i></button></div><p class="text-xs mt-1 opacity-60">Escribe el nombre → QR se genera solo</p></div><div id="syncUrlRow" style="display:none" class="mb-2 p-2 rounded-lg"><div class="text-xs opacity-70 mb-1">URL de conexion</div><div id="syncUrlText" class="text-sm font-mono font-bold" style="color:#8b5cf6"></div></div><div id="syncQRDiv" style="display:none" class="text-center my-3"><canvas id="syncQRCanvas" width="256" height="256" style="width:200px;height:200px;border:3px solid #333;border-radius:12px"></canvas><p class="text-xs mt-2 opacity-60">Escanear este codigo desde el otro dispositivo</p></div><div class="border-t border-gray-200 dark:border-gray-700 pt-3 mt-3"><button id="syncScanBtn" class="btn-redondeado w-full py-3" style="background:#10b981;color:#fff"><i class="fas fa-camera mr-1"></i> Escanear QR del principal</button><p class="text-xs text-center mt-1 opacity-60">Dispositivo secundario: escanea para enlazar</p></div>`}<p class="text-xs text-center opacity-60 mt-3">1. En el PC principal: <code>node sync-server.js</code><br>2. Escribe el nombre y se genera el QR<br>3. Desde el celular escanea el QR</p></div></div>
             </div>
         `;
         document.getElementById('appRoot').innerHTML = html;
@@ -2693,6 +2700,104 @@
         toggle('btnToggleSeguridad', 'panelSeguridad');
         toggle('btnToggleColores', 'panelColores');
         toggle('btnToggleBackup', 'panelBackup');
+        toggle('btnToggleSync', 'panelSync');
+        
+        var syncNameInput = document.getElementById('syncNameInput');
+        var syncScanBtn = document.getElementById('syncScanBtn');
+        var syncStopBtn = document.getElementById('syncStopBtn');
+        var syncNowBtn = document.getElementById('syncNowBtn');
+        
+        if (syncNowBtn) {
+            syncNowBtn.addEventListener('click', function () {
+                if (!window.JAMSync) { mostrarNotificacion('Modulo sync no disponible', 'error'); return; }
+                syncNowBtn.disabled = true;
+                syncNowBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Sincronizando...';
+                window.JAMSync.bidirectionalSync().then(function (result) {
+                    syncNowBtn.disabled = false;
+                    syncNowBtn.innerHTML = '<i class="fas fa-sync-alt mr-1"></i> Sincronizar ahora';
+                    if (result && result.ok) {
+                        if (result.added > 0 || result.updated > 0) {
+                            mostrarNotificacion('Sync completada: ' + result.added + ' nuevos, ' + result.updated + ' actualizados', 'success');
+                        } else {
+                            mostrarNotificacion('Bases de datos al dia', 'info');
+                        }
+                    } else if (result && result.msg) {
+                        mostrarNotificacion('Sync: ' + result.msg, 'warning');
+                    }
+                }).catch(function (e) {
+                    syncNowBtn.disabled = false;
+                    syncNowBtn.innerHTML = '<i class="fas fa-sync-alt mr-1"></i> Sincronizar ahora';
+                    mostrarNotificacion('Error sync: ' + e.message, 'error');
+                });
+            });
+        }
+        
+        if (syncNameInput) {
+            var syncDebounce = null;
+            syncNameInput.addEventListener('input', function () {
+                clearTimeout(syncDebounce);
+                var name = syncNameInput.value.trim();
+                if (name.length < 2) {
+                    var qrDiv = document.getElementById('syncQRDiv');
+                    if (qrDiv) qrDiv.style.display = 'none';
+                    return;
+                }
+                syncDebounce = setTimeout(function () {
+                    if (!window.JAMSync) return;
+                    window.JAMSync.setupPrincipal(name).then(function (result) {
+                        var urlRow = document.getElementById('syncUrlRow');
+                        var urlText = document.getElementById('syncUrlText');
+                        if (urlRow) urlRow.style.display = 'block';
+                        if (urlText) urlText.textContent = result.url;
+                        var qrDiv = document.getElementById('syncQRDiv');
+                        if (qrDiv) qrDiv.style.display = 'block';
+                        window.JAMSync.showQR('syncQRCanvas', result.payload);
+                    }).catch(function (e) {
+                        mostrarNotificacion('Error config sync: ' + e.message, 'error');
+                    });
+                }, 300);
+            });
+            if (syncNameInput.value.trim().length >= 2 && window.JAMSync && window.JAMSync.getUrl()) {
+                var urlRow = document.getElementById('syncUrlRow');
+                var urlText = document.getElementById('syncUrlText');
+                if (urlRow) urlRow.style.display = 'block';
+                if (urlText) urlText.textContent = window.JAMSync.getUrl();
+                var qrDiv = document.getElementById('syncQRDiv');
+                if (qrDiv) qrDiv.style.display = 'block';
+                window.JAMSync.showQR('syncQRCanvas', JSON.stringify({u:window.JAMSync.getUrl(),n:window.JAMSync.getName(),k:localStorage.getItem('jam_sync_key')||''}));
+            }
+        }
+        
+        if (syncScanBtn) {
+            syncScanBtn.addEventListener('click', function () {
+                if (!window.JAMSync) return;
+                window.JAMSync.scanAndConnect().then(function (info) {
+                    mostrarNotificacion('Conectado a ' + info.name + ' - Sincronizando...', 'success');
+                    return window.JAMSync.bidirectionalSync();
+                }).then(function () {
+                    window.JAMSync.startSync();
+                    renderConfig();
+                }).catch(function (e) {
+                    mostrarNotificacion('Error: ' + e.message, 'error');
+                });
+            });
+        }
+        
+        if (syncStopBtn) {
+            syncStopBtn.addEventListener('click', function () {
+                if (!window.JAMSync) return;
+                window.JAMSync.stopSync();
+                localStorage.removeItem('jam_sync_url');
+                localStorage.removeItem('jam_sync_name');
+                localStorage.removeItem('jam_sync_key');
+                mostrarNotificacion('Desconectado', 'info');
+                renderConfig();
+            });
+        }
+        
+        if (window.JAMSync && window.JAMSync.isConnected()) {
+            window.JAMSync.startSync();
+        }
         
         const modoManualCheck = document.getElementById('modoManualCheck');
         const tasaManualDiv = document.getElementById('tasaManualDiv');
