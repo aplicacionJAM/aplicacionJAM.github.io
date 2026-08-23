@@ -234,6 +234,44 @@
         return JSON.stringify({ bloqueada: false, diasRestantes: 0, fechaInicio: 0, tamper: false });
     }
 
+    // ---------- Wake Lock (pantalla encendida) ----------
+    var _wakeLock = null;
+    async function requestWakeLock() {
+        try {
+            if ('wakeLock' in navigator) {
+                _wakeLock = await navigator.wakeLock.request('screen');
+                _wakeLock.addEventListener('release', function() { _wakeLock = null; });
+                console.log('[PWA] Wake Lock activo');
+                return true;
+            }
+        } catch (e) { console.log('[PWA] Wake Lock no disponible:', e.message); }
+        return false;
+    }
+    async function releaseWakeLock() {
+        try { if (_wakeLock) { await _wakeLock.release(); _wakeLock = null; } } catch (e) {}
+    }
+
+    // ---------- Orientation Lock ----------
+    function lockPortrait() {
+        try {
+            if (screen.orientation && screen.orientation.lock) {
+                screen.orientation.lock('portrait').catch(function() {});
+            }
+        } catch (e) {}
+    }
+
+    // ---------- iOS Standalone Detection ----------
+    function esAppInstalada() {
+        return window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
+    }
+
+    // ---------- Visibility: re-request Wake Lock al volver ----------
+    document.addEventListener('visibilitychange', function() {
+        if (document.visibilityState === 'visible' && !_wakeLock) {
+            requestWakeLock();
+        }
+    });
+
     // ---------- restaurar carpeta persistida ----------
     cargarHandle().then(function (h) {
         if (h) { carpetaHandle = h; carpetaNombre = h.name || 'Carpeta'; }
@@ -252,6 +290,10 @@
         getCarpetaInfo: getCarpetaInfo,
         guardarArchivo: guardarArchivo,
         leerArchivo: leerArchivo,
-        listarArchivos: listarArchivos
+        listarArchivos: listarArchivos,
+        requestWakeLock: requestWakeLock,
+        releaseWakeLock: releaseWakeLock,
+        lockPortrait: lockPortrait,
+        esAppInstalada: esAppInstalada
     };
 })();

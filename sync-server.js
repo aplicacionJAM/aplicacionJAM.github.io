@@ -1,9 +1,4 @@
-﻿// ============================================================
-// sync-server.js — Servidor central de sincronizacion
-// Almacena dataset completo (formato backup JSON) y fusiona
-// usando la misma logica que combinarImportacion de la app.
-// Ejecutar: node sync-server.js
-// ============================================================
+﻿// sync-server.js — Servidor central de sincronizacion
 const http = require('http');
 const fs = require('fs');
 const os = require('os');
@@ -37,9 +32,7 @@ function combinarImportacion(destino, nuevos, campoNombre) {
             if(tsNuevo > tsExistente){
                 existentes[porId.get(item.id)] = Object.assign({}, item);
                 actualizados++;
-            }else{
-                omitidos++;
-            }
+            }else{ omitidos++; }
             return;
         }
         let esNombre = campoNombre && !item.codigo && item[campoNombre];

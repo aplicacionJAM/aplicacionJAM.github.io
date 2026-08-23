@@ -1,4 +1,4 @@
-const CACHE_NAME = "jampos-web-cache-v3";
+const CACHE_NAME = "jampos-web-cache-v4";
 const STATIC_ASSETS = [
   "./",
   "./index.html",
@@ -23,6 +23,9 @@ const STATIC_ASSETS = [
   "./style.css",
   "./quagga.min.js",
   "./web-bridge.js",
+  "./qrcode.min.js",
+  "./jsqr.js",
+  "./sync-client.js",
   "./app.js"
 ];
 
