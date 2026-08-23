@@ -3197,23 +3197,69 @@
         }, 500);
     }
 // ==================== VERSIÓN DE PRUEBA (CANDADO) ====================
-    // URL del backend de candado (dejar '' = solo candado offline).
-    // Ej.: 'https://tu-servicio.onrender.com'
-    const JAM_SERVER_PRUEBA = '';
+    // ==================== SISTEMA DE PRUEBA 30 DÍAS ====================
+    const JAM_EMAIL_VENTA = 'jamaplicativo@gmail.com';
     window._pruebaInfo = null;
 
     function mostrarBloqueoPrueba() {
         if(document.querySelector('.prueba-bloqueo')) return;
+        document.body.innerHTML = '';
         const fondo = document.createElement('div');
         fondo.className = 'prueba-bloqueo';
         fondo.innerHTML = `<div class="prueba-bloqueo-caja">
-            <div class="prueba-bloqueo-icono">🔒</div>
+            <div class="prueba-bloqueo-icono">&#128274;</div>
             <h2>Periodo de prueba finalizado</h2>
-            <p>Este dispositivo ya usó su periodo de prueba de <b>3 días</b> de JAM POS.</p>
-            <p class="prueba-bloqueo-detalle">Para seguir usando la aplicación necesitas la versión completa.</p>
-            <button class="prueba-bloqueo-btn" onclick="if(window.AndroidBridge&&AndroidBridge.cerrarApp)AndroidBridge.cerrarApp()">Cerrar</button>
+            <p>Tu periodo de prueba de <b>30 dias</b> de JAM POS ha terminado.</p>
+            <p class="prueba-bloqueo-detalle">Para seguir usando el sistema necesitas la version completa con todas las caracteristicas premium.</p>
+            <div class="prueba-bloqueo-email">
+                <div class="prueba-bloqueo-email-label">Contacta para obtener la version completa:</div>
+                <a href="mailto:${JAM_EMAIL_VENTA}" class="prueba-bloqueo-email-link">${JAM_EMAIL_VENTA}</a>
+            </div>
+            <div class="prueba-bloqueo-premium">
+                <div class="prueba-bloqueo-premium-titulo">Version Premium incluye:</div>
+                <div class="prueba-bloqueo-premium-item">&#10003; Sin limite de tiempo</div>
+                <div class="prueba-bloqueo-premium-item">&#10003; Sincronizacion entre dispositivos</div>
+                <div class="prueba-bloqueo-premium-item">&#10003; Soporte tecnico prioritario</div>
+                <div class="prueba-bloqueo-premium-item">&#10003; Actualizaciones de por vida</div>
+                <div class="prueba-bloqueo-premium-item">&#10003; Personalizacion para tu tienda</div>
+            </div>
+            <button class="prueba-bloqueo-btn" onclick="window.location.href='mailto:${JAM_EMAIL_VENTA}'">Enviar correo</button>
+            <button class="prueba-bloqueo-btn-cerrar" onclick="if(window.AndroidBridge&&AndroidBridge.cerrarApp)AndroidBridge.cerrarApp();else window.close();">Cerrar</button>
         </div>`;
         document.body.appendChild(fondo);
+    }
+
+    function mostrarContadorPrueba(info) {
+        if(!info || info.bloqueada) return;
+        if(sessionStorage.getItem('jam_trial_popup_shown')) return;
+        sessionStorage.setItem('jam_trial_popup_shown', '1');
+        const overlay = document.createElement('div');
+        overlay.className = 'prueba-contador-overlay';
+        const pct = Math.round((info.diasRestantes / 30) * 100);
+        const diasText = info.diasRestantes === 1 ? '1 dia' : info.diasRestantes + ' dias';
+        const urgente = info.diasRestantes <= 7;
+        overlay.innerHTML = `<div class="prueba-contador-caja">
+            <div class="prueba-contador-header">
+                <div class="prueba-contador-icono">&#128230;</div>
+                <h2>JAM POS</h2>
+                <span class="prueba-contador-tag">Version de Prueba</span>
+            </div>
+            <div class="prueba-contador-cuerpo">
+                <div class="prueba-contador-numero ${urgente ? 'prueba-contador-urgente' : ''}">${info.diasRestantes}</div>
+                <div class="prueba-contador-label">${diasText} restantes</div>
+                <div class="prueba-contador-barra">
+                    <div class="prueba-contador-barra-fill" style="width:${pct}%"></div>
+                </div>
+                <div class="prueba-contador-dias-total">30 dias de prueba</div>
+            </div>
+            <div class="prueba-contador-footer">
+                <p>¿Necesitas la version completa?</p>
+                <a href="mailto:${JAM_EMAIL_VENTA}" class="prueba-contador-email">${JAM_EMAIL_VENTA}</a>
+                <button class="prueba-contador-btn" id="btnCerrarContador">Continuar usando</button>
+            </div>
+        </div>`;
+        document.body.appendChild(overlay);
+        overlay.querySelector('#btnCerrarContador').onclick = function() { overlay.remove(); };
     }
 
     function mostrarBannerPrueba(info) {
@@ -3225,51 +3271,55 @@
         if(existente) existente.remove();
         const b = document.createElement('div');
         b.className = 'prueba-banner';
-        b.innerHTML = `<span>🔒 Versión de prueba — <b>${info.diasRestantes}</b> día(s) restantes</span><button onclick="this.parentElement.remove()">✕</button>`;
+        const diasText = info.diasRestantes === 1 ? '1 dia' : info.diasRestantes + ' dias';
+        b.innerHTML = `<span>&#128274; Prueba — <b>${diasText}</b> restantes</span><a href="mailto:${JAM_EMAIL_VENTA}" class="prueba-banner-link">Version completa</a><button onclick="this.parentElement.remove()">&#10005;</button>`;
         home.prepend(b);
     }
 
-    async function sincronizarPrueba(info) {
-        if(!JAM_SERVER_PRUEBA) {
-            if(info.bloqueada) mostrarBloqueoPrueba();
-            else mostrarBannerPrueba(info);
-            return;
-        }
-        try {
-            const device = (window.AndroidBridge && AndroidBridge.deviceId) ? AndroidBridge.deviceId() : 'desconocido';
-            let res = await fetch(JAM_SERVER_PRUEBA + '/prueba?device=' + encodeURIComponent(device));
-            let data = await res.json();
-            let fechaInicio = data.fechaInicio ? Number(data.fechaInicio) : 0;
-            if(!fechaInicio && info.fechaInicio) {
-                res = await fetch(JAM_SERVER_PRUEBA + '/prueba', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ device, fechaInicio: info.fechaInicio })
-                });
-                data = await res.json();
-                fechaInicio = data.fechaInicio ? Number(data.fechaInicio) : info.fechaInicio;
-            }
-            const efectiva = (fechaInicio && fechaInicio < info.fechaInicio) ? fechaInicio : info.fechaInicio;
-            const serverNow = data.serverNow ? Number(data.serverNow) : Date.now();
-            const ahoraRef = Math.abs(serverNow - Date.now()) > 3600000 ? serverNow : Date.now();
-            const dias = Math.floor((ahoraRef - efectiva) / 86400000);
-            const bloqueada = dias >= 3;
-            const nuevoInfo = { bloqueada, diasRestantes: bloqueada ? 0 : (3 - dias), fechaInicio: efectiva, tamper: info.tamper };
-            if(bloqueada) { window._pruebaInfo = null; mostrarBloqueoPrueba(); }
-            else mostrarBannerPrueba(nuevoInfo);
-        } catch(e) {
-            if(info.bloqueada) mostrarBloqueoPrueba();
-            else mostrarBannerPrueba(info);
-        }
+    function sincronizarPrueba(info) {
+        if(info.bloqueada) { window._pruebaInfo = null; mostrarBloqueoPrueba(); }
+        else { mostrarBannerPrueba(info); mostrarContadorPrueba(info); }
     }
 
     function verificarPruebaInicio() {
-        if(!window.AndroidBridge || typeof AndroidBridge.esVersionPrueba !== 'function') return false;
-        let esPrueba = false;
-        try { esPrueba = !!AndroidBridge.esVersionPrueba(); } catch(e) {}
-        if(!esPrueba) return false;
-        let info = { bloqueada: false, diasRestantes: 3, fechaInicio: 0, tamper: false };
-        try { info = JSON.parse(AndroidBridge.verificarPrueba()); } catch(e) {}
+        var TRIAL_DAYS = 30;
+        var TRIAL_KEY = 'jam_trial_data';
+
+        // Función local de verificación (funciona sin AndroidBridge)
+        function verificarLocal() {
+            var fecha = 0;
+            try {
+                var stored = localStorage.getItem(TRIAL_KEY);
+                if (stored) {
+                    try { fecha = JSON.parse(atob(stored)).f; } catch(e) {}
+                }
+            } catch(e) {}
+            if (!fecha) {
+                try {
+                    var idbData = localStorage.getItem(TRIAL_KEY + '_idb');
+                    if (idbData) {
+                        try { fecha = JSON.parse(atob(idbData)).f; } catch(e) {}
+                    }
+                } catch(e) {}
+            }
+            if (!fecha) {
+                fecha = Date.now();
+                var encoded = btoa(JSON.stringify({ f: fecha, k: 'j27', v: 1 }));
+                try { localStorage.setItem(TRIAL_KEY, encoded); } catch(e) {}
+                try { localStorage.setItem(TRIAL_KEY + '_idb', encoded); } catch(e) {}
+            }
+            var diffDias = Math.floor((Date.now() - fecha) / 86400000);
+            var diasRestantes = Math.max(0, TRIAL_DAYS - diffDias);
+            return { bloqueada: diasRestantes <= 0, diasRestantes: diasRestantes, fechaInicio: fecha, tamper: false };
+        }
+
+        // Intentar con AndroidBridge primero, si no existe usar local
+        var info;
+        if (window.AndroidBridge && typeof AndroidBridge.esVersionPrueba === 'function' && AndroidBridge.esVersionPrueba()) {
+            try { info = JSON.parse(AndroidBridge.verificarPrueba()); } catch(e) { info = verificarLocal(); }
+        } else {
+            info = verificarLocal();
+        }
         sincronizarPrueba(info);
         if(info.bloqueada) { mostrarBloqueoPrueba(); return true; }
         window._pruebaInfo = info;
