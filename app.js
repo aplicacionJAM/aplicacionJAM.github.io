@@ -170,6 +170,18 @@
         console.warn('IndexedDB no disponible:', err);
         try { mostrarNotificacion('⚠️ Base de datos local no disponible. Los datos se conservan en memoria durante esta sesión.', 'error'); } catch(e) {}
     }
+    // ==================== DATOS SUCIOS / CACHÉ DE MÓDULOS ====================
+    // Cada escritura de datos marca "datos sucios"; en la siguiente navegación
+    // se descarta la caché visual de los módulos para que las listas se
+    // reconstruyan desde la base de datos (visibilidad instantánea entre
+    // módulos: cliente creado en Ventas aparece ya en Clientes y viceversa).
+    let datosSucios = false;
+    const MODULOS_CACHEABLES = ['ventas','inventario','clientes','proveedores','gastos','empleados','reportes','config'];
+    function limpiarCacheSiDatosSucios(){
+        if(!datosSucios) return;
+        datosSucios = false;
+        MODULOS_CACHEABLES.forEach(m => { const el = document.getElementById('_cache_' + m); if(el) el.remove(); });
+    }
     function abrirBaseDatos() {
         return new Promise((resolve, reject) => {
             const configurar = req => {
@@ -190,6 +202,7 @@
         });
     }
     async function saveToIDB(store, data) {
+        datosSucios = true;
         const db = await abrirBaseDatos();
         return new Promise((resolve, reject) => {
             const tx = db.transaction(store, 'readwrite');
@@ -215,6 +228,7 @@
         });
     }
     async function addToIDB(store, items) {
+        datosSucios = true;
         const db = await abrirBaseDatos();
         return new Promise((resolve, reject) => {
             const tx = db.transaction(store, 'readwrite');
@@ -244,6 +258,7 @@
             if (idx !== -1) items[idx] = item; else items.push(item);
             saveToStorage(key, items);
             D[store] = items;
+            datosSucios = true;
         }
     }
     async function deleteItem(store, id) {
@@ -252,9 +267,10 @@
             D[store] = (D[store] || []).filter(x => x.id !== id);
             try { await saveToIDB(store, D[store]); } catch(e) { console.warn('IDB delete error', e); avisarIDBCaida(e); }
         } else {
-            const items = loadFromStorage(key, []).filter(x => x.id !== id);
-            saveToStorage(key, items);
+            const items = loadFromStorage(STORAGE_KEYS[store], []).filter(x => x.id !== id);
+            saveToStorage(STORAGE_KEYS[store], items);
             D[store] = items;
+            datosSucios = true;
         }
     }
     async function getAll(store) {
@@ -285,6 +301,16 @@
     window.jamLoadAll = async function() { await loadAllData(); };
     window.jamGetAllDatos = async function() { return await obtenerTodosLosDatos(); };
     window.jamCombinarImportacion = function(dest, src, campo) { return combinarImportacion(dest, src, campo); };
+    window.jamRefrescarModuloActual = function(){
+        try {
+            if(currentModule === 'clientes') renderCrud('clientes','Clientes',['cedula','nombre','telefono','direccion','email']);
+            else if(currentModule === 'proveedores') renderCrud('proveedores','Proveedores',['rif','nombre','telefono','contacto','direccion']);
+            else if(currentModule === 'gastos') renderCrud('gastos','Gastos',['concepto','montoBs','categoria','fecha']);
+            else if(currentModule === 'empleados') renderCrud('empleados','Empleados',['cedula','nombre','cargo','salarioBs','fechaContrato']);
+            else if(currentModule === 'inventario') renderInventario();
+            else if(currentModule === 'ventas') sincronizarUIVenta();
+        } catch(e) { console.warn('refrescar modulo', e); }
+    };
     let currentModule = 'home', volverBloqueado = false, timeoutTitulo = null;
     const KIOSCO_KEY = 'jam_kiosco_ventas';
     let kioscoVentas = false;
@@ -1253,6 +1279,7 @@
         if(currentModule === 'ventas') guardarSesionVenta();
         
         // Cache current module DOM
+        limpiarCacheSiDatosSucios();
         cacheModuleDOM(currentModule);
         currentModule = m;
         localStorage.setItem('jam_last_module', m);
