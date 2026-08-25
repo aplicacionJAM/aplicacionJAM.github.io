@@ -438,9 +438,9 @@
         setTimeout(verificarStockBajo, 1000);
 
         // Firebase sync: init + auto-sync
-        if (window.JAMFirebase && window.JAMFirebase.isConfigured()) {
-            window.JAMFirebase.init().then(ok => {
-                if (ok) window.JAMFirebase.startAutoSync();
+        if (window.JAMSync2) {
+            window.JAMSync2.init().then(ok => {
+                if (ok) window.JAMSync2.startAutoSync();
             });
         }
     }
@@ -2916,7 +2916,7 @@
                 <div class="config-section"><button id="btnToggleColores" class="btn-azul-redondeado btn-redondeado w-full mb-2 py-2">🎨 Temas de color</button><div id="panelColores" style="display:none;" class="mt-2 config-inner"><div class="flex flex-wrap justify-center gap-2" id="paletaColores" style="max-width:290px;margin:0 auto"></div></div></div>
                 <div class="config-section"><button id="btnToggleBackup" class="btn-azul-redondeado btn-redondeado w-full mb-2 py-2">💾 Copia de seguridad</button><div id="panelBackup" style="display:none;" class="mt-2 config-inner"><div class="flex flex-col gap-3">${esAppNativa() ? `<div class="rounded-xl p-3" style="background:rgba(14,165,233,0.08);border:1px solid rgba(14,165,233,0.3)"><p class="text-sm font-semibold mb-1">📁 Carpeta de la aplicación</p><p id="carpetaEstado" class="text-xs opacity-70 mb-2">ℹ️ Elija una carpeta para guardar tickets y respaldos (se creará la subcarpeta JAMPOS).</p><button id="elegirCarpetaBtn" class="btn-redondeado py-2 px-4 w-full" style="background:#0ea5e9;color:#fff">📂 Elegir carpeta</button></div>` : `<p class="text-xs text-center opacity-60">💡 En la app Android podrás elegir una carpeta donde guardar los archivos.</p>`}<button id="exportJsonBtn" class="btn-redondeado py-2 px-4" style="background:#3b82f6;color:#fff">📥 Exportar todo (JSON)</button><button id="exportCsvBtn" class="btn-redondeado py-2 px-4" style="background:#10b981;color:#fff">📥 Exportar todo (CSV / Excel)</button><button id="importJsonBtn" class="btn-redondeado py-2 px-4" style="background:#8b5cf6;color:#fff">📤 Importar desde JSON</button><button id="importCsvBtn" class="btn-redondeado py-2 px-4" style="background:#f59e0b;color:#fff">📤 Importar desde CSV / Excel</button>${esAppNativa() ? `<button id="importCarpetaBtn" class="btn-redondeado py-2 px-4" style="background:#14b8a6;color:#fff">📂 Importar desde la carpeta JAMPOS</button><button id="restaurarBackupBtn" class="btn-redondeado py-2 px-4" style="background:#ef4444;color:#fff">🔄 Restaurar desde respaldo automático</button>` : ''}<input type="file" id="importFileInput" accept=".json" style="display:none"><input type="file" id="importCsvFileInput" accept=".csv,.xlsx,.xls,.txt" style="display:none"><p class="text-xs text-center mt-2 opacity-60">Los archivos CSV se abren directamente en Excel</p></div></div></div>
                 <div class="config-section"><button id="btnToggleSync" class="btn-azul-redondeado btn-redondeado w-full mb-2 py-2">🔄 Sincronizar terminales</button><div id="panelSync" style="display:none;" class="mt-2 config-inner">${window.JAMSync && window.JAMSync.isConnected() ? `<div class="mb-3 p-3 rounded-xl" style="background:rgba(16,185,129,0.1);border:1px solid #10b98140"><div class="flex items-center gap-2"><span style="color:#10b981;font-size:1.2rem">&#9679;</span><div><div class="text-sm font-bold" style="color:#10b981">Conectado a ${window.JAMSync.getName()}</div><div class="text-xs opacity-70">Sync automatico cada 30s</div></div></div></div><div class="mb-2 p-2 rounded-lg" style="background:rgba(139,92,246,0.1);border:1px solid #8b5cf640"><div class="text-xs opacity-70 mb-1">URL de conexion</div><div class="text-sm font-mono font-bold" style="color:#8b5cf6">${window.JAMSync.getUrl()}</div></div><button id="syncNowBtn" class="btn-redondeado w-full py-3 mb-2" style="background:#3b82f6;color:#fff"><i class="fas fa-sync-alt mr-1"></i> Sincronizar ahora</button><button id="syncStopBtn" class="btn-redondeado w-full py-2" style="background:#ef4444;color:#fff">Desconectar</button>` : `<div class="mb-2"><label class="text-sm font-semibold">Nombre de este dispositivo</label><div class="flex gap-2 mt-1"><input type="text" id="syncNameInput" placeholder="Nombre de la tienda..." class="border rounded-xl p-2 flex-1" value="${window.JAMSync ? window.JAMSync.getName() : ''}"><button id="syncNowBtn" class="btn-redondeado px-3 py-2" style="background:#3b82f6;color:#fff" title="Sincronizar datos"><i class="fas fa-sync-alt"></i></button></div><p class="text-xs mt-1 opacity-60">Escribe el nombre → QR se genera solo</p></div><div id="syncUrlRow" style="display:none" class="mb-2 p-2 rounded-lg"><div class="text-xs opacity-70 mb-1">URL de conexion</div><div id="syncUrlText" class="text-sm font-mono font-bold" style="color:#8b5cf6"></div></div><div id="syncQRDiv" style="display:none" class="text-center my-3"><canvas id="syncQRCanvas" width="256" height="256" style="width:200px;height:200px;border:3px solid #333;border-radius:12px"></canvas><p class="text-xs mt-2 opacity-60">Escanear este codigo desde el otro dispositivo</p></div><div class="border-t border-gray-200 dark:border-gray-700 pt-3 mt-3"><button id="syncScanBtn" class="btn-redondeado w-full py-3" style="background:#10b981;color:#fff"><i class="fas fa-camera mr-1"></i> Escanear QR del principal</button><p class="text-xs text-center mt-1 opacity-60">Dispositivo secundario: escanea para enlazar</p></div>`}<p class="text-xs text-center opacity-60 mt-3">Ambos dispositivos en la misma WiFi<br>Escribe el nombre → genera QR → escanea desde el otro</p></div></div>
-                <div class="config-section"><button id="btnToggleFirebase" class="btn-azul-redondeado btn-redondeado w-full mb-2 py-2">☁️ Firebase Cloud Sync</button><div id="panelFirebase" style="display:none;" class="mt-2 config-inner">${window.JAMFirebase && window.JAMFirebase.isConfigured() ? `<div class="mb-3 p-3 rounded-xl" style="background:rgba(16,185,129,0.1);border:1px solid #10b98140"><div class="flex items-center gap-2"><span class="fire-status" style="font-size:1.2rem">🔴 Desconectado</span><div><div class="text-sm font-bold">Firebase activo</div><div class="text-xs opacity-70">Sync automática cada 30s entre todos los dispositivos</div><div class="text-xs opacity-50 fire-last-sync">Sin sincronizar</div></div></div></div><div class="mb-2 p-2 rounded-lg" style="background:rgba(59,130,246,0.1);border:1px solid #3b82f640"><div class="text-xs opacity-70 mb-1">ID de este dispositivo</div><div class="text-sm font-mono font-bold" style="color:#3b82f6">${window.JAMFirebase ? window.JAMFirebase.getDeviceId() : 'N/A'}</div></div><div class="mb-2"><label class="text-sm font-semibold">Nombre del dispositivo</label><div class="flex gap-2 mt-1"><input type="text" id="fireDeviceName" class="border rounded-xl p-2 flex-1" value="${window.JAMFirebase ? window.JAMFirebase.getDeviceName() : ''}" placeholder="Nombre de la tienda..."><button id="fireSaveNameBtn" class="btn-redondeado px-3 py-2" style="background:#3b82f6;color:#fff">💾</button></div></div><button id="fireSyncNowBtn" class="btn-redondeado w-full py-3 mb-2" style="background:#3b82f6;color:#fff"><i class="fas fa-cloud-upload-alt mr-1"></i> Sincronizar ahora</button><button id="fireToggleAutoSync" class="btn-redondeado w-full py-2 mb-2" style="background:#8b5cf6;color:#fff"><i class="fas fa-sync-alt mr-1"></i> Auto-sync: ${window.JAMFirebase && window.JAMFirebase.isAvailable() ? 'ACTIVADA' : 'DESACTIVADA'}</button><p class="text-xs text-center opacity-60">Sync automática: sube y baja datos cada 30 segundos</p>` : `<div class="p-3 rounded-xl" style="background:rgba(245,158,11,0.1);border:1px solid #f59e0b40"><p class="text-sm font-semibold mb-2">⚠️ Firebase no configurado</p><p class="text-xs opacity-70 mb-3">Para sincronizar entre dispositivos necesitas una cuenta gratuita de Firebase.</p><ol class="text-xs opacity-70 list-decimal pl-4 space-y-1"><li>Ve a <a href="https://console.firebase.google.com" target="_blank" style="color:#3b82f6;text-decoration:underline">console.firebase.google.com</a></li><li>Crea un proyecto (gratis)</li><li>Habilita Realtime Database</li><li>Reglas: { "rules": { ".read": true, ".write": true } }</li><li>Copia la config del proyecto</li><li>Pégala abajo</li></ol></div><div class="mt-3 space-y-2"><label class="text-xs font-semibold">API Key</label><input type="text" id="fireApiKey" class="border rounded-xl p-2 w-full text-xs" placeholder="AIzaSy..."><label class="text-xs font-semibold">Database URL</label><input type="text" id="fireDbUrl" class="border rounded-xl p-2 w-full text-xs" placeholder="https://tu-proyecto.firebaseio.com"><label class="text-xs font-semibold">Project ID</label><input type="text" id="fireProjectId" class="border rounded-xl p-2 w-full text-xs" placeholder="tu-proyecto"><button id="fireSaveConfigBtn" class="btn-redondeado w-full py-3 mt-2" style="background:#10b981;color:#fff"><i class="fas fa-save mr-1"></i> Guardar configuración</button></div>`}</div></div>
+                <div class="config-section"><button id="btnToggleGun" class="btn-azul-redondeado btn-redondeado w-full mb-2 py-2">🌐 Sync entre dispositivos</button><div id="panelGun" style="display:none;" class="mt-2 config-inner"><div class="mb-3 p-3 rounded-xl" style="background:rgba(16,185,129,0.1);border:1px solid #10b98140"><div class="flex items-center gap-2"><span class="gun-status" style="font-size:1.2rem">${window.JAMSync2 && window.JAMSync2.isConnected() ? '🟢 Conectado' : '🔴 Desconectado'}</span><div><div class="text-sm font-bold">Gun.js P2P</div><div class="text-xs opacity-70">Sync automática cada 30s + tiempo real</div><div class="text-xs opacity-50 gun-last-sync">${window.JAMSync2 && window.JAMSync2.getLastSync() ? 'Última sync: ' + new Date(window.JAMSync2.getLastSync()).toLocaleTimeString() : 'Sin sincronizar'}</div></div></div></div><div class="mb-2 p-2 rounded-lg" style="background:rgba(59,130,246,0.1);border:1px solid #3b82f640"><div class="text-xs opacity-70 mb-1">ID de este dispositivo</div><div class="text-sm font-mono font-bold" style="color:#3b82f6">${window.JAMSync2 ? window.JAMSync2.getDeviceId() : 'N/A'}</div></div><div class="mb-2"><label class="text-sm font-semibold">Nombre del dispositivo</label><div class="flex gap-2 mt-1"><input type="text" id="gunDeviceName" class="border rounded-xl p-2 flex-1" value="${window.JAMSync2 ? window.JAMSync2.getDeviceName() : ''}" placeholder="Nombre de la tienda..."><button id="gunSaveNameBtn" class="btn-redondeado px-3 py-2" style="background:#3b82f6;color:#fff">💾</button></div></div><button id="gunSyncNowBtn" class="btn-redondeado w-full py-3 mb-2" style="background:#3b82f6;color:#fff"><i class="fas fa-sync-alt mr-1"></i> Sincronizar ahora</button><button id="gunToggleAutoSync" class="btn-redondeado w-full py-2 mb-2" style="background:#8b5cf6;color:#fff"><i class="fas fa-sync-alt mr-1"></i> Auto-sync: ${window.JAMSync2 && window.JAMSync2.isAvailable() ? 'ACTIVADA' : 'DESACTIVADA'}</button><p class="text-xs text-center opacity-60">Zero-config: sin servidores, sin cuentas, sin configuración.<br>Los dispositivos se sincronizan entre sí vía P2P.</p></div></div>
             </div>
         `;
         document.getElementById('appRoot').innerHTML = html;
@@ -3029,60 +3029,39 @@
         }
 
         // Firebase panel handlers
-        toggle('btnToggleFirebase', 'panelFirebase');
-        const fireSaveConfigBtn = document.getElementById('fireSaveConfigBtn');
-        if (fireSaveConfigBtn) {
-            fireSaveConfigBtn.onclick = async () => {
-                const apiKey = document.getElementById('fireApiKey').value.trim();
-                const dbUrl = document.getElementById('fireDbUrl').value.trim();
-                const projectId = document.getElementById('fireProjectId').value.trim();
-                if (!apiKey || !dbUrl) { mostrarNotificacion('⚠️ API Key y Database URL son requeridos', 'error'); return; }
-                localStorage.setItem('jampos_firebase_config', JSON.stringify({ apiKey, databaseURL: dbUrl, projectId, authDomain: projectId + '.firebaseapp.com', storageBucket: projectId + '.appspot.com', messagingSenderId: '', appId: '' }));
-                window.FIREBASE_CONFIG = { apiKey, databaseURL: dbUrl, projectId, authDomain: projectId + '.firebaseapp.com', storageBucket: projectId + '.appspot.com', messagingSenderId: '', appId: '' };
-                if (window.JAMFirebase) {
-                    const ok = await window.JAMFirebase.init();
-                    if (ok) { window.JAMFirebase.startAutoSync(); mostrarNotificacion('✅ Firebase configurado y conectado', 'success'); renderConfig(); }
-                    else mostrarNotificacion('❌ Error al conectar con Firebase', 'error');
-                }
+        toggle('btnToggleGun', 'panelGun');
+        const gunSaveNameBtn = document.getElementById('gunSaveNameBtn');
+        if (gunSaveNameBtn) {
+            gunSaveNameBtn.onclick = () => {
+                const name = document.getElementById('gunDeviceName').value.trim();
+                if (name && window.JAMSync2) { window.JAMSync2.setDeviceName(name); mostrarNotificacion('✅ Nombre guardado: ' + name, 'success'); }
             };
         }
-        const fireSaveNameBtn = document.getElementById('fireSaveNameBtn');
-        if (fireSaveNameBtn) {
-            fireSaveNameBtn.onclick = () => {
-                const name = document.getElementById('fireDeviceName').value.trim();
-                if (name && window.JAMFirebase) { window.JAMFirebase.setDeviceName(name); mostrarNotificacion('✅ Nombre guardado: ' + name, 'success'); }
-            };
-        }
-        const fireSyncNowBtn = document.getElementById('fireSyncNowBtn');
-        if (fireSyncNowBtn) {
-            fireSyncNowBtn.onclick = async () => {
-                if (!window.JAMFirebase || !window.JAMFirebase.isAvailable()) { mostrarNotificacion('⚠️ Firebase no conectado', 'error'); return; }
-                fireSyncNowBtn.disabled = true;
-                fireSyncNowBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Sincronizando...';
-                await window.JAMFirebase.sync();
-                fireSyncNowBtn.disabled = false;
-                fireSyncNowBtn.innerHTML = '<i class="fas fa-cloud-upload-alt mr-1"></i> Sincronizar ahora';
+        const gunSyncNowBtn = document.getElementById('gunSyncNowBtn');
+        if (gunSyncNowBtn) {
+            gunSyncNowBtn.onclick = async () => {
+                if (!window.JAMSync2 || !window.JAMSync2.isAvailable()) { mostrarNotificacion('⚠️ Sync no disponible', 'error'); return; }
+                gunSyncNowBtn.disabled = true;
+                gunSyncNowBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Sincronizando...';
+                await window.JAMSync2.sync();
+                gunSyncNowBtn.disabled = false;
+                gunSyncNowBtn.innerHTML = '<i class="fas fa-sync-alt mr-1"></i> Sincronizar ahora';
                 mostrarNotificacion('✅ Sync completada', 'success');
             };
         }
-        const fireToggleAutoSync = document.getElementById('fireToggleAutoSync');
-        if (fireToggleAutoSync) {
-            fireToggleAutoSync.onclick = () => {
-                if (!window.JAMFirebase) return;
-                if (window.JAMFirebase.isAvailable()) {
-                    window.JAMFirebase.stopAutoSync();
+        const gunToggleAutoSync = document.getElementById('gunToggleAutoSync');
+        if (gunToggleAutoSync) {
+            gunToggleAutoSync.onclick = () => {
+                if (!window.JAMSync2) return;
+                if (window.JAMSync2.isAvailable()) {
+                    window.JAMSync2.stopAutoSync();
                     mostrarNotificacion('⏸ Auto-sync desactivada', 'info');
                 } else {
-                    window.JAMFirebase.startAutoSync();
+                    window.JAMSync2.startAutoSync();
                     mostrarNotificacion('▶️ Auto-sync activada', 'success');
                 }
-                fireToggleAutoSync.innerHTML = '<i class="fas fa-sync-alt mr-1"></i> Auto-sync: ' + (window.JAMFirebase.isAvailable() ? 'ACTIVADA' : 'DESACTIVADA');
+                gunToggleAutoSync.innerHTML = '<i class="fas fa-sync-alt mr-1"></i> Auto-sync: ' + (window.JAMSync2.isAvailable() ? 'ACTIVADA' : 'DESACTIVADA');
             };
-        }
-        // Load saved Firebase config
-        const savedFireConfig = localStorage.getItem('jampos_firebase_config');
-        if (savedFireConfig && window.JAMFirebase) {
-            try { window.FIREBASE_CONFIG = JSON.parse(savedFireConfig); window.JAMFirebase.updateConfig(window.FIREBASE_CONFIG); } catch(e) {}
         }
         
         const modoManualCheck = document.getElementById('modoManualCheck');
