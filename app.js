@@ -164,6 +164,55 @@
     };
 
     let _idbAvisada = false;
+    // ==================== DUAL PERSISTENCIA (IDB + Archivos JSON) ====================
+    // Cada escritura a IDB también guarda un archivo JSON como respaldo físico.
+    // Si IDB se borra (limpieza de caché, actualización), los datos se restauran
+    // automáticamente desde los archivos.
+    const DB_BACKUP_FOLDER = 'JAMPOS DB';
+
+    async function guardarBackupArchivo(store, data) {
+        if (!esAppNativa()) return;
+        if (!carpetaNativa || !carpetaNativa.uri) return;
+        try {
+            const json = JSON.stringify(data || []);
+            await puenteResultado(AndroidBridge.guardarArchivo(
+                DB_BACKUP_FOLDER + '/' + store + '.json',
+                'application/json',
+                utf8ToBase64(json)
+            ));
+        } catch (e) { console.warn('[DUAL] Error guardando backup ' + store + ':', e); }
+    }
+
+    async function cargarBackupArchivo(store) {
+        if (!esAppNativa()) return null;
+        if (!carpetaNativa || !carpetaNativa.uri) return null;
+        try {
+            const contenido = await puenteResultado(AndroidBridge.leerArchivo(DB_BACKUP_FOLDER + '/' + store + '.json'));
+            if (!contenido) return null;
+            return JSON.parse(contenido);
+        } catch (e) { console.warn('[DUAL] Error leyendo backup ' + store + ':', e); return null; }
+    }
+
+    async function restaurarDesdeArchivos() {
+        if (!esAppNativa()) return 0;
+        let restaurados = 0;
+        for (const store of DATA_STORES) {
+            try {
+                const desdeArchivo = await cargarBackupArchivo(store);
+                if (desdeArchivo && desdeArchivo.length > 0) {
+                    await saveToIDB(store, desdeArchivo);
+                    D[store] = desdeArchivo;
+                    restaurados++;
+                    console.log('[DUAL] Restaurado ' + store + ': ' + desdeArchivo.length + ' registros');
+                }
+            } catch (e) { console.warn('[DUAL] Error restaurando ' + store, e); }
+        }
+        if (restaurados > 0) {
+            mostrarNotificacion('✅ Base de datos restaurada desde respaldo (' + restaurados + ' tablas)', 'success');
+        }
+        return restaurados;
+    }
+
     function avisarIDBCaida(err){
         if (_idbAvisada) return;
         _idbAvisada = true;
@@ -204,7 +253,7 @@
     async function saveToIDB(store, data) {
         datosSucios = true;
         const db = await abrirBaseDatos();
-        return new Promise((resolve, reject) => {
+        const resultado = await new Promise((resolve, reject) => {
             const tx = db.transaction(store, 'readwrite');
             const obj = tx.objectStore(store);
             obj.clear();
@@ -216,6 +265,8 @@
             tx.oncomplete = () => { db.close(); resolve(); };
             tx.onerror = e => { db.close(); reject(e.target.error); };
         });
+        guardarBackupArchivo(store, data);
+        return resultado;
     }
     async function loadFromIDB(store) {
         const db = await abrirBaseDatos();
@@ -338,7 +389,7 @@
     }
     
     async function loadAllData(){
-        leerCarpetaNativa();
+        await leerCarpetaNativa();
         D.productos = await getAll('productos');
         D.clientes = await getAll('clientes');
         D.proveedores = await getAll('proveedores');
@@ -346,6 +397,24 @@
         D.empleados = await getAll('empleados');
         D.ventas = await getAll('ventas');
         D.tasaDiaria = await getAll('tasa_diaria');
+
+        // Dual persistencia: si IDB vino vacío, restaurar desde archivos
+        if (esAppNativa()) {
+            let restaurado = false;
+            for (const store of DATA_STORES) {
+                if (D[store] && D[store].length === 0) {
+                    const desdeArchivo = await cargarBackupArchivo(store);
+                    if (desdeArchivo && desdeArchivo.length > 0) {
+                        D[store] = desdeArchivo;
+                        try { await saveToIDB(store, desdeArchivo); } catch(e) {}
+                        restaurado = true;
+                        console.log('[DUAL] Auto-restaurado ' + store + ': ' + desdeArchivo.length + ' registros');
+                    }
+                }
+            }
+            if (restaurado) mostrarNotificacion('✅ Base de datos restaurada automáticamente desde respaldo', 'success');
+        }
+
         const savedConfig = localStorage.getItem(STORAGE_KEYS.config);
         if (savedConfig) try { D.config = { ...D.config, ...JSON.parse(savedConfig) }; } catch(e) {}
         if(!D.config.backgroundMode) D.config.backgroundMode = 'light';
@@ -367,6 +436,13 @@
         saveConfig();
         cargarSesionVenta();
         setTimeout(verificarStockBajo, 1000);
+
+        // Firebase sync: init + auto-sync
+        if (window.JAMFirebase && window.JAMFirebase.isConfigured()) {
+            window.JAMFirebase.init().then(ok => {
+                if (ok) window.JAMFirebase.startAutoSync();
+            });
+        }
     }
     
     function saveConfig(){ saveToStorage(STORAGE_KEYS.config, D.config); applyTheme(); actualizarManifestPWA(); }
@@ -593,11 +669,12 @@
     async function renderVentas(){
         let bloqueado = volverBloqueado, accent = D.config.theme;
         // Pantalla única de Ventas (kiosco): sin Volver; candado rojo para salir.
+        const calcIcon = kioscoVentas ? `<span id="btnKioscoCalc" class="kiosco-title-calc" title="Calculadora USD/Bs"><i class="fas fa-calculator"></i></span>` : '';
         const btnHeader = kioscoVentas
             ? `<div id="btnKioscoCandado" class="kiosco-candado" title="Pantalla única activada: mantén presionado el candado 4 segundos para salir"><i class="fas fa-lock"></i></div>`
             : `<div id="btnVolverModule" class="btn-back ${bloqueado?'btn-back-bloqueado':''}" onclick="${bloqueado?'':'backToHome()'}">${bloqueado?'<i class="fas fa-lock"></i> Bloqueado':'<i class="fas fa-arrow-left"></i> Volver'}</div>`;
         const html = `
-            <div class="page-header-fixed"><div class="module-header"><h2 id="tituloModule" class="module-title ${bloqueado?'module-title-bloqueado':''} ${kioscoVentas?'titulo-kiosco':''}" style="color:${accent}">Ventas</h2>${btnHeader}</div></div>
+            <div class="page-header-fixed"><div class="module-header"><h2 id="tituloModule" class="module-title ${bloqueado?'module-title-bloqueado':''} ${kioscoVentas?'titulo-kiosco':''}" style="color:${accent}">Ventas${calcIcon}</h2>${btnHeader}</div></div>
             <div class="page-container ventas-layout">
                 <div class="ventas-top">
                     <div class="cliente-search-wrap">
@@ -1416,6 +1493,8 @@
         if(kioscoVentas) {
             const c = document.getElementById('btnKioscoCandado');
             if(c) crearGestoMantener(c, 4000, () => window.desactivarKioscoVentas(), 'kiosco-sostenido');
+            const calc = document.getElementById('btnKioscoCalc');
+            if(calc) calc.onclick = () => window.mostrarConvertidor();
         } else {
             const t = document.getElementById('tituloModule');
             if(t) crearGestoMantener(t, 4000, () => window.iniciarKioscoVentas(), 'titulo-sostenido');
@@ -1482,7 +1561,7 @@
                     </div>
                 </div>
                 <div class="card-bcv">
-                    <div class="led-converter" onclick="mostrarConvertidor()"><i class="fas fa-exchange-alt text-sm"></i></div>
+                    <div class="led-converter" onclick="mostrarConvertidor()"><i class="fas fa-calculator text-sm"></i></div>
                     <p class="text-xs font-bold">${D.config.mostrarDolar ? 'TIPO DE CAMBIO (USD → VES)' : 'FECHA'}</p>
                     ${mostrarDolarHtml}
                     <p class="text-[11px] mt-1">${D.config.mostrarDolar ? 'Actualizado: ' + D.config.lastUpdate : ''}</p>
@@ -1567,12 +1646,13 @@
     window.mostrarConvertidor = () => {
         if(window.convMod) window.convMod.remove();
         let m = document.createElement('div'); m.className = 'modal-form';
-        m.innerHTML = `<div class="modal-form-content"><h3 class="font-bold text-lg mb-3">🔄 Convertidor Bs ↔ USD</h3><div class="mb-3"><label>Bolívares (Bs)</label><input type="number" id="bsInput" placeholder="Bs" class="border p-2 rounded w-full"></div><div class="mb-3"><label>Dólares (USD)</label><input type="number" id="usdInput" placeholder="USD" class="border p-2 rounded w-full"></div><p class="text-sm">Tasa: 1 USD = ${fmtDolar(D.config.dolarRate)} Bs</p><button id="closeConv" class="mt-3 w-full py-2 rounded-xl bg-gray-200">Cerrar</button></div>`;
+        m.innerHTML = `<div class="modal-form-content"><h3 class="font-bold text-lg mb-3">🔄 Convertidor Bs ↔ USD</h3><div class="mb-3"><label>Bolívares (Bs)</label><input type="text" inputmode="decimal" id="bsInput" placeholder="Bs" class="border p-2 rounded w-full"></div><div class="mb-3"><label>Dólares (USD)</label><input type="text" inputmode="decimal" id="usdInput" placeholder="USD" class="border p-2 rounded w-full"></div><p class="text-sm">Tasa: 1 USD = ${fmtDolar(D.config.dolarRate)} Bs</p><button id="closeConv" class="mt-3 w-full py-2 rounded-xl bg-gray-200">Cerrar</button></div>`;
         document.body.appendChild(m);
         window.convMod = m;
         let bs = document.getElementById('bsInput'), usd = document.getElementById('usdInput');
-        bs.oninput = () => { if(bs.value) usd.value = (parseFloat(bs.value) / D.config.dolarRate).toFixed(2); };
-        usd.oninput = () => { if(usd.value) bs.value = (parseFloat(usd.value) * D.config.dolarRate).toFixed(2); };
+        function parseFmt(s) { return parseFloat(String(s).replace(/\./g,'').replace(',','.')) || 0; }
+        bs.oninput = () => { let raw = parseFmt(bs.value); usd.value = raw > 0 ? fmtPrecio(raw / D.config.dolarRate) : ''; };
+        usd.oninput = () => { let raw = parseFmt(usd.value); bs.value = raw > 0 ? fmtPrecio(raw * D.config.dolarRate) : ''; };
         document.getElementById('closeConv').onclick = () => { m.remove(); window.convMod = null; };
         m.onclick = e => { if(e.target === m) { m.remove(); window.convMod = null; } };
     };
@@ -2834,8 +2914,9 @@
                 </div></div>
                 <div class="config-section"><button id="btnToggleSeguridad" class="btn-azul-redondeado btn-redondeado w-full mb-2 py-2">🔒 Seguridad (PIN)</button><div id="panelSeguridad" style="display:none;" class="mt-2 config-inner"><div class="mb-2"><label>PIN de acceso (4 dígitos, dejar vacío para deshabilitar)</label><input type="password" id="pinInput" value="${escapeHtml(D.config.pin)}" maxlength="4" pattern="[0-9]*" inputmode="numeric" class="border rounded-xl p-2 w-full text-center text-2xl tracking-widest" placeholder="****"></div><button id="guardarPinBtn" class="btn-azul-redondeado btn-redondeado w-full py-2">🔐 Guardar PIN</button><p class="text-xs text-center mt-2 opacity-60">${D.config.pin ? '✅ PIN activo. Se pedirá al abrir la app.' : 'ℹ️ Sin PIN. Cualquiera puede acceder.'}</p></div></div>
                 <div class="config-section"><button id="btnToggleColores" class="btn-azul-redondeado btn-redondeado w-full mb-2 py-2">🎨 Temas de color</button><div id="panelColores" style="display:none;" class="mt-2 config-inner"><div class="flex flex-wrap justify-center gap-2" id="paletaColores" style="max-width:290px;margin:0 auto"></div></div></div>
-                <div class="config-section"><button id="btnToggleBackup" class="btn-azul-redondeado btn-redondeado w-full mb-2 py-2">💾 Copia de seguridad</button><div id="panelBackup" style="display:none;" class="mt-2 config-inner"><div class="flex flex-col gap-3">${esAppNativa() ? `<div class="rounded-xl p-3" style="background:rgba(14,165,233,0.08);border:1px solid rgba(14,165,233,0.3)"><p class="text-sm font-semibold mb-1">📁 Carpeta de la aplicación</p><p id="carpetaEstado" class="text-xs opacity-70 mb-2">ℹ️ Elija una carpeta para guardar tickets y respaldos (se creará la subcarpeta JAMPOS).</p><button id="elegirCarpetaBtn" class="btn-redondeado py-2 px-4 w-full" style="background:#0ea5e9;color:#fff">📂 Elegir carpeta</button></div>` : `<p class="text-xs text-center opacity-60">💡 En la app Android podrás elegir una carpeta donde guardar los archivos.</p>`}<button id="exportJsonBtn" class="btn-redondeado py-2 px-4" style="background:#3b82f6;color:#fff">📥 Exportar todo (JSON)</button><button id="exportCsvBtn" class="btn-redondeado py-2 px-4" style="background:#10b981;color:#fff">📥 Exportar todo (CSV / Excel)</button><button id="importJsonBtn" class="btn-redondeado py-2 px-4" style="background:#8b5cf6;color:#fff">📤 Importar desde JSON</button><button id="importCsvBtn" class="btn-redondeado py-2 px-4" style="background:#f59e0b;color:#fff">📤 Importar desde CSV / Excel</button>${esAppNativa() ? `<button id="importCarpetaBtn" class="btn-redondeado py-2 px-4" style="background:#14b8a6;color:#fff">📂 Importar desde la carpeta JAMPOS</button>` : ''}<input type="file" id="importFileInput" accept=".json" style="display:none"><input type="file" id="importCsvFileInput" accept=".csv,.xlsx,.xls,.txt" style="display:none"><p class="text-xs text-center mt-2 opacity-60">Los archivos CSV se abren directamente en Excel</p></div></div></div>
+                <div class="config-section"><button id="btnToggleBackup" class="btn-azul-redondeado btn-redondeado w-full mb-2 py-2">💾 Copia de seguridad</button><div id="panelBackup" style="display:none;" class="mt-2 config-inner"><div class="flex flex-col gap-3">${esAppNativa() ? `<div class="rounded-xl p-3" style="background:rgba(14,165,233,0.08);border:1px solid rgba(14,165,233,0.3)"><p class="text-sm font-semibold mb-1">📁 Carpeta de la aplicación</p><p id="carpetaEstado" class="text-xs opacity-70 mb-2">ℹ️ Elija una carpeta para guardar tickets y respaldos (se creará la subcarpeta JAMPOS).</p><button id="elegirCarpetaBtn" class="btn-redondeado py-2 px-4 w-full" style="background:#0ea5e9;color:#fff">📂 Elegir carpeta</button></div>` : `<p class="text-xs text-center opacity-60">💡 En la app Android podrás elegir una carpeta donde guardar los archivos.</p>`}<button id="exportJsonBtn" class="btn-redondeado py-2 px-4" style="background:#3b82f6;color:#fff">📥 Exportar todo (JSON)</button><button id="exportCsvBtn" class="btn-redondeado py-2 px-4" style="background:#10b981;color:#fff">📥 Exportar todo (CSV / Excel)</button><button id="importJsonBtn" class="btn-redondeado py-2 px-4" style="background:#8b5cf6;color:#fff">📤 Importar desde JSON</button><button id="importCsvBtn" class="btn-redondeado py-2 px-4" style="background:#f59e0b;color:#fff">📤 Importar desde CSV / Excel</button>${esAppNativa() ? `<button id="importCarpetaBtn" class="btn-redondeado py-2 px-4" style="background:#14b8a6;color:#fff">📂 Importar desde la carpeta JAMPOS</button><button id="restaurarBackupBtn" class="btn-redondeado py-2 px-4" style="background:#ef4444;color:#fff">🔄 Restaurar desde respaldo automático</button>` : ''}<input type="file" id="importFileInput" accept=".json" style="display:none"><input type="file" id="importCsvFileInput" accept=".csv,.xlsx,.xls,.txt" style="display:none"><p class="text-xs text-center mt-2 opacity-60">Los archivos CSV se abren directamente en Excel</p></div></div></div>
                 <div class="config-section"><button id="btnToggleSync" class="btn-azul-redondeado btn-redondeado w-full mb-2 py-2">🔄 Sincronizar terminales</button><div id="panelSync" style="display:none;" class="mt-2 config-inner">${window.JAMSync && window.JAMSync.isConnected() ? `<div class="mb-3 p-3 rounded-xl" style="background:rgba(16,185,129,0.1);border:1px solid #10b98140"><div class="flex items-center gap-2"><span style="color:#10b981;font-size:1.2rem">&#9679;</span><div><div class="text-sm font-bold" style="color:#10b981">Conectado a ${window.JAMSync.getName()}</div><div class="text-xs opacity-70">Sync automatico cada 30s</div></div></div></div><div class="mb-2 p-2 rounded-lg" style="background:rgba(139,92,246,0.1);border:1px solid #8b5cf640"><div class="text-xs opacity-70 mb-1">URL de conexion</div><div class="text-sm font-mono font-bold" style="color:#8b5cf6">${window.JAMSync.getUrl()}</div></div><button id="syncNowBtn" class="btn-redondeado w-full py-3 mb-2" style="background:#3b82f6;color:#fff"><i class="fas fa-sync-alt mr-1"></i> Sincronizar ahora</button><button id="syncStopBtn" class="btn-redondeado w-full py-2" style="background:#ef4444;color:#fff">Desconectar</button>` : `<div class="mb-2"><label class="text-sm font-semibold">Nombre de este dispositivo</label><div class="flex gap-2 mt-1"><input type="text" id="syncNameInput" placeholder="Nombre de la tienda..." class="border rounded-xl p-2 flex-1" value="${window.JAMSync ? window.JAMSync.getName() : ''}"><button id="syncNowBtn" class="btn-redondeado px-3 py-2" style="background:#3b82f6;color:#fff" title="Sincronizar datos"><i class="fas fa-sync-alt"></i></button></div><p class="text-xs mt-1 opacity-60">Escribe el nombre → QR se genera solo</p></div><div id="syncUrlRow" style="display:none" class="mb-2 p-2 rounded-lg"><div class="text-xs opacity-70 mb-1">URL de conexion</div><div id="syncUrlText" class="text-sm font-mono font-bold" style="color:#8b5cf6"></div></div><div id="syncQRDiv" style="display:none" class="text-center my-3"><canvas id="syncQRCanvas" width="256" height="256" style="width:200px;height:200px;border:3px solid #333;border-radius:12px"></canvas><p class="text-xs mt-2 opacity-60">Escanear este codigo desde el otro dispositivo</p></div><div class="border-t border-gray-200 dark:border-gray-700 pt-3 mt-3"><button id="syncScanBtn" class="btn-redondeado w-full py-3" style="background:#10b981;color:#fff"><i class="fas fa-camera mr-1"></i> Escanear QR del principal</button><p class="text-xs text-center mt-1 opacity-60">Dispositivo secundario: escanea para enlazar</p></div>`}<p class="text-xs text-center opacity-60 mt-3">Ambos dispositivos en la misma WiFi<br>Escribe el nombre → genera QR → escanea desde el otro</p></div></div>
+                <div class="config-section"><button id="btnToggleFirebase" class="btn-azul-redondeado btn-redondeado w-full mb-2 py-2">☁️ Firebase Cloud Sync</button><div id="panelFirebase" style="display:none;" class="mt-2 config-inner">${window.JAMFirebase && window.JAMFirebase.isConfigured() ? `<div class="mb-3 p-3 rounded-xl" style="background:rgba(16,185,129,0.1);border:1px solid #10b98140"><div class="flex items-center gap-2"><span class="fire-status" style="font-size:1.2rem">🔴 Desconectado</span><div><div class="text-sm font-bold">Firebase activo</div><div class="text-xs opacity-70">Sync automática cada 30s entre todos los dispositivos</div><div class="text-xs opacity-50 fire-last-sync">Sin sincronizar</div></div></div></div><div class="mb-2 p-2 rounded-lg" style="background:rgba(59,130,246,0.1);border:1px solid #3b82f640"><div class="text-xs opacity-70 mb-1">ID de este dispositivo</div><div class="text-sm font-mono font-bold" style="color:#3b82f6">${window.JAMFirebase ? window.JAMFirebase.getDeviceId() : 'N/A'}</div></div><div class="mb-2"><label class="text-sm font-semibold">Nombre del dispositivo</label><div class="flex gap-2 mt-1"><input type="text" id="fireDeviceName" class="border rounded-xl p-2 flex-1" value="${window.JAMFirebase ? window.JAMFirebase.getDeviceName() : ''}" placeholder="Nombre de la tienda..."><button id="fireSaveNameBtn" class="btn-redondeado px-3 py-2" style="background:#3b82f6;color:#fff">💾</button></div></div><button id="fireSyncNowBtn" class="btn-redondeado w-full py-3 mb-2" style="background:#3b82f6;color:#fff"><i class="fas fa-cloud-upload-alt mr-1"></i> Sincronizar ahora</button><button id="fireToggleAutoSync" class="btn-redondeado w-full py-2 mb-2" style="background:#8b5cf6;color:#fff"><i class="fas fa-sync-alt mr-1"></i> Auto-sync: ${window.JAMFirebase && window.JAMFirebase.isAvailable() ? 'ACTIVADA' : 'DESACTIVADA'}</button><p class="text-xs text-center opacity-60">Sync automática: sube y baja datos cada 30 segundos</p>` : `<div class="p-3 rounded-xl" style="background:rgba(245,158,11,0.1);border:1px solid #f59e0b40"><p class="text-sm font-semibold mb-2">⚠️ Firebase no configurado</p><p class="text-xs opacity-70 mb-3">Para sincronizar entre dispositivos necesitas una cuenta gratuita de Firebase.</p><ol class="text-xs opacity-70 list-decimal pl-4 space-y-1"><li>Ve a <a href="https://console.firebase.google.com" target="_blank" style="color:#3b82f6;text-decoration:underline">console.firebase.google.com</a></li><li>Crea un proyecto (gratis)</li><li>Habilita Realtime Database</li><li>Reglas: { "rules": { ".read": true, ".write": true } }</li><li>Copia la config del proyecto</li><li>Pégala abajo</li></ol></div><div class="mt-3 space-y-2"><label class="text-xs font-semibold">API Key</label><input type="text" id="fireApiKey" class="border rounded-xl p-2 w-full text-xs" placeholder="AIzaSy..."><label class="text-xs font-semibold">Database URL</label><input type="text" id="fireDbUrl" class="border rounded-xl p-2 w-full text-xs" placeholder="https://tu-proyecto.firebaseio.com"><label class="text-xs font-semibold">Project ID</label><input type="text" id="fireProjectId" class="border rounded-xl p-2 w-full text-xs" placeholder="tu-proyecto"><button id="fireSaveConfigBtn" class="btn-redondeado w-full py-3 mt-2" style="background:#10b981;color:#fff"><i class="fas fa-save mr-1"></i> Guardar configuración</button></div>`}</div></div>
             </div>
         `;
         document.getElementById('appRoot').innerHTML = html;
@@ -2945,6 +3026,63 @@
         
         if (window.JAMSync && window.JAMSync.isConnected()) {
             window.JAMSync.startSync();
+        }
+
+        // Firebase panel handlers
+        toggle('btnToggleFirebase', 'panelFirebase');
+        const fireSaveConfigBtn = document.getElementById('fireSaveConfigBtn');
+        if (fireSaveConfigBtn) {
+            fireSaveConfigBtn.onclick = async () => {
+                const apiKey = document.getElementById('fireApiKey').value.trim();
+                const dbUrl = document.getElementById('fireDbUrl').value.trim();
+                const projectId = document.getElementById('fireProjectId').value.trim();
+                if (!apiKey || !dbUrl) { mostrarNotificacion('⚠️ API Key y Database URL son requeridos', 'error'); return; }
+                localStorage.setItem('jampos_firebase_config', JSON.stringify({ apiKey, databaseURL: dbUrl, projectId, authDomain: projectId + '.firebaseapp.com', storageBucket: projectId + '.appspot.com', messagingSenderId: '', appId: '' }));
+                window.FIREBASE_CONFIG = { apiKey, databaseURL: dbUrl, projectId, authDomain: projectId + '.firebaseapp.com', storageBucket: projectId + '.appspot.com', messagingSenderId: '', appId: '' };
+                if (window.JAMFirebase) {
+                    const ok = await window.JAMFirebase.init();
+                    if (ok) { window.JAMFirebase.startAutoSync(); mostrarNotificacion('✅ Firebase configurado y conectado', 'success'); renderConfig(); }
+                    else mostrarNotificacion('❌ Error al conectar con Firebase', 'error');
+                }
+            };
+        }
+        const fireSaveNameBtn = document.getElementById('fireSaveNameBtn');
+        if (fireSaveNameBtn) {
+            fireSaveNameBtn.onclick = () => {
+                const name = document.getElementById('fireDeviceName').value.trim();
+                if (name && window.JAMFirebase) { window.JAMFirebase.setDeviceName(name); mostrarNotificacion('✅ Nombre guardado: ' + name, 'success'); }
+            };
+        }
+        const fireSyncNowBtn = document.getElementById('fireSyncNowBtn');
+        if (fireSyncNowBtn) {
+            fireSyncNowBtn.onclick = async () => {
+                if (!window.JAMFirebase || !window.JAMFirebase.isAvailable()) { mostrarNotificacion('⚠️ Firebase no conectado', 'error'); return; }
+                fireSyncNowBtn.disabled = true;
+                fireSyncNowBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Sincronizando...';
+                await window.JAMFirebase.sync();
+                fireSyncNowBtn.disabled = false;
+                fireSyncNowBtn.innerHTML = '<i class="fas fa-cloud-upload-alt mr-1"></i> Sincronizar ahora';
+                mostrarNotificacion('✅ Sync completada', 'success');
+            };
+        }
+        const fireToggleAutoSync = document.getElementById('fireToggleAutoSync');
+        if (fireToggleAutoSync) {
+            fireToggleAutoSync.onclick = () => {
+                if (!window.JAMFirebase) return;
+                if (window.JAMFirebase.isAvailable()) {
+                    window.JAMFirebase.stopAutoSync();
+                    mostrarNotificacion('⏸ Auto-sync desactivada', 'info');
+                } else {
+                    window.JAMFirebase.startAutoSync();
+                    mostrarNotificacion('▶️ Auto-sync activada', 'success');
+                }
+                fireToggleAutoSync.innerHTML = '<i class="fas fa-sync-alt mr-1"></i> Auto-sync: ' + (window.JAMFirebase.isAvailable() ? 'ACTIVADA' : 'DESACTIVADA');
+            };
+        }
+        // Load saved Firebase config
+        const savedFireConfig = localStorage.getItem('jampos_firebase_config');
+        if (savedFireConfig && window.JAMFirebase) {
+            try { window.FIREBASE_CONFIG = JSON.parse(savedFireConfig); window.JAMFirebase.updateConfig(window.FIREBASE_CONFIG); } catch(e) {}
         }
         
         const modoManualCheck = document.getElementById('modoManualCheck');
@@ -3077,6 +3215,13 @@
         };
         const importCarpetaBtn = document.getElementById('importCarpetaBtn');
         if (importCarpetaBtn) importCarpetaBtn.onclick = importarDesdeCarpeta;
+        const restaurarBackupBtn = document.getElementById('restaurarBackupBtn');
+        if (restaurarBackupBtn) restaurarBackupBtn.onclick = async () => {
+            if (!esAppNativa()) return;
+            if (!carpetaNativa || !carpetaNativa.uri) { mostrarNotificacion('⚠️ Primero elija una carpeta', 'info'); return; }
+            const n = await restaurarDesdeArchivos();
+            if (n === 0) mostrarNotificacion('ℹ️ No se encontraron respaldos para restaurar', 'info');
+        };
         actualizarUICarpeta();
     }
     
@@ -3338,6 +3483,12 @@
 // ==================== VERSIÓN DE PRUEBA (CANDADO) ====================
     // ==================== SISTEMA DE PRUEBA 30 DÍAS ====================
     const JAM_EMAIL_VENTA = 'jamaplicativo@gmail.com';
+    // Modo del candado de prueba:
+    //   'visible'    -> cuenta atrás con banner + popup (versión de prueba gráfica)
+    //   'silencioso' -> cuenta 30 días desde la primera activación SIN mostrar nada;
+    //                   al vencer muestra únicamente la pantalla de bloqueo
+    //   'libre'      -> sin candado ni conteo (no se escribe ninguna marca)
+    const JAM_MODO_CANDADO = 'visible';
     window._pruebaInfo = null;
 
     function mostrarBloqueoPrueba() {
@@ -3416,11 +3567,15 @@
     }
 
     function sincronizarPrueba(info) {
-        if(info.bloqueada) { window._pruebaInfo = null; mostrarBloqueoPrueba(); }
-        else { mostrarBannerPrueba(info); mostrarContadorPrueba(info); }
+        if(JAM_MODO_CANDADO === 'libre') return;
+        if(info.bloqueada) { window._pruebaInfo = null; mostrarBloqueoPrueba(); return; }
+        if(JAM_MODO_CANDADO === 'silencioso') return;
+        mostrarBannerPrueba(info);
+        mostrarContadorPrueba(info);
     }
 
     function verificarPruebaInicio() {
+        if(JAM_MODO_CANDADO === 'libre') { window._pruebaInfo = null; return false; }
         var TRIAL_DAYS = 30;
         var TRIAL_KEY = 'jam_trial_data';
 
@@ -3461,7 +3616,7 @@
         }
         sincronizarPrueba(info);
         if(info.bloqueada) { mostrarBloqueoPrueba(); return true; }
-        window._pruebaInfo = info;
+        window._pruebaInfo = (JAM_MODO_CANDADO === 'visible') ? info : null;
         return false;
     }
 // ==================== INICIALIZACIÓN ====================
