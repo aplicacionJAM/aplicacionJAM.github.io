@@ -3279,14 +3279,15 @@
     const APP_NOMBRE = 'JAM POS';
     const APP_TAGLINE = 'Tienda Profesional';
     const MODULOS_GUIA = [
-        { icon: 'fa-shopping-cart', nombre: 'Ventas', uso: 'Registra ventas buscando por nombre o código de barras, elige el tipo de pago, aplica descuentos y genera el ticket de la venta.' },
-        { icon: 'fa-boxes', nombre: 'Inventario', uso: 'Administra tus productos: precios en Bs y USD, stock mínimo, categorías, escaneo de código de barras e imágenes.' },
-        { icon: 'fa-users', nombre: 'Clientes', uso: 'Lleva tu cartera de clientes con cédula, teléfono, saldo pendiente y historial de compras.' },
+        { icon: 'fa-shopping-cart', nombre: 'Ventas', uso: 'Registra ventas buscando por nombre o código de barras, escáner de cámara, tipo de pago, descuentos y ticket. Incluye modo Kiosco para punto de venta rápido.' },
+        { icon: 'fa-boxes', nombre: 'Inventario', uso: 'Administra tus productos: precios en Bs y USD con conversión automática, stock mínimo, categorías, escaneo de código de barras, imágenes y selección en lote.' },
+        { icon: 'fa-users', nombre: 'Clientes', uso: 'Lleva tu cartera de clientes con cédula, teléfono, saldo pendiente, historial de compras y búsqueda inteligente.' },
         { icon: 'fa-truck', nombre: 'Proveedores', uso: 'Registra tus proveedores, tiempos de entrega y datos de contacto para tus compras.' },
         { icon: 'fa-coins', nombre: 'Gastos', uso: 'Registra los gastos del negocio y clasifícalos por categoría para controlar tus costos.' },
         { icon: 'fa-user-tie', nombre: 'Empleados', uso: 'Gestiona tu personal: cédula, cargo, salario en Bs y fecha de contratación.' },
-        { icon: 'fa-chart-line', nombre: 'Reportes', uso: 'Consulta tus estadísticas: total de ventas, ticket promedio, gráficos y calendario de ventas.' },
-        { icon: 'fa-palette', nombre: 'Config', uso: 'Personaliza el tema y colores, configura la empresa, la tasa de cambio, impresión y la copia de seguridad.' }
+        { icon: 'fa-chart-line', nombre: 'Reportes', uso: 'Consulta estadísticas: ventas, ticket promedio, gráficos diarios, calendario de ventas y utilidad.' },
+        { icon: 'fa-calculator', nombre: 'Calculadora', uso: 'Convertidor USD ⇄ Bs integrado. Calcula precios, conversiones y prepagos al instante.' },
+        { icon: 'fa-palette', nombre: 'Config', uso: 'Tema y colores, empresa, tasa de cambio, impresión, copia de seguridad, PIN, sync entre dispositivos y dual persistencia.' }
     ];
 
     function inyectarBotonAyudaModulo() {
@@ -3324,6 +3325,16 @@
         const modulosHtml = MODULOS_GUIA.map(m =>
             `<div class="guia-item"><i class="fas ${m.icon}"></i><div><strong>${m.nombre}</strong><small>${m.uso}</small></div></div>`
         ).join('');
+        const esNativa = typeof esAppNativa === 'function' && esAppNativa();
+        const gunDisponible = typeof JAMSync2 !== 'undefined';
+        const featuresHtml = `
+            <div class="guia-item"><i class="fas fa-database"></i><div><strong>Dual Persistencia</strong><small>Tus datos se guardan en IndexedDB + archivos JSON como respaldo. Si la base de datos se borra, se restaura automáticamente.</small></div></div>
+            <div class="guia-item"><i class="fas fa-sync-alt"></i><div><strong>Sync entre dispositivos</strong><small>Sincronización P2P vía Gun.js: zero-config, sin servidores, sin cuentas. Los dispositivos se conectan entre sí automáticamente.</small></div></div>
+            <div class="guia-item"><i class="fas fa-lock"></i><div><strong>3 modos de candado</strong><small>Visible (prueba 30 días), Silencioso (sin aviso), Libre (sin candado). Configurable por variante.</small></div></div>
+            <div class="guia-item"><i class="fas fa-tv"></i><div><strong>Modo Kiosco</strong><small>Pantalla simplificada para punto de venta rápido. Mantén presionado "Ventas" 5 segundos para activarlo. Incluye calculadora integrada.</small></div></div>
+            <div class="guia-item"><i class="fas fa-calculator"></i><div><strong>Calculadora USD ⇄ Bs</strong><small>Convertidor integrado en el home y en el kiosco. Formato de miles venezolano: 1.234.567,89</small></div></div>
+            ${esNativa ? `<div class="guia-item"><i class="fas fa-folder-open"></i><div><strong>Carpeta de archivos</strong><small>Guarda tickets, respaldos y datos en la carpeta que elijas en tu dispositivo.</small></div></div>` : ''}
+        `;
         const fondo = document.createElement('div');
         fondo.className = 'guia-fondo';
         fondo.innerHTML = `
@@ -3334,6 +3345,10 @@
                 <div class="guia-fila"><span>Versión</span><span>${APP_VERSION}</span></div>
                 <div class="guia-fila"><span>Tipo de cambio</span><span>${D.config.mostrarDolar ? 'Tasa BCV (Bs/USD)' : 'Desactivado'}</span></div>
                 <div class="guia-fila"><span>Empresa</span><span>${D.config.empresa?.nombre || '—'}</span></div>
+                <div class="guia-seccion">
+                    <h4>Características principales</h4>
+                    <div class="guia-lista">${featuresHtml}</div>
+                </div>
                 <div class="guia-seccion">
                     <h4>Cómo usar los módulos</h4>
                     <div class="guia-lista">${modulosHtml}</div>
@@ -3348,43 +3363,61 @@
     }
 
     const GUIA_HOME = [
-        { sel: null, titulo: 'Bienvenido a JAM POS', texto: 'Tu tienda profesional: gestiona ventas, inventario, clientes y más, todo desde este dispositivo.' },
-        { sel: '#searchGlobalInput', titulo: 'Búsqueda rápida', texto: 'Escribe aquí para buscar productos, clientes y proveedores desde cualquier parte.' },
-        { sel: '.card-bcv', titulo: 'Tipo de cambio', texto: 'Muestra la tasa oficial del dólar (BCV). Toca el icono de intercambio para usar el convertidor USD ⇄ Bs.' },
-        { sel: '.home-grid', titulo: 'Tus módulos', texto: 'Cada botón abre un módulo: Ventas, Inventario, Clientes, Proveedores, Gastos, Empleados, Reportes y Configuración.' },
-        { sel: '.btn-ayuda-home', titulo: 'Guía de la app', texto: 'Este botón abre la guía completa con la versión, los datos de la empresa y cómo usar cada módulo.' },
+        { sel: null, titulo: 'Bienvenido a JAM POS', texto: 'Tu tienda profesional: gestiona ventas, inventario, clientes y más. Tus datos se sincronizan entre dispositivos automáticamente.' },
+        { sel: '#searchGlobalInput', titulo: 'Búsqueda rápida', texto: 'Escribe aquí para buscar productos, clientes y proveedores desde cualquier parte. La búsqueda inteligente filtra por nombre, código o cédula.' },
+        { sel: '.card-bcv', titulo: 'Tipo de cambio', texto: 'Muestra la tasa oficial del dólar (BCV). Toca el icono para usar el convertidor USD ⇄ Bs con formato venezolano (1.234.567,89).' },
+        { sel: '.home-grid', titulo: 'Tus módulos', texto: 'Cada botón abre un módulo: Ventas, Inventario, Clientes, Proveedores, Gastos, Empleados, Reportes, Calculadora y Configuración.' },
+        { sel: '.led-converter', titulo: 'Calculadora USD ⇄ Bs', texto: 'Convertidor rápido integrado. Toca para calcular conversiones al instante sin salir del home.' },
+        { sel: null, titulo: 'Modo Kiosco', texto: 'Mantén presionado el botón "Ventas" 5 segundos para activar el modo Kiosco: pantalla simplificada para punto de venta rápido con calculadora integrada.' },
+        { sel: null, titulo: 'Sync entre dispositivos', texto: 'Tus datos se sincronizan P2P vía Gun.js: sin servidores, sin cuentas, sin configuración. Solo instala la app en otro dispositivo y listo.' },
+        { sel: '.btn-ayuda-home', titulo: 'Guía de la app', texto: 'Este botón abre la guía completa con todas las características, módulos y cómo usar cada uno.' },
         { sel: null, titulo: '¡Listo!', texto: 'Ya conoces lo esencial. Explora cada módulo cuando quieras, y vuelve a la guía cuando lo necesites.' }
     ];
     const GUIA_VENTAS = [
-        { sel: '#clienteInput', titulo: '1. El cliente', texto: 'Escribe el nombre o la cédula del cliente y toca la sugerencia para seleccionarlo. Usa el botón "+" para crear uno nuevo al instante.' },
-        { sel: '#buscarProducto', titulo: '2. Buscar productos', texto: 'Escribe el nombre o el código de barras. Toca un resultado para agregarlo al carrito; con Enter y un código se agrega directo.' },
+        { sel: null, titulo: 'Ventas — Modo completo', texto: 'Esta es la pantalla principal de ventas. Aquí registras cada venta con cliente, productos, pago y ticket.' },
+        { sel: '#clienteInput', titulo: '1. El cliente', texto: 'Escribe el nombre o la cédula del cliente y toca la sugerencia. Usa "+" para crear uno nuevo al instante. La búsqueda inteligente encuentra por nombre, cédula o teléfono.' },
+        { sel: '#buscarProducto', titulo: '2. Buscar productos', texto: 'Escribe el nombre o código de barras. Toca un resultado para agregarlo al carrito. Con Enter y un código se agrega directo.' },
         { sel: '#btnScanVentas', titulo: '3. Escáner con cámara', texto: 'Toca la cámara para escanear un código de barras y agregar el producto automáticamente.' },
-        { sel: '#carritoLista', titulo: '4. Carrito', texto: 'Aquí ves lo agregado: cambia cantidades, quita productos y mira el subtotal, IVA y total en tiempo real.' },
-        { sel: '#tipoPago', titulo: '5. Tipo de pago', texto: 'Elige cómo paga el cliente: efectivo en Bs, dólares, tarjeta, transferencia, pago móvil o pago dividido (varios métodos en una venta).' },
-        { sel: '#finalizarVenta', titulo: '6. Finalizar venta', texto: 'Al finalizar se genera el TICKET virtual: puedes guardarlo como imagen, imprimirlo o reenviarlo. Con efectivo en Bs puedes calcular el cambio.' },
+        { sel: '#carritoLista', titulo: '4. Carrito', texto: 'Aquí ves lo agregado: cambia cantidades, quita productos y mira el subtotal, IVA y total en tiempo real con precios en Bs y USD.' },
+        { sel: '#tipoPago', titulo: '5. Tipo de pago', texto: 'Elige cómo paga: efectivo Bs, dólares, tarjeta, transferencia, pago móvil o pago dividido (varios métodos en una venta).' },
+        { sel: '#finalizarVenta', titulo: '6. Finalizar venta', texto: 'Al finalizar se genera el TICKET: imagen, impresión y reenvío. Con efectivo en Bs puedes calcular el cambio.' },
+        { sel: null, titulo: 'Modo Kiosco', texto: 'Para acceso rápido: mantén presionado "Ventas" 5 segundos. El kiosco muestra solo lo esencial con calculadora integrada y candado de seguridad.' },
         { sel: null, titulo: '¡Listo!', texto: 'Con eso dominas Ventas. Haz tu primera venta cuando quieras; el ticket te da imagen e impresión.' }
     ];
     const GUIA_INVENTARIO = [
-        { sel: '#searchInv', titulo: '1. Buscar en inventario', texto: 'Escribe el nombre o el código de barras para filtrar tus productos al instante. Con Enter y un código se agrega o busca directo.' },
+        { sel: '#searchInv', titulo: '1. Buscar en inventario', texto: 'Escribe el nombre o código de barras para filtrar al instante. Con Enter y un código se agrega o busca directo.' },
         { sel: '#btnScanInv', titulo: '2. Escáner', texto: 'Toca la cámara para escanear un código de barras y encontrar el producto al instante.' },
-        { sel: '#nuevoProducto', titulo: '3. Nuevo producto', texto: 'Abre el formulario completo: nombre, código de barras, categoría, proveedor, stock, y precios de compra y venta.' },
-        { sel: null, titulo: '4. Conversión Bs ⇄ USD', texto: 'En el formulario de producto los precios se convierten SOLOS: escribe un precio en Bs y el campo en USD se rellena con la tasa del día (y viceversa). Compra y venta se convierten por separado.' },
-        { sel: '.product-card', titulo: '5. Tus productos', texto: 'Cada tarjeta muestra precios en Bs y USD, stock y categoría. Toca ✏️ Editar, 📋 Copiar o 🗑️ Eliminar según necesites.' },
+        { sel: '#nuevoProducto', titulo: '3. Nuevo producto', texto: 'Formulario completo: nombre, código, categoría, proveedor, stock, imágenes y precios de compra y venta.' },
+        { sel: null, titulo: '4. Conversión automática', texto: 'En el formulario, los precios se convierten SOLOS: escribe en Bs y se rellena USD (y viceversa). Compra y venta se convierten por separado.' },
+        { sel: '.product-card', titulo: '5. Tus productos', texto: 'Cada tarjeta muestra precios en Bs y USD, stock y categoría. Toca ✏️ Editar, 📋 Copiar o 🗑️ Eliminar.' },
         { sel: '#selectAllCheckbox', titulo: '6. Selección en lote', texto: 'Marca varios productos y pulsa "✏️ Editar selección" para cambiar precios, categoría, proveedor o stock de todos a la vez.' },
-        { sel: null, titulo: '¡Listo!', texto: 'Ya sabes manejar inventario y sus conversiones. ¡Agrega tu primer producto!' }
+        { sel: null, titulo: '¡Listo!', texto: 'Ya sabes manejar inventario con conversión automática. ¡Agrega tu primer producto!' }
     ];
     const GUIA_REPORTES = [
         { sel: '.chart-container', titulo: '1. Gráfico diario', texto: 'Toca cualquier barra del gráfico para ver las ventas, ganancia y utilidad de ese día.' },
         { sel: '#chartVentas', titulo: '2. Gráfico', texto: 'Gráfica de tus ventas en el tiempo para detectar tendencias de un vistazo.' },
-        { sel: '#buscarVentas', titulo: '3. Buscar ventas', texto: 'Escribe para filtrar por fecha, artículo, cliente o número de venta. También puedes usar el calendario de la derecha.' },
+        { sel: '#buscarVentas', titulo: '3. Buscar ventas', texto: 'Escribe para filtrar por fecha, artículo, cliente o número de venta. También puedes usar el calendario.' },
         { sel: '#btnCalendarioVentas', titulo: '4. Calendario', texto: 'Abre un calendario para ver las ventas de un día o de un mes específicos.' },
         { sel: '#listaVentasReporte', titulo: '5. Detalle de venta', texto: 'Toca cualquier venta para ver su ticket completo: cliente, productos, total y forma de pago.' },
         { sel: null, titulo: '¡Listo!', texto: 'Con Reportes controlas tu negocio: ganancias, gastos, ventas por día y más.' }
     ];
+    const GUIA_CONFIG = [
+        { sel: null, titulo: 'Configuración', texto: 'Aquí personalizas todo: empresa, tema, tasa, seguridad, backup y sincronización.' },
+        { sel: '#btnToggleEmpresa', titulo: '1. Datos de la empresa', texto: 'Configura nombre, dirección, teléfono, RIF y logo. Aparece en los tickets impresos.' },
+        { sel: '#btnToggleTasa', titulo: '2. Tasa de cambio', texto: 'Configura la tasa BCV manual o automática. Se usa para conversiones Bs ⇄ USD en toda la app.' },
+        { sel: '#btnToggleOpciones', titulo: '3. Opciones', texto: 'Modo oscuro automático, IVA, prevenir cierre accidental y más ajustes de comportamiento.' },
+        { sel: '#btnToggleSeguridad', titulo: '4. Seguridad (PIN)', texto: 'Protege la app con un PIN de 4 dígitos. Se pide al abrir la app.' },
+        { sel: '#btnToggleColores', titulo: '5. Temas de color', texto: 'Elige el color de acento de la app entre una paleta de colores predefinidos.' },
+        { sel: '#btnToggleBackup', titulo: '6. Copia de seguridad', texto: 'Dual persistencia: tus datos se guardan en IDB + archivos JSON. Exporta/importa JSON, CSV y restaura desde respaldo automático.' },
+        { sel: '#btnToggleSync', titulo: '7. Sync entre terminales', texto: 'Conecta dos dispositivos vía código QR para sincronizar datos por WiFi local. Sin internet necesaria.' },
+        { sel: '#btnToggleGun', titulo: '8. Sync P2P (Gun.js)', texto: 'Sincronización automática entre todos los dispositivos vía internet. Zero-config: sin servidores, sin cuentas. Auto-sync cada 30 segundos.' },
+        { sel: null, titulo: '¡Listo!', texto: 'Con Config personalizas la app a tu negocio. Los datos se sincronizan y respaldan automáticamente.' }
+    ];
     const GUIA_MODULOS = {
         ventas: { clave: 'jam_guia_ventas_visto', pasos: GUIA_VENTAS },
         inventario: { clave: 'jam_guia_inventario_visto', pasos: GUIA_INVENTARIO },
-        reportes: { clave: 'jam_guia_reportes_visto', pasos: GUIA_REPORTES }
+        reportes: { clave: 'jam_guia_reportes_visto', pasos: GUIA_REPORTES },
+        config: { clave: 'jam_guia_config_visto', pasos: GUIA_CONFIG }
     };
 
     function iniciarTutorial(pasos, claveVisto) {
