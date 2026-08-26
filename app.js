@@ -1,6 +1,64 @@
 ﻿// ==================== UTILIDADES ====================
     const escapeHtml = s => s ? s.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])) : '';
     const fmtPrecio = v => { let num = Number(v); if(isNaN(num)) num = 0; let p = num.toFixed(2).split('.'); p[0] = p[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.'); return p.join(','); };
+
+    // ==================== IMÁGENES DE PRODUCTO ====================
+    const IMG_MAX_SIZE = 1000;
+    const IMG_QUALITY = 0.78;
+
+    function tieneTransparencia(canvas) {
+        const ctx = canvas.getContext('2d');
+        const w = canvas.width, h = canvas.height;
+        const step = Math.max(1, Math.floor(Math.min(w, h) / 20));
+        const datos = ctx.getImageData(0, 0, w, h).data;
+        for(let i = 3; i < datos.length; i += 4 * step) {
+            if(datos[i] < 250) return true;
+        }
+        return false;
+    }
+
+    function comprimirImagen(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = e => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    let w = img.width, h = img.height;
+                    if(w > IMG_MAX_SIZE || h > IMG_MAX_SIZE) {
+                        const ratio = Math.min(IMG_MAX_SIZE / w, IMG_MAX_SIZE / h);
+                        w = Math.round(w * ratio);
+                        h = Math.round(h * ratio);
+                    }
+                    canvas.width = w;
+                    canvas.height = h;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, w, h);
+                    const transparente = tieneTransparencia(canvas);
+                    if(transparente) {
+                        resolve({ dataUrl: canvas.toDataURL('image/png'), formato: 'png' });
+                    } else {
+                        resolve({ dataUrl: canvas.toDataURL('image/jpeg', IMG_QUALITY), formato: 'jpg' });
+                    }
+                };
+                img.onerror = () => reject(new Error('No se pudo cargar la imagen'));
+                img.src = e.target.result;
+            };
+            reader.onerror = () => reject(new Error('No se pudo leer el archivo'));
+            reader.readAsDataURL(file);
+        });
+    }
+
+    // Plantillas de cartel promocional
+    const PLANTILLAS_PROMO = [
+        { id:'clasica', nombre:'Clásica', bgColor:'#ffffff', textColor:'#1a1a1a', accentColor:'#3b82f6', priceColor:'#e11d48', style:'bold' },
+        { id:'elegante', nombre:'Elegante', bgColor:'#1a1a1a', textColor:'#f5f5f5', accentColor:'#d4af37', priceColor:'#d4af37', style:'elegant' },
+        { id:'oferta', nombre:'Oferta', bgColor:'#fef2f2', textColor:'#1a1a1a', accentColor:'#ef4444', priceColor:'#ef4444', style:'bold' },
+        { id:'natural', nombre:'Natural', bgColor:'#f0fdf4', textColor:'#1a1a1a', accentColor:'#22c55e', priceColor:'#16a34a', style:'clean' },
+        { id:'premium', nombre:'Premium', bgColor:'#fefce8', textColor:'#1a1a1a', accentColor:'#eab308', priceColor:'#ca8a04', style:'bold' },
+        { id:'neon', nombre:'Neón', bgColor:'#0f0f23', textColor:'#e0e0ff', accentColor:'#00d4ff', priceColor:'#ff6b6b', style:'bold' },
+        { id:'dark', nombre:'Dark', bgColor:'#000000', textColor:'#ffffff', accentColor:'#ffffff', priceColor:'#ffffff', style:'bold' }
+    ];
     const fmtDolar = v => Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const parseBs = v => parseFloat(String(v).replace(/\./g, '').replace(',', '.')) || 0;
     const esOscuro = c => { let r=parseInt(c.slice(1,3),16), g=parseInt(c.slice(3,5),16), b=parseInt(c.slice(5,7),16); return(.299*r + .587*g + .114*b) < 128; };
@@ -150,7 +208,7 @@
     }
     
     // ==================== STORAGE KEYS ====================
-    const DATA_STORES = ['productos', 'clientes', 'proveedores', 'gastos', 'empleados', 'ventas', 'tasa_diaria'];
+    const DATA_STORES = ['productos', 'clientes', 'proveedores', 'gastos', 'empleados', 'ventas', 'tasa_diaria', 'tickets'];
     const STORAGE_KEYS = {
         productos: 'jam_pos_productos',
         clientes: 'jam_pos_clientes',
@@ -211,6 +269,157 @@
             mostrarNotificacion('✅ Base de datos restaurada desde respaldo (' + restaurados + ' tablas)', 'success');
         }
         return restaurados;
+    }
+
+    // ==================== BACKUP INTELIGENTE ====================
+    const BACKUP_CONFIG = {
+        UMBRALES: [5, 15, 30, 50, 100],
+        CARPETA_ROOT: 'JAM POS',
+        NOMBRE_BACKUP_GLOBAL: 'backup_completo.json',
+        NOMBRE_META: 'meta.json'
+    };
+
+    function obtenerContadores() {
+        const raw = localStorage.getItem('jampos_backup_contadores');
+        return raw ? JSON.parse(raw) : { productos:0, ventas:0, clientes:0, total:0 };
+    }
+    function guardarContadores(c) { localStorage.setItem('jampos_backup_contadores', JSON.stringify(c)); }
+
+    function registrarOperacion(store) {
+        const c = obtenerContadores();
+        if (store === 'productos' || store === 'clientes' || store === 'ventas') c[store]++;
+        c.total++;
+        guardarContadores(c);
+        if (BACKUP_CONFIG.UMBRALES.includes(c.total) && !sessionStorage.getItem('jampos_backup_popup_mostrado')) {
+            sessionStorage.setItem('jampos_backup_popup_mostrado', '1');
+            setTimeout(() => mostrarPopUpBackup(c.total), 2000);
+        }
+        // Auto-backup inmediato: APK escribe a carpeta, PWA guarda en IDB
+        if (esAppNativa()) {
+            autoBackupArchivo(store).catch(() => {});
+        }
+        // PWA: backup a IDB ya está cubierto por saveToIDB en saveItem
+    }
+
+    function mostrarPopUpBackup(totalOps) {
+        if (document.querySelector('.backup-popup-fondo')) return;
+        const accent = D.config.theme || '#3b82f6';
+        const esNativa = esAppNativa();
+        const fondo = document.createElement('div');
+        fondo.className = 'backup-popup-fondo';
+        fondo.innerHTML = `
+            <div class="backup-popup">
+                <div class="backup-popup-icono">💾</div>
+                <h3>Tus datos están creciendo</h3>
+                <p>Has realizado <strong>${totalOps} operaciones</strong> importantes. Recomendamos crear un respaldo para proteger tu información.</p>
+                <div class="backup-popup-opciones">
+                    ${esNativa ? `<button class="backup-popup-btn backup-popup-btn-principal" style="background:${accent}" onclick="window._ejecutarBackupLocal()">📁 Guardar en este dispositivo</button>` : `<button class="backup-popup-btn backup-popup-btn-principal" style="background:${accent}" onclick="window._ejecutarBackupDescarga()">📥 Descargar respaldo JSON</button>`}
+                    <button class="backup-popup-btn backup-popup-btn-secundario" onclick="window._ejecutarBackupGoogleDrive()">☁️ Guardar en Google Drive</button>
+                    <button class="backup-popup-btn backup-popup-btn-texto" onclick="window._cerrarPopUpBackup()">Recordar después</button>
+                </div>
+            </div>`;
+        document.body.appendChild(fondo);
+    }
+    window._cerrarPopUpBackup = () => { const el = document.querySelector('.backup-popup-fondo'); if (el) el.remove(); };
+
+    window._ejecutarBackupDescarga = () => { window._cerrarPopUpBackup(); exportarBackupJSON(); };
+
+    window._ejecutarBackupLocal = async () => {
+        window._cerrarPopUpBackup();
+        if (!esAppNativa()) return;
+        mostrarNotificacion('⏳ Creando respaldo...', 'info');
+        try {
+            const todos = await obtenerTodosLosDatos();
+            AndroidBridge.guardarArchivoDirecto(
+                BACKUP_CONFIG.NOMBRE_BACKUP_GLOBAL,
+                utf8ToBase64(JSON.stringify(todos, null, 2))
+            );
+            for (const store of DATA_STORES) {
+                AndroidBridge.guardarArchivoDirecto(
+                    'modulos/' + store + '.json',
+                    utf8ToBase64(JSON.stringify(D[store] || [], null, 2))
+                );
+            }
+            AndroidBridge.guardarArchivoDirecto(
+                BACKUP_CONFIG.NOMBRE_META,
+                utf8ToBase64(JSON.stringify({
+                    fecha: new Date().toISOString(), version: APP_VERSION || '0.1.3',
+                    dispositivo: 'actual', operaciones: obtenerContadores()
+                }, null, 2))
+            );
+            mostrarNotificacion('✅ Respaldo creado en /JAM POS/', 'success');
+        } catch (e) { mostrarNotificacion('❌ Error al crear respaldo: ' + e.message, 'error'); }
+    };
+
+    window._ejecutarBackupGoogleDrive = () => {
+        window._cerrarPopUpBackup();
+        mostrarNotificacion('ℹ️ Google Drive próximamente. Usa "Descargar" y sube el archivo manualmente.', 'info');
+        exportarBackupJSON();
+    };
+
+    async function autoBackupArchivo(store) {
+        if (!esAppNativa()) return;
+        if (!D[store] || D[store].length === 0) return;
+        try {
+            const ok = AndroidBridge.guardarArchivoDirecto(
+                'modulos/' + store + '.json',
+                utf8ToBase64(JSON.stringify(D[store], null, 2))
+            );
+            if (!ok || !ok.startsWith('ok')) {
+                console.warn('[BACKUP] Error auto-backup ' + store + ':', ok);
+            }
+        } catch (e) { console.warn('[BACKUP] Error auto-backup ' + store, e); }
+    }
+
+    function mostrarPopUpRestaurar(fecha, ops) {
+        if (document.querySelector('.backup-popup-fondo')) return;
+        const accent = D.config.theme || '#3b82f6';
+        const fechaCorta = fecha ? new Date(fecha).toLocaleDateString('es-VE') : 'desconocida';
+        const fondo = document.createElement('div');
+        fondo.className = 'backup-popup-fondo';
+        fondo.innerHTML = `
+            <div class="backup-popup">
+                <div class="backup-popup-icono">📂</div>
+                <h3>Respaldo detectado</h3>
+                <p>Se encontró un respaldo en <strong>/JAM POS/</strong> del <strong>${fechaCorta}</strong> con ${ops || '?'} operaciones. ¿Deseas restaurarlo?</p>
+                <div class="backup-popup-opciones">
+                    <button class="backup-popup-btn backup-popup-btn-principal" style="background:${accent}" onclick="window._confirmarRestaurar(true)">✅ Sí, restaurar</button>
+                    <button class="backup-popup-btn backup-popup-btn-secundario" onclick="window._confirmarRestaurar(false)">❌ No, empezar limpio</button>
+                </div>
+            </div>`;
+        document.body.appendChild(fondo);
+    }
+    window._confirmarRestaurar = async (restaurar) => {
+        window._cerrarPopUpBackup();
+        if (restaurar) {
+            const ok = await autoRestoreDesdeCarpeta();
+            if (!ok) mostrarNotificacion('⚠️ No se pudo restaurar el respaldo', 'error');
+        }
+    };
+
+    async function autoRestoreDesdeCarpeta() {
+        if (!esAppNativa()) return false;
+        try {
+            const contenido = await puenteResultado(AndroidBridge.leerArchivo(
+                BACKUP_CONFIG.CARPETA_ROOT + '/' + BACKUP_CONFIG.NOMBRE_BACKUP_GLOBAL
+            ));
+            if (!contenido) return false;
+            const data = JSON.parse(contenido);
+            let restaurados = 0;
+            for (const store of DATA_STORES) {
+                if (data[store] && data[store].length > 0) {
+                    D[store] = data[store];
+                    try { await saveToIDB(store, data[store]); } catch(e) {}
+                    restaurados++;
+                }
+            }
+            if (data.config) { D.config = { ...D.config, ...data.config }; saveConfig(); }
+            if (restaurados > 0) {
+                mostrarNotificacion('✅ Respaldo restaurado desde /JAM POS/ (' + restaurados + ' tablas)', 'success');
+                return true;
+            }
+        } catch (e) { console.warn('[BACKUP] Error auto-restore:', e); }
+        return false;
     }
 
     function avisarIDBCaida(err){
@@ -303,6 +512,7 @@
             const i = D[store].findIndex(x => x.id === item.id);
             if (i !== -1) D[store][i] = item; else D[store].push(item);
             try { await saveToIDB(store, D[store]); } catch(e) { console.warn('IDB save error', e); avisarIDBCaida(e); }
+            registrarOperacion(store);
         } else {
             const items = loadFromStorage(key, []);
             const idx = items.findIndex(x => x.id === item.id);
@@ -413,6 +623,26 @@
                 }
             }
             if (restaurado) mostrarNotificacion('✅ Base de datos restaurada automáticamente desde respaldo', 'success');
+        }
+
+        // Backup inteligente: detectar carpeta JAM POS y restaurar si existe
+        if (esAppNativa()) {
+            try {
+                const metaRaw = await puenteResultado(AndroidBridge.leerArchivo(
+                    BACKUP_CONFIG.CARPETA_ROOT + '/' + BACKUP_CONFIG.NOMBRE_META
+                ));
+                if (metaRaw) {
+                    const meta = JSON.parse(metaRaw);
+                    const totalLocal = (D.productos||[]).length + (D.clientes||[]).length + (D.ventas||[]).length;
+                    if (totalLocal === 0) {
+                        const restaurado = await autoRestoreDesdeCarpeta();
+                        if (!restaurado) {
+                            const ops = meta.operaciones ? meta.operaciones.total : '?';
+                            mostrarPopUpRestaurar(meta.fecha, ops);
+                        }
+                    }
+                }
+            } catch(e) { console.log('[BACKUP] No se detectó carpeta JAM POS previa'); }
         }
 
         const savedConfig = localStorage.getItem(STORAGE_KEYS.config);
@@ -570,6 +800,10 @@
                 const nuevoBs = Math.round(p.costoRealUsd * tasa * 100) / 100;
                 if(Math.abs(nuevoBs - p.costoRealBs) > 0.01) { p.costoRealBs = nuevoBs; cambios++; }
             }
+            if(p.costoNetoUsd && p.costoNetoUsd > 0) {
+                const nuevoBs = Math.round(p.costoNetoUsd * tasa * 100) / 100;
+                if(Math.abs(nuevoBs - (p.costoNetoBs || 0)) > 0.01) { p.costoNetoBs = nuevoBs; cambios++; }
+            }
             if(p.precioDescuentoUsd && p.precioDescuentoUsd > 0) {
                 const nuevoBs = Math.round(p.precioDescuentoUsd * tasa * 100) / 100;
                 if(Math.abs(nuevoBs - (p.precioDescuentoBs || 0)) > 0.01) { p.precioDescuentoBs = nuevoBs; cambios++; }
@@ -596,6 +830,15 @@
     // Escuchar cambios del sistema
     const mqModoOscuro = window.matchMedia('(prefers-color-scheme: dark)');
     mqModoOscuro.addEventListener('change', () => aplicarModoSistema());
+
+    // Llamado desde Kotlin cuando el tema del sistema cambia (onConfigurationChanged)
+    window.jamSystemThemeChanged = function(modo) {
+        if(!D.config.autoOscuro) return;
+        if(D.config.backgroundMode !== modo) {
+            D.config.backgroundMode = modo;
+            saveConfig();
+        }
+    };
     
     // Control de navegacion movil: el botón atrás NUNCA agota el historial (así el navegador no puede cerrar la app).
     // En móviles Chrome/Safari el navegador ignora beforeunload y cierra la pestaña en silencio cuando el historial se agota;
@@ -827,7 +1070,7 @@
         let norm = normalizeText(term);
         let filt = D.productos.filter(p => normalizeText(p.nombre).includes(norm) || (p.codigo && normalizeText(p.codigo).includes(norm)));
         if(!filt.length){ sug.classList.add('hidden'); return; }
-        sug.innerHTML = filt.map(p => `<div class="sugerencia-item" onclick="agregarAlCarrito('${p.id}')">${escapeHtml(p.nombre)} | ${fmtPrecio(p.precioVentaBs)} Bs | Stock: ${p.stock}</div>`).join('');
+        sug.innerHTML = filt.map(p => `<div class="sugerencia-item" onclick="agregarAlCarrito('${p.id}')">${escapeHtml(p.nombre)} | ${fmtPrecio(p.precioVentaBs)} Bs / $${fmtPrecio(p.precioVentaUsd)} | Stock: ${p.stock}</div>`).join('');
         sug.classList.remove('hidden');
     }
     
@@ -885,7 +1128,7 @@
         if(!prod) return;
         agregarProductoAlCarrito(prod);
         let bp = document.getElementById('buscarProducto');
-        if(bp){ bp.value = '';             document.getElementById('sugerencias')?.classList.add('hidden'); }
+        if(bp){ bp.value = ''; document.getElementById('sugerencias')?.classList.add('hidden'); }
         guardarSesionVenta();
     };
     
@@ -966,6 +1209,47 @@
         modal.onclick = e => { if(e.target === modal) limpiarYCerrar(); };
     };
     
+    function abrirEditorCantidad(i) {
+        const it = carrito[i];
+        if(!it) return;
+        const stock = it.stock || 999;
+        let modal = document.createElement('div');
+        modal.className = 'modal-form';
+        modal.innerHTML = `<div class="modal-form-content" style="max-width:300px">
+            <h3 class="text-lg font-bold mb-1" style="color:var(--accent,#3b82f6)">📦 Cantidad</h3>
+            <p class="text-sm mb-3 opacity-70">${escapeHtml(it.nombre)}</p>
+            <div style="display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:12px">
+                <button id="edQtyMinus" class="btn-redondeado" style="width:48px;height:48px;font-size:24px;display:flex;align-items:center;justify-content:center">−</button>
+                <input id="edQtyInput" type="number" min="1" max="${stock}" value="${it.cantidad}" style="width:70px;text-align:center;font-size:24px;font-weight:bold;border:2px solid var(--accent,#3b82f6);border-radius:12px;padding:6px">
+                <button id="edQtyPlus" class="btn-redondeado" style="width:48px;height:48px;font-size:24px;display:flex;align-items:center;justify-content:center">+</button>
+            </div>
+            <div style="display:flex;gap:8px;margin-bottom:8px;justify-content:center">
+                ${[1,2,3,5,10].map(n => `<button class="edQtyQuick btn-redondeado" data-val="${n}" style="padding:6px 14px;font-size:13px;${n===it.cantidad?'background:var(--accent,#3b82f6);color:#fff':''}">${n}</button>`).join('')}
+            </div>
+            <p class="text-xs text-center opacity-50 mb-3">Stock disponible: ${stock}</p>
+            <div style="display:flex;gap:8px">
+                <button id="edQtyDelete" class="btn-redondeado" style="flex:1;padding:10px;background:#ef4444;color:#fff">🗑 Eliminar</button>
+                <button id="edQtyConfirm" class="btn-redondeado" style="flex:1;padding:10px;background:var(--accent,#3b82f6);color:#fff">✓ Listo</button>
+            </div>
+        </div>`;
+        document.body.appendChild(modal);
+        const inp = modal.querySelector('#edQtyInput');
+        const setVal = v => { inp.value = Math.max(1, Math.min(stock, v)); modal.querySelectorAll('.edQtyQuick').forEach(b => b.style.background = parseInt(b.dataset.val)===parseInt(inp.value) ? 'var(--accent,#3b82f6)' : ''); modal.querySelectorAll('.edQtyQuick').forEach(b => b.style.color = parseInt(b.dataset.val)===parseInt(inp.value) ? '#fff' : ''); };
+        modal.querySelector('#edQtyMinus').onclick = () => setVal(parseInt(inp.value) - 1);
+        modal.querySelector('#edQtyPlus').onclick = () => setVal(parseInt(inp.value) + 1);
+        modal.querySelectorAll('.edQtyQuick').forEach(b => b.onclick = () => setVal(parseInt(b.dataset.val)));
+        inp.addEventListener('input', () => setVal(parseInt(inp.value) || 1));
+        modal.querySelector('#edQtyDelete').onclick = () => { carrito.splice(i, 1); actualizarCarritoUI(); guardarSesionVenta(); modal.remove(); };
+        modal.querySelector('#edQtyConfirm').onclick = () => {
+            const nv = parseInt(inp.value) || 1;
+            if(nv <= 0) { carrito.splice(i, 1); }
+            else { it.cantidad = nv; }
+            actualizarCarritoUI(); guardarSesionVenta(); modal.remove();
+        };
+        modal.onclick = e => { if(e.target === modal) modal.remove(); };
+    }
+    window.abrirEditorCantidad = abrirEditorCantidad;
+    
     function actualizarCarritoUI(){
         let cont = document.getElementById('carritoLista'), sub = document.getElementById('subtotal'), tot = document.getElementById('total'), ivaSpan = document.getElementById('iva');
         if(!cont) return;
@@ -982,9 +1266,20 @@
             let precioU = (it.precioUsadoBs != null && it.precioUsadoBs > 0) ? it.precioUsadoBs : it.precioVentaBs;
             let subit = precioU * it.cantidad;
             suma += subit;
-            html += `<div class="flex justify-between text-sm py-1"><div>${escapeHtml(it.nombre)} x${it.cantidad}${it.precioOferta ? ' <span class="text-xs" style="color:#10b981">(Oferta)</span>' : ''}</div><div>${fmtPrecio(subit)} Bs <button onclick="eliminarDelCarrito(${i})" class="text-red-500 ml-2"><i class="fas fa-trash"></i></button></div></div>`;
+            html += `<div class="carrito-item" data-i="${i}" style="position:relative;overflow:hidden;cursor:pointer"><div style="position:absolute;left:0;top:0;bottom:0;width:0;background:var(--accent,#3b82f6);opacity:0.15;transition:width 2s linear" class="lp-bar"></div><div class="flex justify-between text-sm py-1" style="position:relative;z-index:1"><div>${escapeHtml(it.nombre)} x${it.cantidad}${it.precioOferta ? ' <span class="text-xs" style="color:#10b981">(Oferta)</span>' : ''}</div><div>${fmtPrecio(subit)} Bs <button onclick="event.stopPropagation();eliminarDelCarrito(${i})" class="text-red-500 ml-2"><i class="fas fa-trash"></i></button></div></div></div>`;
         });
         cont.innerHTML = html;
+        cont.querySelectorAll('.carrito-item').forEach(el => {
+            let timer = null, idx = parseInt(el.dataset.i), bar = el.querySelector('.lp-bar');
+            const start = () => { bar.style.width = '100%'; timer = setTimeout(() => { bar.style.width = '0'; abrirEditorCantidad(idx); }, 2000); };
+            const cancel = () => { clearTimeout(timer); bar.style.width = '0'; };
+            el.addEventListener('touchstart', start, { passive: true });
+            el.addEventListener('touchend', cancel, { passive: true });
+            el.addEventListener('touchmove', cancel, { passive: true });
+            el.addEventListener('mousedown', start);
+            el.addEventListener('mouseup', cancel);
+            el.addEventListener('mouseleave', cancel);
+        });
         let pctIva = D.config.ivaPorcentaje / 100;
         let iva = D.config.ivaActivo ? suma * pctIva : 0, total = suma + iva;
         sub.innerText = `${fmtPrecio(suma)} Bs`;
@@ -1066,13 +1361,15 @@
             if(nombreIngresado) clienteNombre = nombreIngresado;
         }
         
-        let itemsVenta = carrito.map(i => {
-            const precioU = (i.precioUsadoBs != null && i.precioUsadoBs > 0) ? i.precioUsadoBs : i.precioVentaBs;
-            const precioUsd = (i.precioUsadoUsd != null && i.precioUsadoUsd > 0) ? i.precioUsadoUsd : i.precioVentaUsd;
-            const costoUsd = parseFloat(i.costoRealUsd) || 0;
-            const costoBsActual = costoUsd > 0 ? Math.round(costoUsd * (D.config.dolarRate || 1) * 100) / 100 : (i.costoRealBs || 0);
-            return { idProducto: i.id, nombre: i.nombre, cantidad: i.cantidad, precioUnitario: precioU, precioUsd: precioUsd, costoUnitario: costoBsActual, subtotal: precioU * i.cantidad, ganancia: (precioU - costoBsActual) * i.cantidad, precioOferta: !!i.precioOferta };
-        });
+    let itemsVenta = carrito.map(i => {
+        const precioU = (i.precioUsadoBs != null && i.precioUsadoBs > 0) ? i.precioUsadoBs : i.precioVentaBs;
+        const precioUsd = (i.precioUsadoUsd != null && i.precioUsadoUsd > 0) ? i.precioUsadoUsd : i.precioVentaUsd;
+        const costoUsd = parseFloat(i.costoRealUsd) || 0;
+        const descProv = (typeof i.descuentoProveedor === 'number' && i.descuentoProveedor > 0) ? i.descuentoProveedor : 0;
+        const costoNetoUsdCalc = (typeof i.costoNetoUsd === 'number' && i.costoNetoUsd > 0) ? i.costoNetoUsd : (descProv > 0 ? Math.round(costoUsd * (1 - descProv / 100) * 100) / 100 : costoUsd);
+        const costoBsActual = costoNetoUsdCalc > 0 ? Math.round(costoNetoUsdCalc * (D.config.dolarRate || 1) * 100) / 100 : (i.costoNetoBs || i.costoRealBs || 0);
+        return { idProducto: i.id, nombre: i.nombre, cantidad: i.cantidad, precioUnitario: precioU, precioUsd: precioUsd, costoUnitario: costoBsActual, subtotal: precioU * i.cantidad, ganancia: (precioU - costoBsActual) * i.cantidad, precioOferta: !!i.precioOferta };
+    });
         let subtotalVenta = itemsVenta.reduce((s,i) => s + i.subtotal, 0);
         let ivaVenta = D.config.ivaActivo ? subtotalVenta * (D.config.ivaPorcentaje / 100) : 0;
         let gananciaTotal = itemsVenta.reduce((s,i) => s + i.ganancia, 0);
@@ -1158,7 +1455,7 @@
         t += eq + '\n';
         t += cen(textoFechaVenta(venta)) + '\n';
         t += cen('Ticket: ' + venta.id) + '\n';
-        t += 'Cliente: ' + esc(venta.cliente) + '\n';
+        t += 'Cliente: ' + esc(venta.cliente) + (venta.clienteId ? (() => { const _cl = D.clientes.find(c => c.id === venta.clienteId); return _cl && _cl.cedula ? ' (' + esc(_cl.cedula) + ')' : ''; })() : '') + '\n';
         t += eq + '\n';
         // Items: nombre a izq, precio a der
         venta.items.forEach(item => {
@@ -1182,6 +1479,8 @@
             t += padR('FORMA DE PAGO:', W - 10) + padL(formasPago[venta.tipoPago]||venta.tipoPago, 10) + '\n';
         }
         t += eq + '\n';
+        t += cen('Este documento no constituye') + '\n';
+        t += cen('factura fiscal') + '\n';
         t += cen('GRACIAS POR SU COMPRA!') + '\n';
         t += cen(D.config.empresa.nombre) + '\n';
         // Abrir ventana para impresion con estilo minimo
@@ -1209,7 +1508,7 @@
             let detalleHtml = venta.detallePagos.map(d => `<div class="ticket-line" style="font-size:9px"><span>${etiqMetodo[d.metodo]||d.metodo}</span><span>${fmtPrecio(d.monto)} Bs</span></div>`).join('');
             formaPagoHtml = `<div class="ticket-line" style="font-weight:bold"><span>FORMA DE PAGO</span><span>PAGO DIVIDIDO</span></div>${detalleHtml}`;
         }
-        return `<div class="ticket-virtual" id="ticketParaImprimir">${logoHtml}<div class="header"><h3>${escapeHtml(D.config.empresa.nombre)}</h3>${D.config.empresa.direccion ? `<p>${escapeHtml(D.config.empresa.direccion)}</p>` : ''}${D.config.empresa.telefono ? `<p>📞 ${escapeHtml(D.config.empresa.telefono)}</p>` : ''}${D.config.empresa.rif ? `<p>RIF: ${escapeHtml(D.config.empresa.rif)}</p>` : ''}<p>${textoFechaVenta(venta)}</p>${mostrarTasa && venta.dolarRate ? `<p>Tasa: 1 USD = ${fmtDolar(venta.dolarRate)} Bs</p>` : ''}<p>Ticket: ${venta.id}</p><p>Cliente: ${escapeHtml(venta.cliente)}</p></div><div class="items">${itemsHtml}</div><div class="ticket-line"><span>SUBTOTAL</span><span>${fmtPrecio(venta.subtotal)} Bs</span></div>${venta.iva ? `<div class="ticket-line"><span>IVA (${venta.ivaPorcentaje != null ? venta.ivaPorcentaje : D.config.ivaPorcentaje}%)</span><span>${fmtPrecio(venta.iva)} Bs</span></div>` : ''}<div class="ticket-line total"><span>TOTAL</span><span>${fmtPrecio(venta.total)} Bs</span></div><div class="ticket-line"><span>PAGO</span><span>${fmtPrecio(venta.pago)} Bs</span></div>${esPagoEfectivo(venta) ? `<div class="ticket-line"><span>CAMBIO</span><span>${fmtPrecio(venta.cambio)} Bs</span></div>` : ''}${formaPagoHtml}<div class="footer"><p>¡Gracias por su compra!</p><p>${D.config.empresa.nombre}</p></div></div>`;
+        return `<div class="ticket-virtual" id="ticketParaImprimir">${logoHtml}<div class="header"><h3>${escapeHtml(D.config.empresa.nombre)}</h3>${D.config.empresa.direccion ? `<p>${escapeHtml(D.config.empresa.direccion)}</p>` : ''}${D.config.empresa.telefono ? `<p>📞 ${escapeHtml(D.config.empresa.telefono)}</p>` : ''}${D.config.empresa.rif ? `<p>RIF: ${escapeHtml(D.config.empresa.rif)}</p>` : ''}<p>${textoFechaVenta(venta)}</p>${mostrarTasa && venta.dolarRate ? `<p>Tasa: 1 USD = ${fmtDolar(venta.dolarRate)} Bs</p>` : ''}<p>Ticket: ${venta.id}</p><p>Cliente: ${escapeHtml(venta.cliente)}${venta.clienteId ? (() => { const _cl = D.clientes.find(c => c.id === venta.clienteId); return _cl && _cl.cedula ? ` (${escapeHtml(_cl.cedula)})` : ''; })() : ''}</p></div><div class="items">${itemsHtml}</div><div class="ticket-line"><span>SUBTOTAL</span><span>${fmtPrecio(venta.subtotal)} Bs</span></div>${venta.iva ? `<div class="ticket-line"><span>IVA (${venta.ivaPorcentaje != null ? venta.ivaPorcentaje : D.config.ivaPorcentaje}%)</span><span>${fmtPrecio(venta.iva)} Bs</span></div>` : ''}<div class="ticket-line total"><span>TOTAL</span><span>${fmtPrecio(venta.total)} Bs</span></div><div class="ticket-line"><span>PAGO</span><span>${fmtPrecio(venta.pago)} Bs</span></div>${esPagoEfectivo(venta) ? `<div class="ticket-line"><span>CAMBIO</span><span>${fmtPrecio(venta.cambio)} Bs</span></div>` : ''}${formaPagoHtml}<div class="footer"><p style="font-size:9px;opacity:0.6;margin-top:8px">Este documento no constituye factura fiscal</p><p>¡Gracias por su compra!</p><p>${D.config.empresa.nombre}</p></div></div>`;
     }
     function mostrarTicket(venta, mostrarTasa = false) {
         const modal = document.createElement('div'); modal.className = 'modal-form';
@@ -1276,23 +1575,50 @@
             }
         }
     }
+
+    function autoGuardarTicketLocal(nombre, dataUrl) {
+        try {
+            const venta = window.ticketActual;
+            if (!venta) return;
+            const registro = {
+                id: venta.id || ('ticket_' + Date.now()),
+                nombre: nombre,
+                fecha: venta.fecha || new Date().toISOString(),
+                timestamp: Date.now(),
+                total: venta.total,
+                cliente: venta.cliente || 'Sin cliente',
+                items: (venta.items || []).length,
+                dataUrl: dataUrl
+            };
+            D.tickets = D.tickets || [];
+            D.tickets.push(registro);
+            saveToIDB('tickets', D.tickets).catch(() => {});
+        } catch(e) { console.warn('[TICKET] Error guardando ticket local', e); }
+    }
+
     window.descargarTicketImagen = async () => {
         const ticket = document.getElementById('ticketParaImprimir');
         if(!ticket) return;
         try {
             const canvas = await capturarTicketImagen();
             if(!canvas) throw new Error('canvas vacío');
-            const nombre = `ticket_${Date.now()}.png`;
+            const ahora = new Date();
+            const pad = n => String(n).padStart(2, '0');
+            const nombre = `${ahora.getFullYear()}-${pad(ahora.getMonth()+1)}-${pad(ahora.getDate())}_${pad(ahora.getHours())}-${pad(ahora.getMinutes())}-${pad(ahora.getSeconds())}.png`;
             const dataUrl = canvas.toDataURL('image/png');
-            // 1) App nativa (APK): guardar directamente vía puente Android
-            if (window.AndroidBridge && typeof AndroidBridge.saveTicketImage === 'function') {
-                const res = await puenteResultado(AndroidBridge.saveTicketImage(dataUrl, nombre));
-                if (res && res.startsWith('ok')) {
-                    mostrarNotificacion('✅ Factura guardada en Imágenes/JAMPOS', 'success');
-                    return;
-                }
+            // 1) App nativa (APK): guardar directo en /JAM POS/TICKETS/
+            if (window.AndroidBridge && typeof AndroidBridge.guardarArchivoDirecto === 'function') {
+                try {
+                    const base64 = dataUrl.split(',')[1];
+                    const res = AndroidBridge.guardarArchivoDirecto('TICKETS/' + nombre, base64);
+                    if (res && res.startsWith('ok')) {
+                        mostrarNotificacion('✅ Ticket guardado en /JAM POS/TICKETS/' + nombre, 'success');
+                        autoGuardarTicketLocal(nombre, dataUrl);
+                        return;
+                    }
+                } catch(e) {}
             }
-            // 2) Compartir/Guardar con Web Share API (Android moderno / navegador)
+            // 2) Web Share API (navegador moderno)
             if (navigator.canShare && window.File && typeof canvas.toBlob === 'function') {
                 try {
                     const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
@@ -1301,9 +1627,9 @@
                         await navigator.share({ files: [file], title: 'Factura JAM POS' });
                         return;
                     }
-                } catch(e) { /* el usuario canceló o no soportado */ }
+                } catch(e) {}
             }
-            // 3) Fallback navegador/PWA: Blob + createObjectURL (Chrome Android sí lo descarga)
+            // 3) Fallback: descarga normal del navegador
             const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
             if (blob) {
                 const link = document.createElement('a');
@@ -1312,12 +1638,7 @@
                 document.body.appendChild(link);
                 link.click();
                 setTimeout(() => { URL.revokeObjectURL(link.href); link.remove(); }, 5000);
-                mostrarNotificacion('✅ Factura descargada en Descargas', 'success');
-            } else {
-                const link = document.createElement('a');
-                link.download = nombre;
-                link.href = dataUrl;
-                link.click();
+                mostrarNotificacion('✅ Ticket descargado: ' + nombre, 'success');
             }
         } catch(e) { alert('Error al generar imagen: ' + (e && e.message ? e.message : e)); }
     };
@@ -1677,7 +1998,10 @@
         let cont = document.getElementById('listaProductos'); if(!cont) return;
         cont.innerHTML = filt.map(p => {
             let checked = productosSeleccionados.has(p.id);
-            return `<div class="product-card"><div class="flex items-start gap-2"><input type="checkbox" class="product-checkbox mt-1" data-id="${p.id}" ${checked?'checked':''} onchange="toggleProductoSeleccionado('${p.id}',this.checked)"><div class="flex-1"><div class="flex justify-between flex-wrap"><span class="font-bold">${escapeHtml(p.nombre)}</span><span class="text-xs">${escapeHtml(p.codigo||'')}</span></div><div class="text-sm">💰 ${fmtPrecio(preciosProducto(p).normalBs)} Bs / $${preciosProducto(p).normalUsd} | 📦 Stock: ${p.stock}</div>${tieneDescuentoProducto(p) ? `<div class="text-sm" style="color:#10b981">🏷️ Oferta: ${fmtPrecio(preciosProducto(p).desc.bs)} Bs / $${preciosProducto(p).desc.usd} <span class="text-xs">(-${typeof p.porcentajeDescuento === 'number' ? p.porcentajeDescuento : 0}%)</span></div>` : ''}<div class="text-xs break-words">🏷️ ${escapeHtml(p.categoria||'')} | 🚚 ${escapeHtml(p.proveedor||'—')}</div><div class="flex gap-2 mt-2"><button onclick="mostrarFormProducto('${p.id}')" class="btn-editar-redondeado">✏️ Editar</button><button onclick="copiarProducto('${p.id}')" class="btn-redondeado" style="background:var(--accent,#3b82f6);color:#fff;padding:4px 10px;font-size:12px">📋 Copiar</button><button onclick="eliminarProducto('${p.id}')" class="btn-eliminar-redondeado">🗑️ Eliminar</button></div></div></div></div>`;
+            let imgHtml = p.imagen
+                ? `<img src="${p.imagen}" class="prod-thumb" onclick="event.stopPropagation();verCartelPromo('${p.id}')" title="Ver cartel promocional">`
+                : `<div class="prod-thumb prod-thumb-placeholder" onclick="event.stopPropagation();verCartelPromo('${p.id}')" title="Sin imagen"><i class="fas fa-image" style="font-size:24px;opacity:0.2"></i></div>`;
+            return `<div class="product-card"><div class="flex items-start gap-3"><div class="prod-col-izq">${imgHtml}<div class="flex flex-col gap-1 mt-1"><button onclick="mostrarFormProducto('${p.id}')" class="prod-btn-vertical" style="background:var(--accent,#3b82f6)">✏️ Editar</button><button onclick="copiarProducto('${p.id}')" class="prod-btn-vertical" style="background:#8b5cf6">📋 Copiar</button><button onclick="eliminarProducto('${p.id}')" class="prod-btn-vertical" style="background:#ef4444">🗑️ Eliminar</button></div></div><div class="flex-1 min-w-0"><div class="flex items-center justify-between gap-2"><span class="font-bold text-base truncate">${escapeHtml(p.nombre)}</span><span class="text-xs opacity-60 whitespace-nowrap">${escapeHtml(p.codigo||'')}</span></div><div class="flex items-center gap-2 mt-1"><span class="prod-price-main">${fmtPrecio(preciosProducto(p).normalBs)} <span class="text-sm font-semibold">Bs</span></span><span class="prod-price-usd">$${preciosProducto(p).normalUsd}</span><span class="text-xs opacity-50">📦 ${p.stock}</span></div>${tieneDescuentoProducto(p) ? `<div class="flex items-center gap-2 mt-1"><span class="prod-offer-badge">🏷️ ${fmtPrecio(preciosProducto(p).desc.bs)} Bs / $${preciosProducto(p).desc.usd}</span><span class="text-xs" style="color:#10b981">-${typeof p.porcentajeDescuento === 'number' ? p.porcentajeDescuento : 0}%</span></div>` : ''}${(p.descuentoProveedor && p.descuentoProveedor > 0) ? `<div class="text-xs mt-1" style="color:#f59e0b">📦 Prov: $${fmtPrecio(preciosProducto(p).costoNetoUsd)} <span style="text-decoration:line-through;opacity:0.5">$${fmtPrecio(preciosProducto(p).costoUsd)}</span> (-${p.descuentoProveedor}%)</div>` : ''}<div class="text-xs opacity-50 mt-1">🏷️ ${escapeHtml(p.categoria||'')} · 🚚 ${escapeHtml(p.proveedor||'—')}</div></div><input type="checkbox" class="product-checkbox" data-id="${p.id}" ${checked?'checked':''} onchange="toggleProductoSeleccionado('${p.id}',this.checked)" style="margin-top:6px"></div></div>`;
         }).join('');
         actualizarToolbarBatch();
     }
@@ -1742,11 +2066,14 @@
     // módulos (inventario, ventas, ticket, WhatsApp, reportes).
     // Reglas:
     //   - El costo se ingresa en USD; el costo en Bs se deriva con la tasa del día.
-    //   - Precio normal USD = costo USD × (1 + ganancia%). Bs = USD × tasa.
-    //   - Si hay descuento: precio oferta USD = normal USD × (1 - descuento%).
+    //   - Si el proveedor ofrece descuento: costoNeto = costoBruto × (1 - descProv%).
+    //   - Precio normal USD = costoNeto USD × (1 + ganancia%). Bs = USD × tasa.
+    //   - Si hay descuento al cliente: precio oferta USD = normal USD × (1 - descuento%).
+    //   - La ganancia siempre se calcula sobre el COSTO NETO (ya con descuento prov.).
     function calcGananciaProducto(p){
         if(p && typeof p.porcentajeGanancia === 'number' && p.porcentajeGanancia > 0) return p.porcentajeGanancia;
-        const c = parseFloat(p && p.costoRealUsd) || 0, v = parseFloat(p && p.precioVentaUsd) || 0;
+        const c = parseFloat(p && p.costoNetoUsd) || parseFloat(p && p.costoRealUsd) || 0;
+        const v = parseFloat(p && p.precioVentaUsd) || 0;
         if(c > 0 && v > 0) return Math.round((v - c) / c * 100);
         return 0;
     }
@@ -1768,14 +2095,20 @@
         tasa = tasa || (D.config && D.config.dolarRate) || 1;
         const costoUsd = parseFloat(p && p.costoRealUsd) || 0;
         const costoBs = parseFloat(p && p.costoRealBs) > 0 ? p.costoRealBs : Math.round(costoUsd * tasa * 100) / 100;
+        const descProvPct = (p && typeof p.descuentoProveedor === 'number') ? p.descuentoProveedor : 0;
+        const costoNetoUsd = (p && typeof p.costoNetoUsd === 'number' && p.costoNetoUsd > 0)
+            ? p.costoNetoUsd : (descProvPct > 0 ? Math.round(costoUsd * (1 - descProvPct / 100) * 100) / 100 : costoUsd);
+        const costoNetoBs = (p && typeof p.costoNetoBs === 'number' && p.costoNetoBs > 0)
+            ? p.costoNetoBs : Math.round(costoNetoUsd * tasa * 100) / 100;
         const normalUsd = parseFloat(p && p.precioVentaUsd) || 0;
         const normalBs = parseFloat(p && p.precioVentaBs) > 0 ? p.precioVentaBs : (normalUsd > 0 ? Math.round(normalUsd * tasa * 100) / 100 : 0);
         const desc = precioDescuentoProducto(p, tasa);
         return {
-            costoUsd, costoBs,
+            costoUsd, costoBs, costoNetoUsd, costoNetoBs,
             normalUsd, normalBs,
             ganancia: calcGananciaProducto(p),
-            desc, tieneDesc: !!desc
+            desc, tieneDesc: !!desc,
+            descProvPct
         };
     }
     
@@ -1783,30 +2116,38 @@
         let prod = id ? D.productos.find(p => p.id === id) : null;
         let esNuevo = !prod;
         const tasa = D.config.dolarRate || 1;
-        const prIni = prod ? preciosProducto(prod, tasa) : { costoUsd:0, costoBs:0, normalUsd:0, normalBs:0, desc:null };
+        const prIni = prod ? preciosProducto(prod, tasa) : { costoUsd:0, costoBs:0, costoNetoUsd:0, costoNetoBs:0, normalUsd:0, normalBs:0, desc:null, descProvPct:0 };
         const ganIni = prod ? (prIni.ganancia || 30) : 30;
         const descPct = prod ? (typeof prod.porcentajeDescuento === 'number' ? prod.porcentajeDescuento : 0) : 0;
         const descUsdIni = prIni.desc ? prIni.desc.usd : 0;
         const descBsIni = prIni.desc ? prIni.desc.bs : 0;
+        const descProvIni = prIni.descProvPct || 0;
         let modal = document.createElement('div'); modal.className = 'modal-form';
         modal.innerHTML = `<div class="modal-form-content" style="max-width:420px"><h3 class="text-xl font-bold mb-4">${esNuevo ? 'Nuevo Producto' : 'Editar Producto'}</h3>
             <div class="mb-3"><label>Nombre</label><input id="nombre" value="${escapeHtml(prod?.nombre||'')}" class="border rounded-xl p-2 w-full"></div>
+            <div class="mb-3"><label>📷 Imagen del producto</label><div id="imgPreviewWrap" style="display:${prod?.imagen ? 'block' : 'none'};text-align:center;margin-bottom:8px"><img id="imgPreview" src="${prod?.imagen||''}" style="max-width:150px;max-height:150px;border-radius:12px;object-fit:cover;border:2px solid rgba(128,128,128,0.2)"><br><button id="removeImgBtn" class="text-xs mt-1" style="color:#ef4444;background:none;border:none;cursor:pointer">🗑️ Quitar imagen</button></div><div id="imgUploadWrap" style="display:${prod?.imagen ? 'none' : 'block'}"><label for="imgProducto" class="flex flex-col items-center justify-center w-full h-24 border-2 border-dashed rounded-xl cursor-pointer" style="border-color:rgba(128,128,128,0.3);background:rgba(128,128,128,0.04)"><i class="fas fa-cloud-upload-alt text-2xl mb-1" style="color:rgba(128,128,128,0.4)"></i><span class="text-xs" style="color:rgba(128,128,128,0.6)">Tocar para seleccionar imagen</span></label><input type="file" id="imgProducto" accept="image/*" style="display:none"><div class="text-center text-xs my-1" style="color:rgba(128,128,128,0.4)">— o —</div><div class="flex gap-2"><input type="text" id="imgUrlInput" placeholder="URL de imagen de la web" class="border rounded-xl p-2 flex-1 text-xs" style="border-color:rgba(128,128,128,0.3)"><button id="loadUrlImgBtn" class="btn-redondeado text-xs px-3" style="background:var(--accent,#3b82f6);color:#fff">Cargar</button></div></div></div>
             <div class="mb-3"><label>📷 Código de barras</label><div class="flex gap-2"><input id="codigo" value="${escapeHtml(prod?.codigo||'')}" class="border-2 rounded-xl p-2 flex-1" style="border-color:var(--accent,#3b82f6)"><button id="btnScanProducto" class="btn-icon-cuadrado" title="Escanear con cámara"><i class="fas fa-camera"></i></button></div></div>
             <div class="mb-3"><label>Categoría</label><input id="categoria" value="${escapeHtml(prod?.categoria||'')}" class="border rounded-xl p-2 w-full"></div>
-            <div class="mb-3"><label>Proveedor</label><input id="proveedor" value="${escapeHtml(prod?.proveedor||'')}" class="border rounded-xl p-2 w-full"></div>
+            <div class="mb-3 relative"><label>Proveedor</label><input id="proveedor" value="${escapeHtml(prod?.proveedor||'')}" placeholder="Escriba para buscar..." class="border rounded-xl p-2 w-full" autocomplete="off"><div id="sugProveedor" style="display:none;position:absolute;left:0;right:0;z-index:100;background:var(--bg,#fff);border:1px solid rgba(128,128,128,0.2);border-radius:12px;max-height:150px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.1)"></div></div>
+            <div class="mb-3"><label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="descProvOn" ${descProvIni > 0 ? 'checked' : ''}> <span>🏷️ Descuento del proveedor</span></label><div id="descProvDiv" style="${descProvIni > 0 ? 'display:block' : 'display:none'}"><label>% de descuento del proveedor</label><input type="number" id="descProvInput" step="any" min="0" max="99.99" value="${descProvIni || ''}" placeholder="Ej: 15" class="border rounded-xl p-2 w-full"></div></div>
             <div class="mb-3"><label>Stock</label><input type="number" id="stock" value="${prod?.stock||0}" class="border rounded-xl p-2 w-full"></div>
             <div class="mb-3"><label>💵 Costo del producto (USD)</label><input type="number" id="compraUsd" step="any" min="0" value="${prod?.costoRealUsd||''}" placeholder="Ej: 3.00" class="border rounded-xl p-2 w-full"></div>
+            <div id="costoNetoInfo" class="text-xs mb-2" style="color:#f59e0b;${descProvIni > 0 ? '' : 'display:none'}">📦 Costo neto prov: $<span id="costoNetoMostrar">${(prIni.costoNetoUsd || 0).toFixed(2)}</span> <span id="costoNetoAntes" style="text-decoration:line-through;opacity:0.6">${descProvIni > 0 ? '$' + (prIni.costoUsd || 0).toFixed(2) : ''}</span></div>
             <div class="mb-3"><label>💰 % de Ganancia</label><input type="range" id="gananciaRange" min="5" max="100" step="1" value="${ganIni}" class="w-full"><input type="number" id="gananciaInput" step="any" min="5" max="100" value="${ganIni}" class="border rounded-xl p-2 w-full"></div>
-            <div class="mb-3"><label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="descOn" ${descPct > 0 ? 'checked' : ''}> <span>🏷️ Aplicar descuento al producto</span></label><div id="descDiv" style="${descPct > 0 ? 'display:block' : 'display:none'}"><label>% de Descuento</label><input type="number" id="descuentoInput" step="any" min="0" max="99.99" value="${descPct || ''}" placeholder="Ej: 10" class="border rounded-xl p-2 w-full"></div></div>
+            <div class="mb-3"><label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="descOn" ${descPct > 0 ? 'checked' : ''}> <span>🏷️ Aplicar descuento al producto (oferta)</span></label><div id="descDiv" style="${descPct > 0 ? 'display:block' : 'display:none'}"><label>% de Descuento</label><input type="number" id="descuentoInput" step="any" min="0" max="99.99" value="${descPct || ''}" placeholder="Ej: 10" class="border rounded-xl p-2 w-full"></div></div>
             <div class="rounded-xl p-3 mb-3" style="background:rgba(128,128,128,0.08)">
                 <p class="font-bold text-sm mb-2" style="color:var(--accent)">💲 Precios calculados <span class="text-xs opacity-60">(tasa: 1 USD = ${fmtDolar(tasa)} Bs)</span></p>
-                <div class="grid grid-cols-2 gap-2 text-xs">
-                    <div><label class="opacity-70">Costo en Bs</label><input type="text" id="compraBs" value="${fmtPrecio(prIni.costoBs)}" class="border rounded p-1 w-full"></div>
-                    <div><label class="opacity-70">Precio normal USD</label><input type="number" id="ventaUsd" step="any" min="0" value="${prIni.normalUsd || ''}" class="border rounded p-1 w-full"></div>
-                    <div><label class="opacity-70">Precio normal Bs</label><input type="text" id="ventaBs" value="${fmtPrecio(prIni.normalBs)}" class="border rounded p-1 w-full"></div>
-                    <div><label class="opacity-70">Precio oferta USD</label><input type="number" id="descUsd" step="any" min="0" value="${descUsdIni || ''}" class="border rounded p-1 w-full"></div>
-                    <div><label class="opacity-70">Precio oferta Bs</label><input type="text" id="descBs" value="${fmtPrecio(descBsIni)}" class="border rounded p-1 w-full"></div>
-                    <div class="flex items-end"><button id="recalcBtn" class="btn-redondeado py-1 px-3 text-xs" style="border:1px solid var(--accent,#3b82f6)">↺ Recalcular</button></div>
+                <div class="text-xs space-y-2">
+                    <div class="mb-1"><label class="opacity-70">Costo en Bs</label><input type="text" id="compraBs" value="${fmtPrecio(prIni.costoBs)}" class="border rounded p-1 w-full"></div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div><label class="opacity-70">Venta en Bs</label><input type="text" id="ventaBs" value="${fmtPrecio(prIni.normalBs)}" class="border rounded p-1 w-full"></div>
+                        <div><label class="opacity-70">Venta en USD</label><input type="number" id="ventaUsd" step="any" min="0" value="${prIni.normalUsd || ''}" class="border rounded p-1 w-full"></div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div><label class="opacity-70">Oferta en Bs</label><input type="text" id="descBs" value="${fmtPrecio(descBsIni)}" class="border rounded p-1 w-full"></div>
+                        <div><label class="opacity-70">Oferta en USD</label><input type="number" id="descUsd" step="any" min="0" value="${descUsdIni || ''}" class="border rounded p-1 w-full"></div>
+                    </div>
+                    <div class="flex justify-end"><button id="recalcBtn" class="btn-redondeado py-1 px-3 text-xs" style="border:1px solid var(--accent,#3b82f6)">↺ Recalcular</button></div>
                 </div>
                 <p id="margenInfo" class="text-xs mt-2 opacity-80"></p>
                 <p class="text-[10px] opacity-60 mt-1">Se calculan solos con el costo y los %; puede ajustarlos a mano. "↺ Recalcular" los vuelve a la fórmula.</p>
@@ -1821,6 +2162,9 @@
         const gananciaInput = document.getElementById('gananciaInput'), gananciaRange = document.getElementById('gananciaRange');
         const descOn = document.getElementById('descOn'), descuentoInput = document.getElementById('descuentoInput');
         const descDiv = document.getElementById('descDiv'), recalcBtn = document.getElementById('recalcBtn');
+        const descProvOn = document.getElementById('descProvOn'), descProvInput = document.getElementById('descProvInput');
+        const descProvDiv = document.getElementById('descProvDiv'), costoNetoInfo = document.getElementById('costoNetoInfo');
+        const costoNetoMostrar = document.getElementById('costoNetoMostrar'), costoNetoAntes = document.getElementById('costoNetoAntes');
         let manual = { costo:false, venta:false, desc:false };
         const tRedondeo = (v) => Math.round(v * 100) / 100;
         function recalcular(){
@@ -1830,8 +2174,11 @@
             if(ganVal < 0) ganVal = 0;
             let descVal = descOn.checked ? (parseFloat(descuentoInput.value) || 0) : 0;
             if(descVal < 0) descVal = 0; if(descVal >= 100) descVal = 99.99;
-            if(!manual.costo) compraBs.value = costoUsdVal > 0 ? fmtPrecio(tRedondeo(costoUsdVal * tasaV)) : '';
-            const precioUsd = costoUsdVal > 0 ? tRedondeo(costoUsdVal * (1 + ganVal / 100)) : 0;
+            let descProvVal = descProvOn.checked ? (parseFloat(descProvInput.value) || 0) : 0;
+            if(descProvVal < 0) descProvVal = 0; if(descProvVal >= 100) descProvVal = 99.99;
+            const costoNetoUsd = costoUsdVal > 0 ? tRedondeo(costoUsdVal * (1 - descProvVal / 100)) : 0;
+            if(!manual.costo) compraBs.value = costoNetoUsd > 0 ? fmtPrecio(tRedondeo(costoNetoUsd * tasaV)) : '';
+            const precioUsd = costoNetoUsd > 0 ? tRedondeo(costoNetoUsd * (1 + ganVal / 100)) : 0;
             if(!manual.venta){
                 ventaUsd.value = precioUsd > 0 ? precioUsd.toFixed(2) : '';
                 ventaBs.value = precioUsd > 0 ? fmtPrecio(tRedondeo(precioUsd * tasaV)) : '';
@@ -1842,30 +2189,104 @@
                 descBs.value = dUsd > 0 ? fmtPrecio(tRedondeo(dUsd * tasaV)) : '';
             }
             descDiv.style.display = descOn.checked ? 'block' : 'none';
-            const cUsd = parseFloat(compraUsd.value) || 0;
+            descProvDiv.style.display = descProvOn.checked ? 'block' : 'none';
+            if(costoNetoInfo) costoNetoInfo.style.display = descProvOn.checked && costoUsdVal > 0 ? '' : 'none';
+            if(costoNetoMostrar) costoNetoMostrar.textContent = costoNetoUsd.toFixed(2);
+            if(costoNetoAntes) costoNetoAntes.textContent = descProvOn.checked && descProvVal > 0 ? '$' + costoUsdVal.toFixed(2) : '';
             const vUsd = parseFloat(ventaUsd.value) || 0;
             const dUsd2 = parseFloat(descUsd.value) || 0;
-            let margenNormal = cUsd > 0 ? Math.round((vUsd - cUsd) / cUsd * 100) : 0;
-            let margenOferta = (cUsd > 0 && dUsd2 > 0) ? Math.round((dUsd2 - cUsd) / cUsd * 100) : 0;
+            const baseCalc = costoNetoUsd > 0 ? costoNetoUsd : costoUsdVal;
+            let margenNormal = baseCalc > 0 ? Math.round((vUsd - baseCalc) / baseCalc * 100) : 0;
+            let margenOferta = (baseCalc > 0 && dUsd2 > 0) ? Math.round((dUsd2 - baseCalc) / baseCalc * 100) : 0;
             const info = document.getElementById('margenInfo');
-            if(info) info.innerHTML = `Ganancia normal: <b>${margenNormal}%</b>${descOn.checked && dUsd2 > 0 ? ` | Ganancia con oferta: <b>${margenOferta}%</b>` : ''}`;
+            if(info) info.innerHTML = `Ganancia normal: <b>${margenNormal}%</b>${descOn.checked && dUsd2 > 0 ? ` | Ganancia con oferta: <b>${margenOferta}%</b>` : ''}${descProvOn.checked && descProvVal > 0 ? ` <span style="color:#f59e0b">| Costo neto: $${costoNetoUsd.toFixed(2)} (-${descProvVal}% prov.)</span>` : ''}`;
         }
-        compraUsd.oninput = () => { manual = { costo:false, venta:false, desc:false }; recalcular(); };
-        gananciaInput.oninput = () => { gananciaRange.value = gananciaInput.value; manual.venta = false; manual.desc = false; recalcular(); };
-        gananciaRange.oninput = () => { gananciaInput.value = gananciaRange.value; manual.venta = false; manual.desc = false; recalcular(); };
-        descuentoInput.oninput = () => { manual.desc = false; recalcular(); };
-        descOn.onchange = () => { manual.desc = false; if(descOn.checked && !descuentoInput.value) descuentoInput.value = 10; recalcular(); };
-        compraBs.oninput = () => { manual.costo = true; recalcular(); };
-        ventaBs.oninput = () => { manual.venta = true; const bs = parseBs(ventaBs.value); if(bs > 0) ventaUsd.value = (bs / (D.config.dolarRate || 1)).toFixed(2); recalcular(); };
-        ventaUsd.oninput = () => { manual.venta = true; const usd = parseFloat(ventaUsd.value); if(!isNaN(usd) && usd > 0) ventaBs.value = fmtPrecio(tRedondeo(usd * (D.config.dolarRate || 1))); recalcular(); };
-        descBs.oninput = () => { manual.desc = true; const bs = parseBs(descBs.value); if(bs > 0) descUsd.value = (bs / (D.config.dolarRate || 1)).toFixed(2); recalcular(); };
-        descUsd.oninput = () => { manual.desc = true; const usd = parseFloat(descUsd.value); if(!isNaN(usd) && usd > 0) descBs.value = fmtPrecio(tRedondeo(usd * (D.config.dolarRate || 1))); recalcular(); };
-        recalcBtn.onclick = () => { manual = { costo:false, venta:false, desc:false }; recalcular(); };
-        recalcular();
+        compraUsd.oninput = () => { manual = { costo:false, venta:false, desc:false }; try{recalcular();}catch(e){console.error('recalc compraUsd',e);} };
+        gananciaInput.oninput = () => { gananciaRange.value = gananciaInput.value; manual.venta = false; manual.desc = false; try{recalcular();}catch(e){console.error('recalc ganancia',e);} };
+        gananciaRange.oninput = () => { gananciaInput.value = gananciaRange.value; manual.venta = false; manual.desc = false; try{recalcular();}catch(e){console.error('recalc range',e);} };
+        descuentoInput.oninput = () => { manual.desc = false; try{recalcular();}catch(e){console.error('recalc descuento',e);} };
+        descOn.onchange = () => { manual.desc = false; if(descOn.checked && !descuentoInput.value) descuentoInput.value = 10; try{recalcular();}catch(e){console.error('recalc descOn',e);} };
+        descProvOn.onchange = () => { if(descProvOn.checked && !descProvInput.value) descProvInput.value = 10; try{recalcular();}catch(e){console.error('recalc descProv',e);} };
+        descProvInput.oninput = () => { try{recalcular();}catch(e){console.error('recalc descProvInput',e);} };
+        compraBs.oninput = () => { manual.costo = true; try{recalcular();}catch(e){console.error('recalc compraBs',e);} };
+        ventaBs.oninput = () => { manual.venta = true; const bs = parseBs(ventaBs.value); if(bs > 0) ventaUsd.value = (bs / (D.config.dolarRate || 1)).toFixed(2); try{recalcular();}catch(e){console.error('recalc ventaBs',e);} };
+        ventaUsd.oninput = () => { manual.venta = true; const usd = parseFloat(ventaUsd.value); if(!isNaN(usd) && usd > 0) ventaBs.value = fmtPrecio(tRedondeo(usd * (D.config.dolarRate || 1))); try{recalcular();}catch(e){console.error('recalc ventaUsd',e);} };
+        descBs.oninput = () => { manual.desc = true; const bs = parseBs(descBs.value); if(bs > 0) descUsd.value = (bs / (D.config.dolarRate || 1)).toFixed(2); try{recalcular();}catch(e){console.error('recalc descBs',e);} };
+        descUsd.oninput = () => { manual.desc = true; const usd = parseFloat(descUsd.value); if(!isNaN(usd) && usd > 0) descBs.value = fmtPrecio(tRedondeo(usd * (D.config.dolarRate || 1))); try{recalcular();}catch(e){console.error('recalc descUsd',e);} };
+        recalcBtn.onclick = () => { manual = { costo:false, venta:false, desc:false }; try{recalcular();}catch(e){console.error('recalc error',e);} };
+        const proveedorInput = document.getElementById('proveedor'), sugProvDiv = document.getElementById('sugProveedor');
+        if(proveedorInput && sugProvDiv) {
+            proveedorInput.addEventListener('input', () => {
+                const term = normalizeText(proveedorInput.value.trim());
+                if(term.length < 1) { sugProvDiv.style.display = 'none'; return; }
+                D.proveedores = D.proveedores || [];
+                const matches = D.proveedores.filter(p => normalizeText(p.nombre).includes(term));
+                if(matches.length === 0) { sugProvDiv.style.display = 'none'; return; }
+                sugProvDiv.innerHTML = matches.slice(0,5).map(p => `<div class="sugerencia-item" style="cursor:pointer;padding:6px 10px;border-bottom:1px solid rgba(128,128,128,0.1)" data-nombre="${escapeHtml(p.nombre)}">${escapeHtml(p.nombre)}${p.contacto ? ' · '+escapeHtml(p.contacto) : ''}${p.telefono ? ' · '+escapeHtml(p.telefono) : ''}</div>`).join('');
+                sugProvDiv.style.display = 'block';
+            });
+            proveedorInput.addEventListener('blur', () => { setTimeout(() => { sugProvDiv.style.display = 'none'; }, 200); });
+            sugProvDiv.addEventListener('mousedown', (e) => {
+                const item = e.target.closest('[data-nombre]');
+                if(item) { proveedorInput.value = item.dataset.nombre; sugProvDiv.style.display = 'none'; proveedorInput.dispatchEvent(new Event('input')); }
+            });
+        }
+        try{recalcular();}catch(e){console.error('recalc init error',e);}
+        // Manejo de imagen del producto
+        let imagenData = prod?.imagen || null;
+        const imgInput = document.getElementById('imgProducto');
+        const imgPreview = document.getElementById('imgPreview');
+        const imgPreviewWrap = document.getElementById('imgPreviewWrap');
+        const imgUploadWrap = document.getElementById('imgUploadWrap');
+        const removeImgBtn = document.getElementById('removeImgBtn');
+        if(imgInput) imgInput.onchange = async (e) => {
+            const file = e.target.files[0]; if(!file) return;
+            if(file.size > 10*1024*1024) { await jamAlert('La imagen no debe superar 10 MB', 'error'); return; }
+            try {
+                const resultado = await comprimirImagen(file);
+                imagenData = resultado.dataUrl;
+                imgPreview.src = imagenData;
+                imgPreviewWrap.style.display = 'block';
+                imgUploadWrap.style.display = 'none';
+            } catch(err) { await jamAlert('Error al procesar imagen: ' + err.message, 'error'); }
+        };
+        if(removeImgBtn) removeImgBtn.onclick = () => {
+            imagenData = null;
+            imgPreviewWrap.style.display = 'none';
+            imgUploadWrap.style.display = 'block';
+            if(imgInput) imgInput.value = '';
+        };
+        const loadUrlImgBtn = document.getElementById('loadUrlImgBtn');
+        const imgUrlInput = document.getElementById('imgUrlInput');
+        if(loadUrlImgBtn && imgUrlInput) loadUrlImgBtn.onclick = async () => {
+            const url = imgUrlInput.value.trim();
+            if(!url) return;
+            try {
+                loadUrlImgBtn.textContent = 'Cargando...';
+                loadUrlImgBtn.disabled = true;
+                const resp = await fetch(url);
+                if(!resp.ok) throw new Error('No se pudo cargar la imagen');
+                const blob = await resp.blob();
+                if(!blob.type.startsWith('image/')) throw new Error('La URL no contiene una imagen');
+                const file = new File([blob], 'img_url.jpg', { type: blob.type });
+                const resultado = await comprimirImagen(file);
+                imagenData = resultado.dataUrl;
+                imgPreview.src = imagenData;
+                imgPreviewWrap.style.display = 'block';
+                imgUploadWrap.style.display = 'none';
+                imgUrlInput.value = '';
+            } catch(err) { await jamAlert('Error: ' + err.message, 'error'); }
+            finally { loadUrlImgBtn.textContent = 'Cargar'; loadUrlImgBtn.disabled = false; }
+        };
         document.getElementById('guardarBtn').onclick = async () => {
+            try {
             const tasaV = D.config.dolarRate || 1;
             let costoRealUsd = parseFloat(compraUsd.value) || 0;
             let costoRealBs = parseBs(compraBs.value);
+            let descProveedor = descProvOn.checked ? (parseFloat(descProvInput.value) || 0) : 0;
+            if(descProveedor >= 100) descProveedor = 99.99; if(descProveedor < 0) descProveedor = 0;
+            let costoNetoUsd = tRedondeo(costoRealUsd * (1 - descProveedor / 100));
+            let costoNetoBs = tRedondeo(costoNetoUsd * tasaV);
             if(costoRealBs <= 0 && costoRealUsd > 0) costoRealBs = tRedondeo(costoRealUsd * tasaV);
             let precioVentaUsd = parseFloat(ventaUsd.value) || 0;
             let precioVentaBs = parseBs(ventaBs.value);
@@ -1879,18 +2300,202 @@
             if(precioDescuentoUsd <= 0 && porcentajeDescuento > 0 && precioVentaUsd > 0) precioDescuentoUsd = tRedondeo(precioVentaUsd * (1 - porcentajeDescuento / 100));
             if(precioDescuentoBs <= 0 && precioDescuentoUsd > 0) precioDescuentoBs = tRedondeo(precioDescuentoUsd * tasaV);
             precioVentaUsd = tRedondeo(precioVentaUsd); costoRealUsd = tRedondeo(costoRealUsd); precioDescuentoUsd = tRedondeo(precioDescuentoUsd);
-            if(!document.getElementById('nombre').value.trim()) { alert('El nombre del producto es obligatorio'); return; }
-            if(precioVentaBs <= 0) { alert('El precio de venta debe ser mayor a 0'); return; }
+            if(!document.getElementById('nombre').value.trim()) { await jamAlert('El nombre del producto es obligatorio', 'error'); return; }
+            if(precioVentaBs <= 0) { await jamAlert('El precio de venta debe ser mayor a 0', 'error'); return; }
             let nombre = capitalizeWords(document.getElementById('nombre').value.trim());
-            let nuevo = { id: esNuevo ? 'p'+Date.now() : prod.id, nombre, codigo: document.getElementById('codigo').value, categoria: document.getElementById('categoria').value, proveedor: document.getElementById('proveedor').value, stock: parseInt(document.getElementById('stock').value) || 0, precioVentaBs, precioVentaUsd, costoRealBs, costoRealUsd, porcentajeGanancia, porcentajeDescuento, precioDescuentoUsd, precioDescuentoBs, tasaRegistro: tasaV };
+            let nuevo = { id: esNuevo ? 'p'+Date.now() : prod.id, nombre, codigo: document.getElementById('codigo').value, categoria: document.getElementById('categoria').value, proveedor: document.getElementById('proveedor').value, stock: parseInt(document.getElementById('stock').value) || 0, precioVentaBs, precioVentaUsd, costoRealBs, costoRealUsd, descuentoProveedor: descProveedor, costoNetoUsd, costoNetoBs, porcentajeGanancia, porcentajeDescuento, precioDescuentoUsd, precioDescuentoBs, tasaRegistro: tasaV, imagen: imagenData || '' };
             await saveItem('productos', nuevo);
+            const provNombre = document.getElementById('proveedor').value.trim();
+            if(provNombre) {
+                D.proveedores = D.proveedores || [];
+                const yaExiste = D.proveedores.some(p => normalizeText(p.nombre) === normalizeText(provNombre));
+                if(!yaExiste) {
+                    const nuevoProv = { id: 'prov'+Date.now(), nombre: capitalizeWords(provNombre), telefono: '', email: '', contacto: '', direccion: '' };
+                    await saveItem('proveedores', nuevoProv);
+                }
+            }
             modal.remove();
             if(desdeBusqueda) renderHome(); else renderInventario();
+            } catch(err) { console.error('ERROR GUARDAR PRODUCTO:', err); await jamAlert('Error al guardar: ' + err.message, 'error'); }
         };
     }
     
     window.eliminarProducto = async id => { if(await jamConfirm('¿Eliminar producto?')){ await deleteItem('productos', id); D.productos = D.productos.filter(p => p.id !== id); renderInventario(); } };
-    
+
+    // ==================== CARTEL PROMOCIONAL ====================
+    window.verCartelPromo = function(id) {
+        const p = D.productos.find(x => x.id === id);
+        if(!p) return;
+        const pr = preciosProducto(p);
+        const empresa = D.config.empresa?.nombre || 'JAM POS';
+        let plantillaIdx = 0;
+        let imagenForma = 'cuadrada';
+        let colorNombre = '';
+        let colorPrecio = '';
+        let duracionOferta = 'dia';
+
+        const DURACIONES = [
+            { id:'dia', label:'Hoy', dias:0 },
+            { id:'finde', label:'Fin de semana', dias:3 },
+            { id:'semana', label:'1 semana', dias:7 },
+            { id:'2semanas', label:'2 semanas', dias:14 },
+            { id:'custom', label:'Personalizar', dias:-1 }
+        ];
+        let fechaCustom = '';
+
+        function fechaHasta() {
+            const ahora = new Date();
+            const dur = DURACIONES.find(d => d.id === duracionOferta);
+            if(duracionOferta === 'custom' && fechaCustom) {
+                return new Date(fechaCustom).toLocaleDateString('es-VE', { day:'2-digit', month:'long', year:'numeric' });
+            }
+            if(dur && dur.dias >= 0) {
+                const hasta = new Date(ahora);
+                hasta.setDate(hasta.getDate() + dur.dias);
+                return hasta.toLocaleDateString('es-VE', { day:'2-digit', month:'long', year:'numeric' });
+            }
+            return ahora.toLocaleDateString('es-VE', { day:'2-digit', month:'long', year:'numeric' });
+        }
+
+        function renderCartel(tpl) {
+            const esOscuro = ['#1a1a1a','#0f0f23','#000000'].includes(tpl.bgColor);
+            const borderColor = esOscuro ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)';
+            const subColor = esOscuro ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.45)';
+            const borderRadius = imagenForma === 'redonda' ? '50%' : '12px';
+            const nombreColor = colorNombre || tpl.textColor;
+            const precioColor = colorPrecio || tpl.priceColor;
+            const fechaValidez = fechaHasta();
+            return `<div id="cartelPromo" style="width:100%;max-width:400px;margin:0 auto;background:${tpl.bgColor};color:${tpl.textColor};font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;overflow:hidden">
+                <div style="text-align:center;padding:12px 16px 6px"><span style="font-size:13px;font-weight:700;letter-spacing:1px;color:${tpl.accentColor}">${escapeHtml(empresa)}</span></div>
+                ${p.imagen ? `<div style="text-align:center;padding:0 16px"><img src="${p.imagen}" style="width:100%;max-width:320px;aspect-ratio:1/1;object-fit:cover;border-radius:${borderRadius};display:block;margin:0 auto;${imagenForma==='redonda' ? 'max-width:260px;' : ''}"></div>` : `<div style="text-align:center;padding:30px 16px"><i class="fas fa-image" style="font-size:60px;opacity:0.15"></i></div>`}
+                <div style="padding:14px 16px 0;text-align:center">
+                    <div style="font-size:20px;font-weight:800;line-height:1.2;color:${nombreColor}">${escapeHtml(p.nombre)}</div>
+                    ${p.codigo ? `<div style="font-size:11px;color:${subColor};margin-top:3px">REF: ${escapeHtml(p.codigo)}</div>` : ''}
+                    ${p.categoria ? `<div style="font-size:11px;color:${subColor}">${escapeHtml(p.categoria)}</div>` : ''}
+                </div>
+                <div style="padding:14px 16px;text-align:center">
+                    <div style="font-size:28px;font-weight:900;color:${precioColor};line-height:1">${fmtPrecio(pr.normalBs)} <span style="font-size:14px;font-weight:600">Bs</span></div>
+                    <div style="font-size:15px;font-weight:600;color:${precioColor};opacity:0.85;margin-top:2px">$${fmtPrecio(pr.normalUsd)} USD</div>
+                    ${pr.tieneDesc ? `<div style="margin-top:10px;padding:8px 12px;border-radius:8px;border:2px dashed ${tpl.accentColor};display:inline-block"><div style="font-size:12px;font-weight:700;color:${tpl.accentColor};text-transform:uppercase;letter-spacing:1px">🏷️ Oferta especial</div><div style="font-size:22px;font-weight:900;color:${precioColor};margin-top:2px">${fmtPrecio(pr.desc.bs)} Bs <span style="font-size:12px">/ $${pr.desc.usd} USD</span></div><div style="font-size:11px;color:${subColor}">Ahorra ${typeof p.porcentajeDescuento === 'number' ? p.porcentajeDescuento : 0}%</div></div>` : ''}
+                </div>
+                <div style="text-align:center;padding:8px 16px 14px;font-size:10px;color:${subColor};border-top:1px solid ${borderColor}">Válido hasta: ${fechaValidez} · Precio sujeto a cambio por tasa</div>
+            </div>`;
+        }
+        function abrirModal() {
+            const tpl = PLANTILLAS_PROMO[plantillaIdx];
+            const durOpts = DURACIONES.map(d => `<button data-dur="${d.id}" class="btn-dur-pick" style="padding:4px 8px;border-radius:6px;border:2px solid ${duracionOferta===d.id ? tpl.accentColor : 'transparent'};background:${tpl.bgColor};color:${tpl.textColor};font-size:10px;font-weight:600;cursor:pointer;white-space:nowrap">${d.label}</button>`).join('');
+            const customDateInput = duracionOferta === 'custom' ? `<input type="date" id="fechaCustomInput" value="${fechaCustom || new Date().toISOString().split('T')[0]}" style="padding:4px 8px;border-radius:6px;border:1px solid ${tpl.accentColor};background:${tpl.bgColor};color:${tpl.textColor};font-size:10px;width:100%;margin-top:6px">` : '';
+            let modal = document.createElement('div');
+            modal.className = 'modal-form';
+            modal.innerHTML = `<div class="modal-form-content" style="max-width:440px;padding:12px;max-height:90vh;overflow-y:auto">
+                <div class="flex justify-between items-center mb-3">
+                    <h3 class="text-lg font-bold">🎯 Cartel Promocional</h3>
+                    <button id="closeCartelBtn" style="background:none;border:none;font-size:20px;cursor:pointer">✕</button>
+                </div>
+                <div id="cartelRender">${renderCartel(tpl)}</div>
+                <div class="mt-3">
+                    <div class="text-xs font-bold mb-1" style="opacity:0.6">🎨 Plantilla</div>
+                    <div style="display:flex;gap:6px;overflow-x:auto;padding:4px 0;justify-content:center;flex-wrap:wrap">
+                        ${PLANTILLAS_PROMO.map((t,i) => `<button data-idx="${i}" class="btn-tpl-pick" style="min-width:55px;padding:5px 7px;border-radius:8px;border:2px solid ${i===plantillaIdx ? t.accentColor : 'transparent'};background:${t.bgColor};color:${t.textColor};font-size:9px;font-weight:600;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,0.1)">${t.nombre}</button>`).join('')}
+                    </div>
+                </div>
+                <div class="flex gap-3 mt-3">
+                    <div class="flex-1">
+                        <div class="text-xs font-bold mb-1" style="opacity:0.6">Forma imagen</div>
+                        <div class="flex gap-1">
+                            <button data-forma="cuadrada" class="btn-forma-pick flex-1" style="padding:5px;border-radius:8px;border:2px solid ${imagenForma==='cuadrada' ? tpl.accentColor : 'transparent'};background:${tpl.bgColor};color:${tpl.textColor};font-size:11px;font-weight:600;cursor:pointer">⬜</button>
+                            <button data-forma="redonda" class="btn-forma-pick flex-1" style="padding:5px;border-radius:8px;border:2px solid ${imagenForma==='redonda' ? tpl.accentColor : 'transparent'};background:${tpl.bgColor};color:${tpl.textColor};font-size:11px;font-weight:600;cursor:pointer">⭕</button>
+                        </div>
+                    </div>
+                    <div class="flex-1">
+                        <div class="text-xs font-bold mb-1" style="opacity:0.6">Color nombre</div>
+                        <input type="color" id="colorNombreInput" value="${colorNombre || tpl.textColor}" style="width:100%;height:32px;border:2px solid ${tpl.accentColor};border-radius:8px;cursor:pointer;background:transparent;padding:2px">
+                    </div>
+                    <div class="flex-1">
+                        <div class="text-xs font-bold mb-1" style="opacity:0.6">Color precio</div>
+                        <input type="color" id="colorPrecioInput" value="${colorPrecio || tpl.priceColor}" style="width:100%;height:32px;border:2px solid ${tpl.accentColor};border-radius:8px;cursor:pointer;background:transparent;padding:2px">
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <div class="text-xs font-bold mb-1" style="opacity:0.6">📅 Duración de la oferta</div>
+                    <div style="display:flex;gap:4px;flex-wrap:wrap">${durOpts}</div>
+                    ${customDateInput}
+                </div>
+                <div class="flex gap-2 mt-3">
+                    <button id="shareCartelBtn" class="btn-azul-redondeado btn-redondeado flex-1 py-2 font-bold text-sm">📤 Compartir</button>
+                    <button id="downloadCartelBtn" class="btn-redondeado flex-1 py-2 text-sm" style="border:1px solid var(--accent,#3b82f6)">💾 Guardar</button>
+                </div>
+            </div>`;
+            document.body.appendChild(modal);
+            modal.querySelector('#closeCartelBtn').onclick = () => modal.remove();
+            modal.querySelectorAll('.btn-tpl-pick').forEach(btn => {
+                btn.onclick = () => { plantillaIdx = parseInt(btn.dataset.idx); colorNombre = ''; colorPrecio = ''; modal.remove(); abrirModal(); };
+            });
+            modal.querySelectorAll('.btn-forma-pick').forEach(btn => {
+                btn.onclick = () => { imagenForma = btn.dataset.forma; modal.remove(); abrirModal(); };
+            });
+            modal.querySelectorAll('.btn-dur-pick').forEach(btn => {
+                btn.onclick = () => { duracionOferta = btn.dataset.dur; modal.remove(); abrirModal(); };
+            });
+            const colorNombreInput = modal.querySelector('#colorNombreInput');
+            const colorPrecioInput = modal.querySelector('#colorPrecioInput');
+            const fechaCustomInput = modal.querySelector('#fechaCustomInput');
+            function actualizarPreview() {
+                colorNombre = colorNombreInput.value;
+                colorPrecio = colorPrecioInput.value;
+                if(fechaCustomInput) fechaCustom = fechaCustomInput.value;
+                const tpl2 = PLANTILLAS_PROMO[plantillaIdx];
+                modal.querySelector('#cartelRender').innerHTML = renderCartel(tpl2);
+            }
+            if(colorNombreInput) colorNombreInput.addEventListener('input', actualizarPreview);
+            if(colorPrecioInput) colorPrecioInput.addEventListener('input', actualizarPreview);
+            if(fechaCustomInput) fechaCustomInput.addEventListener('change', actualizarPreview);
+            modal.querySelector('#shareCartelBtn').onclick = () => generarYCompartirCartel();
+            modal.querySelector('#downloadCartelBtn').onclick = () => generarYCompartirCartel(true);
+        }
+        async function generarYCompartirCartel(soloGuardar = false) {
+            const el = document.getElementById('cartelRender');
+            if(!el) return;
+            try {
+                const btn = soloGuardar ? document.getElementById('downloadCartelBtn') : document.getElementById('shareCartelBtn');
+                if(btn) { btn.textContent = 'Generando...'; btn.disabled = true; }
+                const canvas = await html2canvas(el.firstElementChild, { scale:2, backgroundColor: PLANTILLAS_PROMO[plantillaIdx].bgColor, useCORS:true, logging:false });
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+                const nombre = `promo_${p.nombre.replace(/\s+/g,'_')}_${Date.now()}.jpg`;
+                if(soloGuardar) {
+                    if(window.AndroidBridge && window.AndroidBridge.guardarArchivoDirecto) {
+                        const base64 = dataUrl.split(',')[1];
+                        const res = window.AndroidBridge.guardarArchivoDirecto('PROMOS/' + nombre, base64);
+                        if(res && res.startsWith('ok:')) mostrarNotificacion('Cartel guardado en /JAM POS/PROMOS/', 'success');
+                        else mostrarNotificacion('Error al guardar', 'error');
+                    } else {
+                        const a = document.createElement('a'); a.href = dataUrl; a.download = nombre; a.click();
+                    }
+                } else {
+                    if(navigator.share && navigator.canShare) {
+                        try {
+                            const blob = await (await fetch(dataUrl)).blob();
+                            const file = new File([blob], nombre, { type:'image/jpeg' });
+                            if(navigator.canShare({ files:[file] })) {
+                                await navigator.share({ files:[file], title:p.nombre, text:`${p.nombre} - ${fmtPrecio(pr.normalBs)} Bs` });
+                                return;
+                            }
+                        } catch(e) { if(e.name === 'AbortError') return; }
+                    }
+                    if(window.AndroidBridge && window.AndroidBridge.guardarArchivoDirecto) {
+                        const base64 = dataUrl.split(',')[1];
+                        const res = window.AndroidBridge.guardarArchivoDirecto('PROMOS/' + nombre, base64);
+                        if(res && res.startsWith('ok:')) mostrarNotificacion('Cartel compartido/guardado', 'success');
+                    } else {
+                        const a = document.createElement('a'); a.href = dataUrl; a.download = nombre; a.click();
+                    }
+                }
+                if(btn) { btn.textContent = soloGuardar ? '💾 Guardar' : '📤 Compartir'; btn.disabled = false; }
+            } catch(err) { console.error('Error cartel:', err); mostrarNotificacion('Error al generar imagen', 'error'); }
+        }
+        abrirModal();
+    };
+
     window.copiarProducto = (id) => {
         let p = D.productos.find(x => x.id === id);
         if (!p) return;
@@ -2322,7 +2927,10 @@
     
     const formasPagoGlobal = { 'efectivo_bs':'EFECTIVO Bs','pago_movil':'PAGO MÓVIL','transferencia':'TRANSFERENCIA','tarjeta_debito':'TARJETA DÉBITO','dolares':'DÓLARES','pago_dividido':'PAGO DIVIDIDO' };
     function ventaCardReporte(v){
-        return `<div class="border rounded-xl p-3 mb-2 cursor-pointer hover:opacity-80" style="border-color:var(--accent)" onclick="window.mostrarTicketDesdeReporte('${v.id}')"><div class="flex justify-between items-start"><div><b>${escapeHtml(v.id)}</b></div><div class="text-xs opacity-60">${escapeHtml(v.fecha)}</div></div><div class="text-sm mt-1">👤 ${escapeHtml(v.cliente)}</div><div class="flex justify-between items-center mt-1"><span class="text-sm font-bold" style="color:var(--accent)">${fmtPrecio(v.total)} Bs</span><span class="text-xs">${formasPagoGlobal[v.tipoPago] || v.tipoPago}</span></div>${v.dolarRate ? `<div class="text-xs mt-1 opacity-60">💲 Tasa del día: 1 USD = ${fmtDolar(v.dolarRate)} Bs</div>` : ''}<div class="text-xs mt-1 opacity-60">${(v.items||[]).map(i=>`${escapeHtml(i.nombre)} x${i.cantidad}`).join(', ')}</div></div>`;
+        const _clRep = v.clienteId ? D.clientes.find(c => c.id === v.clienteId) : null;
+        const cedulaRep = _clRep && _clRep.cedula ? ` (${escapeHtml(_clRep.cedula)})` : '';
+        const totalUsdRep = v.dolarRate > 0 ? ` / $${fmtDolar(v.total / v.dolarRate)}` : '';
+        return `<div class="border rounded-xl p-3 mb-2 cursor-pointer hover:opacity-80" style="border-color:var(--accent)" onclick="window.mostrarTicketDesdeReporte('${v.id}')"><div class="flex justify-between items-start"><div><b>${escapeHtml(v.id)}</b></div><div class="text-xs opacity-60">${escapeHtml(v.fecha)}</div></div><div class="text-sm mt-1">👤 ${escapeHtml(v.cliente)}${cedulaRep}</div><div class="flex justify-between items-center mt-1"><span class="text-sm font-bold" style="color:var(--accent)">${fmtPrecio(v.total)} Bs${totalUsdRep}</span><span class="text-xs">${formasPagoGlobal[v.tipoPago] || v.tipoPago}</span></div>${v.dolarRate ? `<div class="text-xs mt-1 opacity-60">💲 Tasa del día: 1 USD = ${fmtDolar(v.dolarRate)} Bs</div>` : ''}<div class="text-xs mt-1 opacity-60">${(v.items||[]).map(i=>`${escapeHtml(i.nombre)} x${i.cantidad}${i.precioUsd ? ` ($${fmtDolar(i.precioUsd)})` : ''}`).join(', ')}</div></div>`;
     }
     let filtroCalendario = null;
     const mesNombre = m => ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'][m];
@@ -3705,9 +4313,50 @@
         }, 300);
     });
 
-    // Pantalla única de Ventas: al regresar de segundo plano siempre vuelve al módulo.
+    // Al regresar de segundo plano: refrescar el módulo actual.
+    // Fix: pantalla en blanco tras dejar la app mucho tiempo en background.
     document.addEventListener('visibilitychange', () => {
-        if(!kioscoVentas) return;
-        if(document.hidden) guardarSesionVenta();
-        else if(currentModule !== 'ventas') { currentModule = 'ventas'; renderVentas(); }
+        if(document.hidden) {
+            if(kioscoVentas) guardarSesionVenta();
+            return;
+        }
+        // Si hay kiosco y no estamos en ventas, forzar vuelta a ventas
+        if(kioscoVentas && currentModule !== 'ventas') {
+            currentModule = 'ventas';
+            renderVentas();
+            return;
+        }
+        // Modo normal: re-renderizar el módulo actual
+        refrescarModuloActual();
     });
+
+    // Re-renderiza el módulo actual sin cambiar de módulo
+    function refrescarModuloActual() {
+        if(!currentModule) return;
+        if(currentModule === 'home') renderHome();
+        else if(currentModule === 'ventas') renderVentas();
+        else if(currentModule === 'inventario') renderInventario();
+        else if(currentModule === 'clientes') renderCrud('clientes', 'Clientes', ['cedula','nombre','telefono','direccion','email']);
+        else if(currentModule === 'proveedores') renderCrud('proveedores', 'Proveedores', ['rif','nombre','telefono','contacto','direccion']);
+        else if(currentModule === 'gastos') renderCrud('gastos', 'Gastos', ['concepto','montoBs','categoria','fecha']);
+        else if(currentModule === 'empleados') renderCrud('empleados', 'Empleados', ['cedula','nombre','cargo','salarioBs','fechaContrato']);
+        else if(currentModule === 'reportes') renderReportes();
+        else if(currentModule === 'config') renderConfig();
+    }
+    window.jamRefrescarModuloActual = refrescarModuloActual;
+
+    // Llamado desde Android onResume() cuando la Activity se restaura
+    window.jamOnResume = function() {
+        if(!document.body || !document.body.children.length) return;
+        // Verificar que el DOM esté intacto
+        const appEl = document.getElementById('app') || document.body;
+        if(!appEl || appEl.children.length === 0) {
+            // DOM destruido, recargar todo desde cero
+            loadAllData().then(() => {
+                renderHome();
+                actualizarTasa(false);
+            });
+            return;
+        }
+        refrescarModuloActual();
+    };

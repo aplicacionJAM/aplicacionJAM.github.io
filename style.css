@@ -401,3 +401,34 @@ body.dark-mode{background:#000!important}
         .module-title.titulo-sostenido{position:relative;overflow:hidden}
         
         .module-title.titulo-sostenido::after{content:'';position:absolute;left:8px;bottom:4px;height:3px;width:calc(var(--kiosco-p,0%) - 16px);min-width:0;background:#dc2626;border-radius:3px;box-shadow:0 0 6px rgba(220,38,38,.6)}
+
+        /* ==================== BACKUP INTELIGENTE ==================== */
+        .backup-popup-fondo{position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;animation:fadeIn .3s}
+        .backup-popup{background:var(--card-bg,#fff);border-radius:16px;padding:24px;max-width:340px;width:90%;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,.3)}
+        .backup-popup-icono{font-size:2.5rem;margin-bottom:8px}
+        .backup-popup h3{margin:0 0 8px;font-size:1.1rem}
+        .backup-popup p{margin:0 0 16px;font-size:.85rem;opacity:.8}
+        .backup-popup-opciones{display:flex;flex-direction:column;gap:8px}
+        .backup-popup-btn{border:none;border-radius:12px;padding:12px;font-size:.9rem;cursor:pointer;font-weight:600}
+        .backup-popup-btn-principal{color:#fff}
+        .backup-popup-btn-secundario{background:rgba(59,130,246,.1);color:#3b82f6;border:1px solid rgba(59,130,246,.3)}
+        .backup-popup-btn-texto{background:none;color:#999;font-size:.8rem;font-weight:400}
+        @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+
+        /* ==================== IMÁGENES DE PRODUCTO ==================== */
+        .prod-thumb{width:72px;height:72px;min-width:72px;border-radius:12px;object-fit:cover;cursor:pointer;border:2px solid rgba(128,128,128,0.12);transition:transform .15s}
+        .prod-thumb:active{transform:scale(0.95)}
+        .prod-thumb-placeholder{display:flex;align-items:center;justify-content:center;background:rgba(128,128,128,0.06);border:2px dashed rgba(128,128,128,0.15)}
+        body.dark-mode .prod-thumb-placeholder{background:rgba(255,255,255,0.04);border-color:rgba(255,255,255,0.1)}
+        .prod-col-izq{display:flex;flex-direction:column;align-items:center;width:72px;min-width:72px}
+        .prod-btn-vertical{width:72px;height:24px;border:none;border-radius:6px;color:#fff;font-size:10px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:3px;transition:opacity .15s,transform .1s}
+        .prod-btn-vertical:active{transform:scale(0.95);opacity:0.8}
+        .prod-price-main{font-size:16px;font-weight:800;color:var(--accent,#3b82f6)}
+        .prod-price-usd{font-size:13px;font-weight:600;opacity:0.7}
+        .prod-offer-badge{font-size:12px;font-weight:700;color:#10b981}
+        .prod-btn-action{width:30px;height:30px;min-width:30px;border:none;border-radius:8px;color:#fff;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;opacity:0.85;transition:opacity .15s,transform .1s}
+        .prod-btn-action:active{transform:scale(0.9);opacity:1}
+        .product-checkbox{width:18px;height:18px;accent-color:var(--accent,#3b82f6);cursor:pointer}
+        .truncate{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+        .btn-tpl-pick{transition:border-color .15s,box-shadow .15s}
+        .btn-tpl-pick:hover{box-shadow:0 2px 8px rgba(0,0,0,0.15) !important}
