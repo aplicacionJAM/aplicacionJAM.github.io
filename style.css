@@ -55,6 +55,20 @@
         input,select,textarea{border-radius:20px;padding:10px 14px;width:100%;outline:none}
         .modal-form{position:fixed;inset:0;background:rgba(0,0,0,.5);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:1000;padding:16px}
         .modal-form-content{max-width:460px;width:100%;border-radius:28px;padding:20px;max-height:85vh;overflow:auto}
+        /* SOLO popups: campos de entrada marcados con borde en reposo y color del tema al enfocar.
+           Las ventanas principales y módulos conservan sus bordes originales de tema. */
+        .modal-form-content input:not([type=range]):not([type=checkbox]), .modal-form-content select, .modal-form-content textarea,
+        .kpi-popup input:not([type=range]):not([type=checkbox]), .kpi-popup select, .kpi-popup textarea,
+        .backup-popup input:not([type=range]):not([type=checkbox]), .backup-popup select, .backup-popup textarea{border:2px solid;border-color:#1e1e1e!important}
+        body.dark-mode .modal-form-content input:not([type=range]):not([type=checkbox]), body.dark-mode .modal-form-content select, body.dark-mode .modal-form-content textarea,
+        body.dark-mode .kpi-popup input:not([type=range]):not([type=checkbox]), body.dark-mode .kpi-popup select, body.dark-mode .kpi-popup textarea,
+        body.dark-mode .backup-popup input:not([type=range]):not([type=checkbox]), body.dark-mode .backup-popup select, body.dark-mode .backup-popup textarea{border-color:#e0e0e0!important}
+        .modal-form-content input:focus, .modal-form-content select:focus, .modal-form-content textarea:focus,
+        .kpi-popup input:focus, .kpi-popup select:focus, .kpi-popup textarea:focus,
+        .backup-popup input:focus, .backup-popup select:focus, .backup-popup textarea:focus{border-color:var(--accent,#3b82f6)!important;box-shadow:0 0 0 2px color-mix(in srgb,var(--accent,#3b82f6) 30%,transparent)}
+        /* Barra deslizante de % ganancia (bloqueada por defecto, se desbloquea al mantener 2s) */
+        .gan-range{cursor:not-allowed;opacity:.45;transition:opacity .2s ease}
+        .gan-range:not(.gan-bloqueada){cursor:pointer;opacity:1;accent-color:var(--accent,#3b82f6)}
         .color-circle{width:40px;height:40px;border-radius:50%;cursor:pointer;box-shadow:0 2px 5px rgba(0,0,0,.2)}
         .ticket-line{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed #ddd}
         .scroll-area{overflow-y:auto;max-height:none}
@@ -254,10 +268,9 @@ body.dark-mode{background:#000!important}
         .split-payment-row .remove-split:active{transform:scale(.92)}
         .btn-add-split{background:var(--accent);color:#fff;border:none;border-radius:40px;padding:6px 14px;font-size:.8rem;cursor:pointer;display:inline-flex;align-items:center;gap:4px}
         .btn-add-split:active{transform:scale(.96)}
-.split-total-match{text-align:center;font-size:.8rem;font-weight:600;padding:4px 0}
+        .split-total-match{text-align:center;font-size:.8rem;font-weight:600;padding:4px 0}
         .split-total-match.ok{color:#10b981}
         .split-total-match.err{color:#ef4444}
-        .split-restante-info{text-align:center;font-size:.85rem;font-weight:600;color:#f59e0b;background:rgba(245,158,11,0.1);border-radius:8px;padding:6px;margin-top:6px}
         #scannerVideo{width:100%;border-radius:12px;background:#000;max-height:300px;object-fit:cover}
         @keyframes scanPulse{0%{opacity:1}50%{opacity:.4}100%{opacity:1}}
         #scannerResult{animation:scanPulse 1.5s infinite}
@@ -415,29 +428,3 @@ body.dark-mode{background:#000!important}
         .backup-popup-btn-secundario{background:rgba(59,130,246,.1);color:#3b82f6;border:1px solid rgba(59,130,246,.3)}
         .backup-popup-btn-texto{background:none;color:#999;font-size:.8rem;font-weight:400}
         @keyframes fadeIn{from{opacity:0}to{opacity:1}}
-
-        /* ==================== IMÁGENES DE PRODUCTO ==================== */
-        .prod-thumb{width:72px;height:72px;min-width:72px;border-radius:12px;object-fit:cover;cursor:pointer;border:2px solid rgba(128,128,128,0.12);transition:transform .15s}
-        .prod-thumb:active{transform:scale(0.95)}
-        .prod-thumb-placeholder{display:flex;align-items:center;justify-content:center;background:rgba(128,128,128,0.06);border:2px dashed rgba(128,128,128,0.15)}
-        body.dark-mode .prod-thumb-placeholder{background:rgba(255,255,255,0.04);border-color:rgba(255,255,255,0.1)}
-        .prod-col-izq{display:flex;flex-direction:column;align-items:center;width:72px;min-width:72px}
-        .prod-btn-bar{display:flex;gap:6px;justify-content:center;padding-top:10px;margin-top:10px;border-top:1px solid rgba(128,128,128,0.1)}
-        body.dark-mode .prod-btn-bar{border-top-color:rgba(255,255,255,0.08)}
-        .prod-btn-bar-item{flex:1;height:28px;border:none;border-radius:8px;color:#fff;font-size:11px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:3px;transition:opacity .15s,transform .1s}
-        .prod-btn-bar-item:active{transform:scale(0.95);opacity:0.8}
-        .prod-price-main{font-size:16px;font-weight:800;color:var(--accent,#3b82f6)}
-        .prod-price-usd{font-size:13px;font-weight:600;opacity:0.7}
-        .prod-offer-badge{font-size:12px;font-weight:700;color:#10b981}
-        .prod-btn-action{width:30px;height:30px;min-width:30px;border:none;border-radius:8px;color:#fff;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;opacity:0.85;transition:opacity .15s,transform .1s}
-        .prod-btn-action:active{transform:scale(0.9);opacity:1}
-        .product-checkbox{width:18px;height:18px;accent-color:var(--accent,#3b82f6);cursor:pointer}
-        .truncate{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-        .toggle-switch{position:relative;display:inline-block;width:40px;height:22px;cursor:pointer;flex-shrink:0}
-        .toggle-switch input{opacity:0;width:0;height:0}
-        .toggle-slider{position:absolute;inset:0;background:#ccc;border-radius:22px;transition:background .2s}
-        .toggle-slider::before{content:'';position:absolute;width:18px;height:18px;left:2px;bottom:2px;background:#fff;border-radius:50%;transition:transform .2s}
-        .toggle-switch input:checked+.toggle-slider{background:var(--accent,#3b82f6)}
-        .toggle-switch input:checked+.toggle-slider::before{transform:translateX(18px)}
-        .btn-tpl-pick{transition:border-color .15s,box-shadow .15s}
-        .btn-tpl-pick:hover{box-shadow:0 2px 8px rgba(0,0,0,0.15) !important}
