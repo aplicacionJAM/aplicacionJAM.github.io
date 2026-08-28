@@ -61,6 +61,111 @@
     ];
     const fmtDolar = v => Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const parseBs = v => parseFloat(String(v).replace(/\./g, '').replace(',', '.')) || 0;
+    const fmtEnteroBs = s => s.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    function pintarBs(input) {
+        const dig = input.dataset.bsDig || '';
+        if(!dig) {
+            input.value = '';
+            input.dataset.bsPrev = '';
+            if(typeof document !== 'undefined' && document.activeElement === input) {
+                try { input.setSelectionRange(0, 0); } catch(e) {}
+            }
+            return;
+        }
+        const ent = fmtEnteroBs(dig.length > 2 ? (dig.slice(0, -2).replace(/^0+(?=\d)/, '') || '0') : '0');
+        const dec = dig.slice(-2).padStart(2, '0');
+        input.value = ent + ',' + dec;
+        input.dataset.bsPrev = input.value;
+        if(typeof document !== 'undefined' && document.activeElement === input) {
+            try { input.setSelectionRange(input.value.length, input.value.length); } catch(e) {}
+        }
+    }
+    function digDesdeTexto(s) {
+        const limpio = String(s).replace(/[^\d,]/g, '');
+        const idx = limpio.indexOf(',');
+        const ent = (idx !== -1 ? limpio.slice(0, idx) : limpio).replace(/^0+(?=\d)/, '') || '0';
+        const dec = idx !== -1 ? (limpio.slice(idx + 1).slice(0, 2) || '').padEnd(2, '0') : '';
+        let num = parseInt(ent, 10) * 100 + (dec ? parseInt(dec, 10) : 0);
+        if(!isFinite(num) || num < 0) num = 0;
+        num = Math.min(num, 99999999999999);
+        return String(num).slice(0, 14);
+    }
+    function sincerarDig(input) {
+        const t = input.value.split(',');
+        const ent = (t[0] || '').replace(/\D/g, '');
+        const dec = t.length > 1 ? (t[1] || '').replace(/\D/g, '').slice(0, 2) : '';
+        let num = parseInt(ent || '0', 10) * 100 + (dec ? parseInt(dec.padEnd(2, '0'), 10) : 0);
+        input.dataset.bsDig = (isFinite(num) && num > 0) ? String(Math.min(num, 99999999999999)).slice(0, 14) : '';
+        input.dataset.bsPrev = input.value;
+        input.dataset.bsReiniciar = '1';
+    }
+    function sincronizarBs(input) {
+        if(!input) return;
+        sincerarDig(input);
+    }
+    function fijarBs(input, numero) {
+        input.value = numero > 0 ? fmtPrecio(numero) : '';
+        sincronizarBs(input);
+    }
+    function reconciliarBs(input) {
+        if(input.dataset.bsOk !== '1' || input.dataset.bsPrev === undefined) return false;
+        const V = input.value, prev = input.dataset.bsPrev;
+        if(V === prev) return false;
+        let dig = input.dataset.bsDig || '';
+        let a = 0, L = Math.min(prev.length, V.length);
+        while(a < L && prev[a] === V[a]) a++;
+        let b = 0;
+        while(b < L - a && prev[prev.length - 1 - b] === V[V.length - 1 - b]) b++;
+        const ins = V.slice(a, V.length - b);
+        const del = prev.slice(a, prev.length - b);
+        if(ins && !del) {
+            if(ins.length === 1 && /^\d$/.test(ins)) {
+                if(input.dataset.bsReiniciar === '1') { dig = ''; input.dataset.bsReiniciar = '0'; }
+                if(dig.length < 14) dig += ins;
+            } else if(ins.length === 1 && (ins === ',' || ins === '.')) {
+                input.dataset.bsDig = dig;
+                pintarBs(input);
+                return true;
+            } else {
+                input.dataset.bsDig = digDesdeTexto(ins).slice(0, 14);
+                input.dataset.bsReiniciar = '0';
+                pintarBs(input);
+                return true;
+            }
+        } else if(del && !ins) {
+            const nDel = (del.match(/\d/g) || []).length;
+            if(nDel > 0) {
+                dig = dig.slice(0, Math.max(0, dig.length - nDel));
+                input.dataset.bsReiniciar = '0';
+            }
+        } else if(del && ins) {
+            if(ins.length === 1 && /^\d$/.test(ins) && (del.replace(/\D/g, '').length <= 1)) {
+                if(input.dataset.bsReiniciar === '1') { dig = ''; input.dataset.bsReiniciar = '0'; }
+                if(dig.length < 14) dig += ins;
+            } else {
+                input.dataset.bsDig = digDesdeTexto(V).slice(0, 14);
+                input.dataset.bsReiniciar = '0';
+                pintarBs(input);
+                return true;
+            }
+        } else {
+            return false;
+        }
+        input.dataset.bsDig = dig.slice(0, 14);
+        pintarBs(input);
+        return true;
+    }
+    function aplicarMascaraBs(input, placeholder) {
+        if(!input || input.dataset.bsOk) return;
+        input.dataset.bsOk = '1';
+        input.dataset.bsReiniciar = '1';
+        if(input.type !== 'text') input.type = 'text';
+        input.inputMode = 'decimal';
+        if(placeholder) input.placeholder = placeholder;
+        input.addEventListener('input', () => { if(reconciliarBs(input)) input.dispatchEvent(new Event('input', { bubbles: true })); });
+        input.addEventListener('paste', () => setTimeout(() => { input.dataset.bsDig = digDesdeTexto(input.value).slice(0, 14); input.dataset.bsReiniciar = '0'; pintarBs(input); }, 0));
+        if(input.value) sincronizarBs(input); else { input.dataset.bsDig = ''; input.dataset.bsPrev = ''; }
+    }
     const esOscuro = c => { let r=parseInt(c.slice(1,3),16), g=parseInt(c.slice(3,5),16), b=parseInt(c.slice(5,7),16); return(.299*r + .587*g + .114*b) < 128; };
     const normalizeText = s => (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
     const capitalizeWords = s => s.replace(/(^|[^\p{L}\p{N}])(\p{L})/gu, (m, p1, p2) => p1 + p2.toUpperCase());
@@ -579,6 +684,7 @@
     let carrito = [], tipoPago = 'pago_movil', clienteSeleccionadoId = null, clienteInputText = '', totalVenta = 0;
     let productosSeleccionados = new Set(), selectAllChecked = false;
     let pagosDivididos = [{ metodo: 'efectivo_bs', monto: 0 }];
+    let montoPagadoAuto = true;
     
     // ==================== PERSISTENCIA DE SESIÓN DE VENTA ====================
     function guardarSesionVenta() {
@@ -949,8 +1055,8 @@
                         <option value="pago_movil">📱 Pago Móvil</option>
                         <option value="pago_dividido">🔀 Pago dividido</option>
                     </select></div>
-                    <div id="cambioContainer" style="display:none"><div class="grid grid-cols-2 gap-2 mb-2"><input type="number" id="montoPagado" placeholder="Monto recibido (Bs)" class="border rounded-xl p-2"><button id="calcularCambio" class="btn-azul-redondeado btn-redondeado py-2">Calcular cambio</button></div><div id="cambioMensaje" class="text-green-600 text-sm mb-2"></div></div>
-                    <div id="pagoDivididoContainer" style="display:none"><div id="pagosDivididosLista"></div><button id="agregarPagoDividido" class="btn-add-split mt-1"><i class="fas fa-plus"></i> Agregar método</button><div id="splitTotalStatus" class="split-total-match mt-2"></div></div>
+                    <div id="cambioContainer" style="display:none"><div class="grid grid-cols-2 gap-2 mb-2"><input type="text" id="montoPagado" placeholder="Monto recibido (Bs)" class="border rounded-xl p-2"><button id="calcularCambio" class="btn-azul-redondeado btn-redondeado py-2">Calcular cambio</button></div><div id="cambioMensaje" class="text-green-600 text-sm mb-2"></div></div>
+                    <div id="pagoDivididoContainer" style="display:none"><div id="pagosDivididosLista"></div><button id="agregarPagoDividido" class="btn-add-split mt-1"><i class="fas fa-plus"></i> Agregar método</button><div id="splitRestanteInfo" class="split-restante-info" style="display:none;margin-top:6px"></div><div id="splitTotalStatus" class="split-total-match mt-2"></div></div>
                     <button id="finalizarVenta" class="btn-finalizar-venta">✅ Finalizar Venta</button>
                 </div>
             </div>
@@ -993,7 +1099,12 @@
         };
         document.getElementById('cambioContainer').style.display = tipoPago === 'efectivo_bs' ? 'block' : 'none';
         document.getElementById('pagoDivididoContainer').style.display = tipoPago === 'pago_dividido' ? 'block' : 'none';
-        if(document.getElementById('calcularCambio')) document.getElementById('calcularCambio').onclick = () => calcularCambio();
+        if(document.getElementById('calcularCambio')) {
+            const montoPagadoInput = document.getElementById('montoPagado');
+            aplicarMascaraBs(montoPagadoInput);
+            montoPagadoInput.addEventListener('input', () => { montoPagadoAuto = false; });
+            document.getElementById('calcularCambio').onclick = () => calcularCambio();
+        }
         renderPagosDivididosUI();
         document.getElementById('agregarPagoDividido').onclick = () => {
             pagosDivididos.push({ metodo: 'efectivo_bs', monto: 0 });
@@ -1017,6 +1128,7 @@
         }
         modal.innerHTML = `<div class="modal-form-content"><h3 class="text-xl font-bold mb-4">${id ? 'Editar' : 'Nuevo'} ${store === 'clientes' ? 'Cliente' : 'Elemento'}</h3>${camposHtml}<div class="flex gap-3 mt-4"><button id="guardarCrud" class="btn-azul-redondeado btn-redondeado flex-1 py-2 font-bold">Guardar</button><button id="cancelarCrud" class="btn-redondeado flex-1 py-2 bg-gray-200">Cancelar</button></div></div>`;
         document.body.appendChild(modal);
+        for(let i=0; i<campos.length; i++) if(campos[i] === 'montoBs' || campos[i] === 'salarioBs') aplicarMascaraBs(document.getElementById(`field${i}`));
         document.getElementById('cancelarCrud').onclick = () => modal.remove();
         document.getElementById('guardarCrud').onclick = async () => {
             const requeridos = { clientes:['nombre'], proveedores:['nombre'], gastos:['concepto'], empleados:['nombre'] };
@@ -1250,6 +1362,11 @@
     }
     window.abrirEditorCantidad = abrirEditorCantidad;
     
+    function actualizarMontoPagadoAuto(){
+        const mp = document.getElementById('montoPagado');
+        if(!mp || !montoPagadoAuto) return;
+        fijarBs(mp, totalVenta);
+    }
     function actualizarCarritoUI(){
         let cont = document.getElementById('carritoLista'), sub = document.getElementById('subtotal'), tot = document.getElementById('total'), ivaSpan = document.getElementById('iva');
         if(!cont) return;
@@ -1259,6 +1376,8 @@
             if(tot) tot.innerText = '0,00 Bs';
             if(ivaSpan) ivaSpan.innerText = '0,00 Bs';
             totalVenta = 0;
+            montoPagadoAuto = true;
+            actualizarMontoPagadoAuto();
             return;
         }
         let suma = 0, html = '';
@@ -1286,40 +1405,81 @@
         if(ivaSpan) ivaSpan.innerText = `${fmtPrecio(iva)} Bs`;
             if(tot) tot.innerText = `${fmtPrecio(total)} Bs`;
         totalVenta = total;
+        actualizarMontoPagadoAuto();
         window.eliminarDelCarrito = i => { carrito.splice(i,1); actualizarCarritoUI(); guardarSesionVenta(); };
     }
     
+    function filaSplitHTML(i, p) {
+        let metodos = ['efectivo_bs','dolares','tarjeta_debito','transferencia','pago_movil'];
+        let etiquetas = {'efectivo_bs':'💵 Efectivo Bs','dolares':'💵 Dólares','tarjeta_debito':'💳 Tarjeta Débito','transferencia':'🏦 Transferencia','pago_movil':'📱 Pago Móvil'};
+        let prevSuma = pagosDivididos.slice(0, i).reduce((s,p2) => s + (parseFloat(p2.monto)||0), 0);
+        let restoPrev = Math.max(0, totalVenta - prevSuma);
+        let placeholder = i === 0 ? 'Monto Bs' : `Restante: ${fmtPrecio(restoPrev)} Bs`;
+        return `<div class="split-payment-row">
+            <select onchange="cambiarMetodoSplit(${i},this.value)">${metodos.map(m => `<option value="${m}" ${m===p.metodo?'selected':''}>${etiquetas[m]}</option>`).join('')}</select>
+            <input type="text" inputmode="decimal" value="${p.monto ? fmtPrecio(p.monto) : ''}" placeholder="${placeholder}" oninput="cambiarMontoSplit(${i},this.value)">
+            ${pagosDivididos.length > 1 ? `<button class="remove-split" onclick="eliminarSplit(${i})"><i class="fas fa-times"></i></button>` : ''}
+        </div>`;
+    }
+    function sumaPagos(){ return pagosDivididos.reduce((s,p) => s + (parseFloat(p.monto)||0), 0); }
     function renderPagosDivididosUI(){
         let cont = document.getElementById('pagosDivididosLista');
         if(!cont) return;
-        let suma = 0;
-        cont.innerHTML = pagosDivididos.map((p,i) => {
-            let metodos = ['efectivo_bs','dolares','tarjeta_debito','transferencia','pago_movil'];
-            let etiquetas = {'efectivo_bs':'💵 Efectivo Bs','dolares':'💵 Dólares','tarjeta_debito':'💳 Tarjeta Débito','transferencia':'🏦 Transferencia','pago_movil':'📱 Pago Móvil'};
-            suma += parseFloat(p.monto) || 0;
-            return `<div class="split-payment-row">
-                <select onchange="cambiarMetodoSplit(${i},this.value)">${metodos.map(m => `<option value="${m}" ${m===p.metodo?'selected':''}>${etiquetas[m]}</option>`).join('')}</select>
-                <input type="number" step="any" min="0" value="${p.monto||''}" placeholder="Monto Bs" oninput="cambiarMontoSplit(${i},this.value)">
-                ${pagosDivididos.length > 1 ? `<button class="remove-split" onclick="eliminarSplit(${i})"><i class="fas fa-times"></i></button>` : ''}
-            </div>`;
-        }).join('');
-        let totalPagos = suma;
-        actualizarSplitStatus(totalPagos);
+        cont.innerHTML = pagosDivididos.map((p,i) => filaSplitHTML(i, p)).join('');
+        cont.querySelectorAll('input[type=text]').forEach(inp => aplicarMascaraBs(inp));
+        actualizarSplitStatus(sumaPagos());
+        actualizarRestanteInfo(sumaPagos());
     }
     function actualizarSplitStatus(totalPagos){
         let status = document.getElementById('splitTotalStatus');
         if(!status) return;
-        let diff = totalPagos - totalVenta;
-        if(Math.abs(diff) < 0.01) status.className = 'split-total-match ok';
-        else status.className = 'split-total-match err';
-        status.innerHTML = `Total asignado: ${fmtPrecio(totalPagos)} Bs ${Math.abs(diff) < 0.01 ? '✅' : `(faltan ${fmtPrecio(Math.abs(diff))} Bs)`}`;
+        let restante = totalVenta - totalPagos;
+        let completado = restante <= 0.01;
+        if(completado) {
+            status.className = 'split-total-match ok';
+            status.innerHTML = `✅ Total: ${fmtPrecio(totalPagos)} Bs ${totalPagos > totalVenta ? `(cambio: ${fmtPrecio(totalPagos - totalVenta)} Bs)` : '— Pago completo'}`;
+        } else {
+            status.className = 'split-total-match err';
+            status.innerHTML = `Pagado: ${fmtPrecio(totalPagos)} Bs — <strong>Faltan: ${fmtPrecio(Math.max(0, restante))} Bs</strong>`;
+        }
     }
-    window.cambiarMetodoSplit = (i, v) => { pagosDivididos[i].metodo = v; actualizarSplitStatus(pagosDivididos.reduce((s,p)=>s+(parseFloat(p.monto)||0),0)); };
-    window.cambiarMontoSplit = (i, v) => { pagosDivididos[i].monto = parseFloat(v) || 0; actualizarSplitStatus(pagosDivididos.reduce((s,p)=>s+(parseFloat(p.monto)||0),0)); };
-    window.eliminarSplit = (i) => { if(pagosDivididos.length > 1) { pagosDivididos.splice(i,1); renderPagosDivididosUI(); } };
+    function actualizarRestanteInfo(suma){
+        let info = document.getElementById('splitRestanteInfo');
+        if(!info) return;
+        let restante = Math.max(0, totalVenta - suma);
+        if(restante > 0.01 && suma > 0) {
+            info.style.display = 'block';
+            info.innerHTML = `💰 Restante por pagar: <strong>${fmtPrecio(restante)} Bs</strong>`;
+        } else {
+            info.style.display = 'none';
+        }
+    }
+    window.cambiarMetodoSplit = (i, v) => { pagosDivididos[i].metodo = v; renderPagosDivididosUI(); guardarSesionVenta(); };
+    window.cambiarMontoSplit = (i, v) => {
+        pagosDivididos[i].monto = parseBs(v);
+        if(pagosDivididos[i].auto) pagosDivididos[i].auto = false;
+        let sumaManual = pagosDivididos.reduce((s,p) => s + (p.auto ? 0 : (parseFloat(p.monto)||0)), 0);
+        let restante = Math.max(0, totalVenta - sumaManual);
+        let autoIdx = pagosDivididos.findIndex(p => p.auto);
+        if(autoIdx === -1 && restante > 0.01 && pagosDivididos.length === 1 && sumaManual > 0) {
+            pagosDivididos.push({ metodo: 'pago_movil', monto: restante, auto: true });
+            autoIdx = pagosDivididos.length - 1;
+            let cont = document.getElementById('pagosDivididosLista');
+            if(cont) { cont.insertAdjacentHTML('beforeend', filaSplitHTML(autoIdx, pagosDivididos[autoIdx])); let nuevoInp = cont.lastElementChild?.querySelector('input[type=text]'); if(nuevoInp) aplicarMascaraBs(nuevoInp); }
+        }
+        if(autoIdx !== -1 && autoIdx !== i) {
+            pagosDivididos[autoIdx].monto = restante;
+            let rows = document.querySelectorAll('#pagosDivididosLista .split-payment-row');
+            if(rows[autoIdx]) fijarBs(rows[autoIdx].querySelector('input[type=text]'), restante);
+        }
+        actualizarSplitStatus(sumaPagos());
+        actualizarRestanteInfo(sumaPagos());
+        guardarSesionVenta();
+    };
+    window.eliminarSplit = (i) => { if(pagosDivididos.length > 1) { pagosDivididos.splice(i,1); renderPagosDivididosUI(); guardarSesionVenta(); } };
     
     function calcularCambio(){
-        let pagado = parseFloat(document.getElementById('montoPagado')?.value || '0');
+        let pagado = parseBs(document.getElementById('montoPagado')?.value || '0');
         let cambio = document.getElementById('cambioMensaje');
         if(!isNaN(pagado) && pagado >= totalVenta) cambio.innerHTML = `Cambio: ${fmtPrecio(pagado - totalVenta)} Bs`;
         else cambio.innerHTML = 'Monto insuficiente';
@@ -1327,10 +1487,19 @@
     
     async function finalizarVenta(){
         if(carrito.length === 0) { alert("Carrito vacío"); return; }
-        if(!(await jamConfirm(`¿Desea finalizar la venta por ${fmtPrecio(totalVenta)} Bs?`))) return;
+        let confirmMsg = `¿Finalizar venta por ${fmtPrecio(totalVenta)} Bs?`;
+        if(tipoPago === 'pago_dividido') {
+            let suma = pagosDivididos.reduce((s,p) => s + (parseFloat(p.monto) || 0), 0);
+            let desglose = pagosDivididos.filter(p => (parseFloat(p.monto) || 0) > 0).map(p => {
+                let etiq = {'efectivo_bs':'💵 Efectivo','dolares':'💵 Dólares','tarjeta_debito':'💳 Tarjeta','transferencia':'🏦 Transferencia','pago_movil':'📱 Pago Móvil'};
+                return `${etiq[p.metodo] || p.metodo}: ${fmtPrecio(p.monto)} Bs`;
+            }).join('\n');
+            confirmMsg = `Venta: ${fmtPrecio(totalVenta)} Bs\n\n${desglose}\n\nTotal pagado: ${fmtPrecio(suma)} Bs${suma > totalVenta ? `\nCambio: ${fmtPrecio(suma - totalVenta)} Bs` : ''}`;
+        }
+        if(!(await jamConfirm(confirmMsg))) return;
         let pagado = totalVenta, detallePagos = null;
         if(tipoPago === 'efectivo_bs') {
-            pagado = parseFloat(document.getElementById('montoPagado')?.value);
+            pagado = parseBs(document.getElementById('montoPagado')?.value);
             if(isNaN(pagado) || pagado < totalVenta) { alert("Monto insuficiente"); return; }
         } else if(tipoPago === 'pago_dividido') {
             pagado = pagosDivididos.reduce((s,p) => s + (parseFloat(p.monto) || 0), 0);
@@ -1399,6 +1568,7 @@
         clienteInputText = '';
         tipoPago = 'pago_movil';
         pagosDivididos = [{ metodo: 'efectivo_bs', monto: 0 }];
+        montoPagadoAuto = true;
         guardarSesionVenta();
         if(document.getElementById('clienteInput')) document.getElementById('clienteInput').value = '';
         if(document.getElementById('clienteIdHidden')) document.getElementById('clienteIdHidden').value = '';
@@ -2001,7 +2171,7 @@
             let imgHtml = p.imagen
                 ? `<img src="${p.imagen}" class="prod-thumb" onclick="event.stopPropagation();verCartelPromo('${p.id}')" title="Ver cartel promocional">`
                 : `<div class="prod-thumb prod-thumb-placeholder" onclick="event.stopPropagation();verCartelPromo('${p.id}')" title="Sin imagen"><i class="fas fa-image" style="font-size:24px;opacity:0.2"></i></div>`;
-            return `<div class="product-card"><div class="flex items-start gap-3"><div class="prod-col-izq">${imgHtml}<div class="flex flex-col gap-1 mt-1"><button onclick="mostrarFormProducto('${p.id}')" class="prod-btn-vertical" style="background:var(--accent,#3b82f6)">✏️ Editar</button><button onclick="copiarProducto('${p.id}')" class="prod-btn-vertical" style="background:#8b5cf6">📋 Copiar</button><button onclick="eliminarProducto('${p.id}')" class="prod-btn-vertical" style="background:#ef4444">🗑️ Eliminar</button></div></div><div class="flex-1 min-w-0"><div class="flex items-center justify-between gap-2"><span class="font-bold text-base truncate">${escapeHtml(p.nombre)}</span><span class="text-xs opacity-60 whitespace-nowrap">${escapeHtml(p.codigo||'')}</span></div><div class="flex items-center gap-2 mt-1"><span class="prod-price-main">${fmtPrecio(preciosProducto(p).normalBs)} <span class="text-sm font-semibold">Bs</span></span><span class="prod-price-usd">$${preciosProducto(p).normalUsd}</span><span class="text-xs opacity-50">📦 ${p.stock}</span></div>${tieneDescuentoProducto(p) ? `<div class="flex items-center gap-2 mt-1"><span class="prod-offer-badge">🏷️ ${fmtPrecio(preciosProducto(p).desc.bs)} Bs / $${preciosProducto(p).desc.usd}</span><span class="text-xs" style="color:#10b981">-${typeof p.porcentajeDescuento === 'number' ? p.porcentajeDescuento : 0}%</span></div>` : ''}${(p.descuentoProveedor && p.descuentoProveedor > 0) ? `<div class="text-xs mt-1" style="color:#f59e0b">📦 Prov: $${fmtPrecio(preciosProducto(p).costoNetoUsd)} <span style="text-decoration:line-through;opacity:0.5">$${fmtPrecio(preciosProducto(p).costoUsd)}</span> (-${p.descuentoProveedor}%)</div>` : ''}<div class="text-xs opacity-50 mt-1">🏷️ ${escapeHtml(p.categoria||'')} · 🚚 ${escapeHtml(p.proveedor||'—')}</div></div><input type="checkbox" class="product-checkbox" data-id="${p.id}" ${checked?'checked':''} onchange="toggleProductoSeleccionado('${p.id}',this.checked)" style="margin-top:6px"></div></div>`;
+            return `<div class="product-card"><div class="flex items-start gap-3">${imgHtml}<div class="flex-1 min-w-0"><div class="flex items-center justify-between gap-2"><span class="font-bold text-base truncate">${escapeHtml(p.nombre)}</span><span class="text-xs opacity-60 whitespace-nowrap">${escapeHtml(p.codigo||'')}</span></div><div class="flex items-center gap-2 mt-1"><span class="prod-price-main">${fmtPrecio(preciosProducto(p).normalBs)} <span class="text-sm font-semibold">Bs</span></span><span class="prod-price-usd">$${preciosProducto(p).normalUsd}</span><span class="text-xs opacity-50">📦 ${p.stock}</span></div>${tieneDescuentoProducto(p) ? `<div class="flex items-center gap-2 mt-1"><span class="prod-offer-badge">🏷️ ${fmtPrecio(preciosProducto(p).desc.bs)} Bs / $${preciosProducto(p).desc.usd}</span><span class="text-xs" style="color:#10b981">-${typeof p.porcentajeDescuento === 'number' ? p.porcentajeDescuento : 0}%</span></div>` : ''}${(p.descuentoProveedor && p.descuentoProveedor > 0) ? `<div class="text-xs mt-1" style="color:#f59e0b">📦 Prov: $${fmtPrecio(preciosProducto(p).costoNetoUsd)} <span style="text-decoration:line-through;opacity:0.5">$${fmtPrecio(preciosProducto(p).costoUsd)}</span> (-${p.descuentoProveedor}%)</div>` : ''}<div class="text-xs opacity-50 mt-1">🏷️ ${escapeHtml(p.categoria||'')} · 🚚 ${escapeHtml(p.proveedor||'—')}</div></div><input type="checkbox" class="product-checkbox" data-id="${p.id}" ${checked?'checked':''} onchange="toggleProductoSeleccionado('${p.id}',this.checked)" style="margin-top:6px"></div><div class="prod-btn-bar"><button onclick="mostrarFormProducto('${p.id}')" class="prod-btn-bar-item" style="background:var(--accent,#3b82f6)">✏️ Editar</button><button onclick="copiarProducto('${p.id}')" class="prod-btn-bar-item" style="background:#8b5cf6">📋 Copiar</button><button onclick="eliminarProducto('${p.id}')" class="prod-btn-bar-item" style="background:#ef4444">🗑️ Eliminar</button></div></div>`;
         }).join('');
         actualizarToolbarBatch();
     }
@@ -2129,12 +2299,12 @@
             <div class="mb-3"><label>📷 Código de barras</label><div class="flex gap-2"><input id="codigo" value="${escapeHtml(prod?.codigo||'')}" class="border-2 rounded-xl p-2 flex-1" style="border-color:var(--accent,#3b82f6)"><button id="btnScanProducto" class="btn-icon-cuadrado" title="Escanear con cámara"><i class="fas fa-camera"></i></button></div></div>
             <div class="mb-3"><label>Categoría</label><input id="categoria" value="${escapeHtml(prod?.categoria||'')}" class="border rounded-xl p-2 w-full"></div>
             <div class="mb-3 relative"><label>Proveedor</label><input id="proveedor" value="${escapeHtml(prod?.proveedor||'')}" placeholder="Escriba para buscar..." class="border rounded-xl p-2 w-full" autocomplete="off"><div id="sugProveedor" style="display:none;position:absolute;left:0;right:0;z-index:100;background:var(--bg,#fff);border:1px solid rgba(128,128,128,0.2);border-radius:12px;max-height:150px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.1)"></div></div>
-            <div class="mb-3"><label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="descProvOn" ${descProvIni > 0 ? 'checked' : ''}> <span>🏷️ Descuento del proveedor</span></label><div id="descProvDiv" style="${descProvIni > 0 ? 'display:block' : 'display:none'}"><label>% de descuento del proveedor</label><input type="number" id="descProvInput" step="any" min="0" max="99.99" value="${descProvIni || ''}" placeholder="Ej: 15" class="border rounded-xl p-2 w-full"></div></div>
+            <div class="mb-2"><div class="flex items-center justify-between"><label class="font-bold text-sm">🏷️ Descuento del proveedor</label><label class="toggle-switch"><input type="checkbox" id="descProvOn" ${descProvIni > 0 ? 'checked' : ''}><span class="toggle-slider"></span></label></div><div id="descProvDiv" style="${descProvIni > 0 ? '' : 'display:none'}"><div class="flex items-center gap-2 mt-1"><label class="text-xs opacity-70 whitespace-nowrap">% descuento</label><input type="number" id="descProvInput" step="any" min="0" max="99.99" value="${descProvIni || ''}" placeholder="Ej: 15" class="border rounded-xl p-2 flex-1 text-sm"></div></div></div>
             <div class="mb-3"><label>Stock</label><input type="number" id="stock" value="${prod?.stock||0}" class="border rounded-xl p-2 w-full"></div>
             <div class="mb-3"><label>💵 Costo del producto (USD)</label><input type="number" id="compraUsd" step="any" min="0" value="${prod?.costoRealUsd||''}" placeholder="Ej: 3.00" class="border rounded-xl p-2 w-full"></div>
             <div id="costoNetoInfo" class="text-xs mb-2" style="color:#f59e0b;${descProvIni > 0 ? '' : 'display:none'}">📦 Costo neto prov: $<span id="costoNetoMostrar">${(prIni.costoNetoUsd || 0).toFixed(2)}</span> <span id="costoNetoAntes" style="text-decoration:line-through;opacity:0.6">${descProvIni > 0 ? '$' + (prIni.costoUsd || 0).toFixed(2) : ''}</span></div>
             <div class="mb-3"><label>💰 % de Ganancia</label><input type="range" id="gananciaRange" min="5" max="100" step="1" value="${ganIni}" class="w-full"><input type="number" id="gananciaInput" step="any" min="5" max="100" value="${ganIni}" class="border rounded-xl p-2 w-full"></div>
-            <div class="mb-3"><label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="descOn" ${descPct > 0 ? 'checked' : ''}> <span>🏷️ Aplicar descuento al producto (oferta)</span></label><div id="descDiv" style="${descPct > 0 ? 'display:block' : 'display:none'}"><label>% de Descuento</label><input type="number" id="descuentoInput" step="any" min="0" max="99.99" value="${descPct || ''}" placeholder="Ej: 10" class="border rounded-xl p-2 w-full"></div></div>
+            <div class="mb-2"><div class="flex items-center justify-between"><label class="font-bold text-sm">🏷️ Oferta del producto</label><label class="toggle-switch"><input type="checkbox" id="descOn" ${descPct > 0 ? 'checked' : ''}><span class="toggle-slider"></span></label></div><div id="descDiv" style="${descPct > 0 ? '' : 'display:none'}"><div class="flex items-center gap-2 mt-1"><label class="text-xs opacity-70 whitespace-nowrap">% descuento</label><input type="number" id="descuentoInput" step="any" min="0" max="99.99" value="${descPct || ''}" placeholder="Ej: 10" class="border rounded-xl p-2 flex-1 text-sm"></div></div></div>
             <div class="rounded-xl p-3 mb-3" style="background:rgba(128,128,128,0.08)">
                 <p class="font-bold text-sm mb-2" style="color:var(--accent)">💲 Precios calculados <span class="text-xs opacity-60">(tasa: 1 USD = ${fmtDolar(tasa)} Bs)</span></p>
                 <div class="text-xs space-y-2">
@@ -2166,6 +2336,7 @@
         const descProvDiv = document.getElementById('descProvDiv'), costoNetoInfo = document.getElementById('costoNetoInfo');
         const costoNetoMostrar = document.getElementById('costoNetoMostrar'), costoNetoAntes = document.getElementById('costoNetoAntes');
         let manual = { costo:false, venta:false, desc:false };
+        aplicarMascaraBs(compraBs); aplicarMascaraBs(ventaBs); aplicarMascaraBs(descBs);
         const tRedondeo = (v) => Math.round(v * 100) / 100;
         function recalcular(){
             const tasaV = D.config.dolarRate || 1;
@@ -2177,16 +2348,18 @@
             let descProvVal = descProvOn.checked ? (parseFloat(descProvInput.value) || 0) : 0;
             if(descProvVal < 0) descProvVal = 0; if(descProvVal >= 100) descProvVal = 99.99;
             const costoNetoUsd = costoUsdVal > 0 ? tRedondeo(costoUsdVal * (1 - descProvVal / 100)) : 0;
-            if(!manual.costo) compraBs.value = costoNetoUsd > 0 ? fmtPrecio(tRedondeo(costoNetoUsd * tasaV)) : '';
+            if(!manual.costo){ compraBs.value = costoNetoUsd > 0 ? fmtPrecio(tRedondeo(costoNetoUsd * tasaV)) : ''; sincronizarBs(compraBs); }
             const precioUsd = costoNetoUsd > 0 ? tRedondeo(costoNetoUsd * (1 + ganVal / 100)) : 0;
             if(!manual.venta){
                 ventaUsd.value = precioUsd > 0 ? precioUsd.toFixed(2) : '';
                 ventaBs.value = precioUsd > 0 ? fmtPrecio(tRedondeo(precioUsd * tasaV)) : '';
+                sincronizarBs(ventaBs);
             }
             if(!manual.desc){
                 const dUsd = (precioUsd > 0 && descVal > 0) ? tRedondeo(precioUsd * (1 - descVal / 100)) : 0;
                 descUsd.value = dUsd > 0 ? dUsd.toFixed(2) : '';
                 descBs.value = dUsd > 0 ? fmtPrecio(tRedondeo(dUsd * tasaV)) : '';
+                sincronizarBs(descBs);
             }
             descDiv.style.display = descOn.checked ? 'block' : 'none';
             descProvDiv.style.display = descProvOn.checked ? 'block' : 'none';
@@ -2210,9 +2383,9 @@
         descProvInput.oninput = () => { try{recalcular();}catch(e){console.error('recalc descProvInput',e);} };
         compraBs.oninput = () => { manual.costo = true; try{recalcular();}catch(e){console.error('recalc compraBs',e);} };
         ventaBs.oninput = () => { manual.venta = true; const bs = parseBs(ventaBs.value); if(bs > 0) ventaUsd.value = (bs / (D.config.dolarRate || 1)).toFixed(2); try{recalcular();}catch(e){console.error('recalc ventaBs',e);} };
-        ventaUsd.oninput = () => { manual.venta = true; const usd = parseFloat(ventaUsd.value); if(!isNaN(usd) && usd > 0) ventaBs.value = fmtPrecio(tRedondeo(usd * (D.config.dolarRate || 1))); try{recalcular();}catch(e){console.error('recalc ventaUsd',e);} };
+        ventaUsd.oninput = () => { manual.venta = true; const usd = parseFloat(ventaUsd.value); if(!isNaN(usd) && usd > 0) { ventaBs.value = fmtPrecio(tRedondeo(usd * (D.config.dolarRate || 1))); sincronizarBs(ventaBs); } try{recalcular();}catch(e){console.error('recalc ventaUsd',e);} };
         descBs.oninput = () => { manual.desc = true; const bs = parseBs(descBs.value); if(bs > 0) descUsd.value = (bs / (D.config.dolarRate || 1)).toFixed(2); try{recalcular();}catch(e){console.error('recalc descBs',e);} };
-        descUsd.oninput = () => { manual.desc = true; const usd = parseFloat(descUsd.value); if(!isNaN(usd) && usd > 0) descBs.value = fmtPrecio(tRedondeo(usd * (D.config.dolarRate || 1))); try{recalcular();}catch(e){console.error('recalc descUsd',e);} };
+        descUsd.oninput = () => { manual.desc = true; const usd = parseFloat(descUsd.value); if(!isNaN(usd) && usd > 0) { descBs.value = fmtPrecio(tRedondeo(usd * (D.config.dolarRate || 1))); sincronizarBs(descBs); } try{recalcular();}catch(e){console.error('recalc descUsd',e);} };
         recalcBtn.onclick = () => { manual = { costo:false, venta:false, desc:false }; try{recalcular();}catch(e){console.error('recalc error',e);} };
         const proveedorInput = document.getElementById('proveedor'), sugProvDiv = document.getElementById('sugProveedor');
         if(proveedorInput && sugProvDiv) {
@@ -2333,6 +2506,8 @@
         let colorNombre = '';
         let colorPrecio = '';
         let duracionOferta = 'dia';
+        let mostrarBs = true;
+        let mostrarUsd = true;
 
         const DURACIONES = [
             { id:'dia', label:'Hoy', dias:0 },
@@ -2374,9 +2549,10 @@
                     ${p.categoria ? `<div style="font-size:11px;color:${subColor}">${escapeHtml(p.categoria)}</div>` : ''}
                 </div>
                 <div style="padding:14px 16px;text-align:center">
-                    <div style="font-size:28px;font-weight:900;color:${precioColor};line-height:1">${fmtPrecio(pr.normalBs)} <span style="font-size:14px;font-weight:600">Bs</span></div>
-                    <div style="font-size:15px;font-weight:600;color:${precioColor};opacity:0.85;margin-top:2px">$${fmtPrecio(pr.normalUsd)} USD</div>
-                    ${pr.tieneDesc ? `<div style="margin-top:10px;padding:8px 12px;border-radius:8px;border:2px dashed ${tpl.accentColor};display:inline-block"><div style="font-size:12px;font-weight:700;color:${tpl.accentColor};text-transform:uppercase;letter-spacing:1px">🏷️ Oferta especial</div><div style="font-size:22px;font-weight:900;color:${precioColor};margin-top:2px">${fmtPrecio(pr.desc.bs)} Bs <span style="font-size:12px">/ $${pr.desc.usd} USD</span></div><div style="font-size:11px;color:${subColor}">Ahorra ${typeof p.porcentajeDescuento === 'number' ? p.porcentajeDescuento : 0}%</div></div>` : ''}
+                    ${mostrarBs ? `<div style="font-size:28px;font-weight:900;color:${precioColor};line-height:1">${fmtPrecio(pr.normalBs)} <span style="font-size:14px;font-weight:600">Bs</span></div>` : ''}
+                    ${mostrarUsd ? `<div style="font-size:15px;font-weight:600;color:${precioColor};opacity:0.85;margin-top:2px">$${fmtPrecio(pr.normalUsd)} USD</div>` : ''}
+                    ${!mostrarBs && !mostrarUsd ? `<div style="font-size:28px;font-weight:900;color:${precioColor};line-height:1">${fmtPrecio(pr.normalBs)} Bs / $${fmtPrecio(pr.normalUsd)}</div>` : ''}
+                    ${pr.tieneDesc ? `<div style="margin-top:10px;padding:8px 12px;border-radius:8px;border:2px dashed ${tpl.accentColor};display:inline-block"><div style="font-size:12px;font-weight:700;color:${tpl.accentColor};text-transform:uppercase;letter-spacing:1px">🏷️ Oferta especial</div><div style="font-size:22px;font-weight:900;color:${precioColor};margin-top:2px">${mostrarBs ? fmtPrecio(pr.desc.bs)+' Bs' : ''}${mostrarBs && mostrarUsd ? ' / ' : ''}${mostrarUsd ? '$'+fmtPrecio(pr.desc.usd)+' USD' : ''}</div><div style="font-size:11px;color:${subColor}">Ahorra ${typeof p.porcentajeDescuento === 'number' ? p.porcentajeDescuento : 0}%</div></div>` : ''}
                 </div>
                 <div style="text-align:center;padding:8px 16px 14px;font-size:10px;color:${subColor};border-top:1px solid ${borderColor}">Válido hasta: ${fechaValidez} · Precio sujeto a cambio por tasa</div>
             </div>`;
@@ -2421,6 +2597,10 @@
                     <div style="display:flex;gap:4px;flex-wrap:wrap">${durOpts}</div>
                     ${customDateInput}
                 </div>
+                <div class="flex gap-3 mt-3">
+                    <div class="flex-1"><div class="flex items-center justify-between"><span class="text-xs font-bold" style="opacity:0.6">Bs (Bolívares)</span><label class="toggle-switch"><input type="checkbox" id="toggleBs" ${mostrarBs ? 'checked' : ''}><span class="toggle-slider"></span></label></div></div>
+                    <div class="flex-1"><div class="flex items-center justify-between"><span class="text-xs font-bold" style="opacity:0.6">USD (Dólares)</span><label class="toggle-switch"><input type="checkbox" id="toggleUsd" ${mostrarUsd ? 'checked' : ''}><span class="toggle-slider"></span></label></div></div>
+                </div>
                 <div class="flex gap-2 mt-3">
                     <button id="shareCartelBtn" class="btn-azul-redondeado btn-redondeado flex-1 py-2 font-bold text-sm">📤 Compartir</button>
                     <button id="downloadCartelBtn" class="btn-redondeado flex-1 py-2 text-sm" style="border:1px solid var(--accent,#3b82f6)">💾 Guardar</button>
@@ -2437,6 +2617,10 @@
             modal.querySelectorAll('.btn-dur-pick').forEach(btn => {
                 btn.onclick = () => { duracionOferta = btn.dataset.dur; modal.remove(); abrirModal(); };
             });
+            const toggleBs = modal.querySelector('#toggleBs');
+            const toggleUsd = modal.querySelector('#toggleUsd');
+            if(toggleBs) toggleBs.addEventListener('change', () => { mostrarBs = toggleBs.checked; modal.remove(); abrirModal(); });
+            if(toggleUsd) toggleUsd.addEventListener('change', () => { mostrarUsd = toggleUsd.checked; modal.remove(); abrirModal(); });
             const colorNombreInput = modal.querySelector('#colorNombreInput');
             const colorPrecioInput = modal.querySelector('#colorPrecioInput');
             const fechaCustomInput = modal.querySelector('#fechaCustomInput');
