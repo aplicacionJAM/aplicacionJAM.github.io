@@ -3995,6 +3995,7 @@
         }, { passive: true });
     })();
     loadAllData().then(() => {
+        if(window.JAMUltimateTrial && window.JAMUltimateTrial.bloquearInmediato()) return;
         if(verificarPruebaInicio()) return;
         if(kioscoVentas) {
             localStorage.setItem('jam_last_module', 'ventas');
