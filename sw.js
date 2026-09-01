@@ -23,9 +23,6 @@ const STATIC_ASSETS = [
   "./style.css",
   "./quagga.min.js",
   "./web-bridge.js",
-  "./qrcode.min.js",
-  "./jsqr.js",
-  "./sync-client.js",
   "./app.js"
 ];
 

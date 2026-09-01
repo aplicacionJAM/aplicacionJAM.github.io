@@ -714,13 +714,6 @@
         saveConfig();
         cargarSesionVenta();
         setTimeout(verificarStockBajo, 1000);
-
-        // Firebase sync: init + auto-sync
-        if (window.JAMSync2) {
-            window.JAMSync2.init().then(ok => {
-                if (ok) window.JAMSync2.startAutoSync();
-            });
-        }
     }
     
     function saveConfig(){ saveToStorage(STORAGE_KEYS.config, D.config); applyTheme(); actualizarManifestPWA(); }
@@ -1603,6 +1596,23 @@
         }
         mensaje += `━━━━━━━━━━━━━━━━━━━━\n🙏 ¡Gracias por su compra!\n${D.config.empresa.nombre}`;
         try { await navigator.clipboard.writeText(mensaje); mostrarNotificacion('📋 Ticket copiado al portapapeles', 'success'); } catch(e) {}
+        // APK: copiar la IMAGEN del ticket al portapapeles y abrir WhatsApp,
+        // para que el usuario elija el contacto y pegue la imagen. (Solo en la
+        // APK; la web mantiene el flujo con número + wa.me)
+        if (typeof window !== 'undefined' && window.AndroidBridge && typeof AndroidBridge.copiarImagenWhatsApp === 'function') {
+            try {
+                const canvas = await capturarTicketImagen();
+                if (canvas) {
+                    const dataUrl = canvas.toDataURL('image/png');
+                    const base64 = dataUrl.split(',')[1];
+                    AndroidBridge.copiarImagenWhatsApp(base64);
+                } else {
+                    if (typeof AndroidBridge.copiarPortapapeles === 'function') AndroidBridge.copiarPortapapeles(mensaje);
+                    AndroidBridge.abrirWhatsApp();
+                }
+            } catch(e) { console.error('whatsapp imagen nativo', e); }
+            return;
+        }
         const telefono = await jamPrompt("📱 Ingrese el número de teléfono (ej: 584121234567):");
         if(telefono) {
             let numeroLimpio = telefono.replace(/[^0-9]/g, '');
@@ -2019,7 +2029,7 @@
     window.mostrarConvertidor = () => {
         if(window.convMod) window.convMod.remove();
         let m = document.createElement('div'); m.className = 'modal-form';
-        m.innerHTML = `<div class="modal-form-content"><h3 class="font-bold text-lg mb-3">🔄 Convertidor Bs ↔ USD</h3><div class="mb-3"><label>Bolívares (Bs)</label><input type="text" inputmode="decimal" id="bsInput" placeholder="Bs" class="border p-2 rounded w-full"></div><div class="mb-3"><label>Dólares (USD)</label><input type="text" inputmode="decimal" id="usdInput" placeholder="USD" class="border p-2 rounded w-full"></div><p class="text-sm">Tasa: 1 USD = ${fmtDolar(D.config.dolarRate)} Bs</p><button id="closeConv" class="mt-3 w-full py-2 rounded-xl bg-gray-200">Cerrar</button></div>`;
+        m.innerHTML = `<div class="modal-form-content"><h3 class="font-bold text-lg mb-3">🔄 Convertidor Bs ↔ USD</h3><div class="mb-3"><label>Bolívares (Bs)</label><input type="text" inputmode="decimal" id="bsInput" placeholder="Bs" class="border rounded-xl p-2 w-full"></div><div class="mb-3"><label>Dólares (USD)</label><input type="text" inputmode="decimal" id="usdInput" placeholder="USD" class="border rounded-xl p-2 w-full"></div><p class="text-sm">Tasa: 1 USD = ${fmtDolar(D.config.dolarRate)} Bs</p><button id="closeConv" class="mt-3 w-full py-2 rounded-xl bg-gray-200">Cerrar</button></div>`;
         document.body.appendChild(m);
         window.convMod = m;
         let bs = document.getElementById('bsInput'), usd = document.getElementById('usdInput');
@@ -2425,6 +2435,10 @@
             nuevo = true;
         }
         if(tasa > 0) registrarTasaDia(tasa, hoy, horaActual()).catch(() => {});
+        // Mantener el widget de la tasa al día (solo en el APK; en web no existe el bridge).
+        if (window.AndroidBridge && typeof AndroidBridge.guardarTasaWidget === 'function') {
+            try { AndroidBridge.guardarTasaWidget(String(tasa), D.config.lastUpdate || ''); } catch(e) {}
+        }
         return nuevo;
     }
     
@@ -3376,8 +3390,6 @@
                 <div class="config-section"><button id="btnToggleSeguridad" class="btn-azul-redondeado btn-redondeado w-full mb-2 py-2">🔒 Seguridad (PIN)</button><div id="panelSeguridad" style="display:none;" class="mt-2 config-inner"><div class="mb-2"><label>PIN de acceso (4 dígitos, dejar vacío para deshabilitar)</label><input type="password" id="pinInput" value="${escapeHtml(D.config.pin)}" maxlength="4" pattern="[0-9]*" inputmode="numeric" class="border rounded-xl p-2 w-full text-center text-2xl tracking-widest" placeholder="****"></div><button id="guardarPinBtn" class="btn-azul-redondeado btn-redondeado w-full py-2">🔐 Guardar PIN</button><p class="text-xs text-center mt-2 opacity-60">${D.config.pin ? '✅ PIN activo. Se pedirá al abrir la app.' : 'ℹ️ Sin PIN. Cualquiera puede acceder.'}</p></div></div>
                 <div class="config-section"><button id="btnToggleColores" class="btn-azul-redondeado btn-redondeado w-full mb-2 py-2">🎨 Temas de color</button><div id="panelColores" style="display:none;" class="mt-2 config-inner"><div class="flex flex-wrap justify-center gap-2" id="paletaColores" style="max-width:290px;margin:0 auto"></div></div></div>
                 <div class="config-section"><button id="btnToggleBackup" class="btn-azul-redondeado btn-redondeado w-full mb-2 py-2">💾 Copia de seguridad</button><div id="panelBackup" style="display:none;" class="mt-2 config-inner"><div class="flex flex-col gap-3">${esAppNativa() ? `<div class="rounded-xl p-3" style="background:rgba(14,165,233,0.08);border:1px solid rgba(14,165,233,0.3)"><p class="text-sm font-semibold mb-1">📁 Carpeta de la aplicación</p><p id="carpetaEstado" class="text-xs opacity-70 mb-2">ℹ️ Elija una carpeta para guardar tickets y respaldos (se creará la subcarpeta JAMPOS).</p><button id="elegirCarpetaBtn" class="btn-redondeado py-2 px-4 w-full" style="background:#0ea5e9;color:#fff">📂 Elegir carpeta</button></div>` : `<p class="text-xs text-center opacity-60">💡 En la app Android podrás elegir una carpeta donde guardar los archivos.</p>`}<button id="exportJsonBtn" class="btn-redondeado py-2 px-4" style="background:#3b82f6;color:#fff">📥 Exportar todo (JSON)</button><button id="exportCsvBtn" class="btn-redondeado py-2 px-4" style="background:#10b981;color:#fff">📥 Exportar todo (CSV / Excel)</button><button id="importJsonBtn" class="btn-redondeado py-2 px-4" style="background:#8b5cf6;color:#fff">📤 Importar desde JSON</button><button id="importCsvBtn" class="btn-redondeado py-2 px-4" style="background:#f59e0b;color:#fff">📤 Importar desde CSV / Excel</button>${esAppNativa() ? `<button id="importCarpetaBtn" class="btn-redondeado py-2 px-4" style="background:#14b8a6;color:#fff">📂 Importar desde la carpeta JAMPOS</button><button id="restaurarBackupBtn" class="btn-redondeado py-2 px-4" style="background:#ef4444;color:#fff">🔄 Restaurar desde respaldo automático</button>` : ''}<input type="file" id="importFileInput" accept=".json" style="display:none"><input type="file" id="importCsvFileInput" accept=".csv,.xlsx,.xls,.txt" style="display:none"><p class="text-xs text-center mt-2 opacity-60">Los archivos CSV se abren directamente en Excel</p></div></div></div>
-                <div class="config-section"><button id="btnToggleSync" class="btn-azul-redondeado btn-redondeado w-full mb-2 py-2">🔄 Sincronizar terminales</button><div id="panelSync" style="display:none;" class="mt-2 config-inner">${window.JAMSync && window.JAMSync.isConnected() ? `<div class="mb-3 p-3 rounded-xl" style="background:rgba(16,185,129,0.1);border:1px solid #10b98140"><div class="flex items-center gap-2"><span style="color:#10b981;font-size:1.2rem">&#9679;</span><div><div class="text-sm font-bold" style="color:#10b981">Conectado a ${window.JAMSync.getName()}</div><div class="text-xs opacity-70">Sync automatico cada 30s</div></div></div></div><div class="mb-2 p-2 rounded-lg" style="background:rgba(139,92,246,0.1);border:1px solid #8b5cf640"><div class="text-xs opacity-70 mb-1">URL de conexion</div><div class="text-sm font-mono font-bold" style="color:#8b5cf6">${window.JAMSync.getUrl()}</div></div><button id="syncNowBtn" class="btn-redondeado w-full py-3 mb-2" style="background:#3b82f6;color:#fff"><i class="fas fa-sync-alt mr-1"></i> Sincronizar ahora</button><button id="syncStopBtn" class="btn-redondeado w-full py-2" style="background:#ef4444;color:#fff">Desconectar</button>` : `<div class="mb-2"><label class="text-sm font-semibold">Nombre de este dispositivo</label><div class="flex gap-2 mt-1"><input type="text" id="syncNameInput" placeholder="Nombre de la tienda..." class="border rounded-xl p-2 flex-1" value="${window.JAMSync ? window.JAMSync.getName() : ''}"><button id="syncNowBtn" class="btn-redondeado px-3 py-2" style="background:#3b82f6;color:#fff" title="Sincronizar datos"><i class="fas fa-sync-alt"></i></button></div><p class="text-xs mt-1 opacity-60">Escribe el nombre → QR se genera solo</p></div><div id="syncUrlRow" style="display:none" class="mb-2 p-2 rounded-lg"><div class="text-xs opacity-70 mb-1">URL de conexion</div><div id="syncUrlText" class="text-sm font-mono font-bold" style="color:#8b5cf6"></div></div><div id="syncQRDiv" style="display:none" class="text-center my-3"><canvas id="syncQRCanvas" width="256" height="256" style="width:200px;height:200px;border:3px solid #333;border-radius:12px"></canvas><p class="text-xs mt-2 opacity-60">Escanear este codigo desde el otro dispositivo</p></div><div class="border-t border-gray-200 dark:border-gray-700 pt-3 mt-3"><button id="syncScanBtn" class="btn-redondeado w-full py-3" style="background:#10b981;color:#fff"><i class="fas fa-camera mr-1"></i> Escanear QR del principal</button><p class="text-xs text-center mt-1 opacity-60">Dispositivo secundario: escanea para enlazar</p></div>`}<p class="text-xs text-center opacity-60 mt-3">Ambos dispositivos en la misma WiFi<br>Escribe el nombre → genera QR → escanea desde el otro</p></div></div>
-                <div class="config-section"><button id="btnToggleGun" class="btn-azul-redondeado btn-redondeado w-full mb-2 py-2">🌐 Sync entre dispositivos</button><div id="panelGun" style="display:none;" class="mt-2 config-inner"><div class="mb-3 p-3 rounded-xl" style="background:rgba(16,185,129,0.1);border:1px solid #10b98140"><div class="flex items-center gap-2"><span class="gun-status" style="font-size:1.2rem">${window.JAMSync2 && window.JAMSync2.isConnected() ? '🟢 Conectado' : '🔴 Desconectado'}</span><div><div class="text-sm font-bold">Gun.js P2P</div><div class="text-xs opacity-70">Sync automática cada 30s + tiempo real</div><div class="text-xs opacity-50 gun-last-sync">${window.JAMSync2 && window.JAMSync2.getLastSync() ? 'Última sync: ' + new Date(window.JAMSync2.getLastSync()).toLocaleTimeString() : 'Sin sincronizar'}</div></div></div></div><div class="mb-2 p-2 rounded-lg" style="background:rgba(59,130,246,0.1);border:1px solid #3b82f640"><div class="text-xs opacity-70 mb-1">ID de este dispositivo</div><div class="text-sm font-mono font-bold" style="color:#3b82f6">${window.JAMSync2 ? window.JAMSync2.getDeviceId() : 'N/A'}</div></div><div class="mb-2"><label class="text-sm font-semibold">Nombre del dispositivo</label><div class="flex gap-2 mt-1"><input type="text" id="gunDeviceName" class="border rounded-xl p-2 flex-1" value="${window.JAMSync2 ? window.JAMSync2.getDeviceName() : ''}" placeholder="Nombre de la tienda..."><button id="gunSaveNameBtn" class="btn-redondeado px-3 py-2" style="background:#3b82f6;color:#fff">💾</button></div></div><button id="gunSyncNowBtn" class="btn-redondeado w-full py-3 mb-2" style="background:#3b82f6;color:#fff"><i class="fas fa-sync-alt mr-1"></i> Sincronizar ahora</button><button id="gunToggleAutoSync" class="btn-redondeado w-full py-2 mb-2" style="background:#8b5cf6;color:#fff"><i class="fas fa-sync-alt mr-1"></i> Auto-sync: ${window.JAMSync2 && window.JAMSync2.isAvailable() ? 'ACTIVADA' : 'DESACTIVADA'}</button><p class="text-xs text-center opacity-60">Zero-config: sin servidores, sin cuentas, sin configuración.<br>Los dispositivos se sincronizan entre sí vía P2P.</p></div></div>
             </div>
         `;
         document.getElementById('appRoot').innerHTML = html;
@@ -3390,140 +3402,6 @@
         toggle('btnToggleSeguridad', 'panelSeguridad');
         toggle('btnToggleColores', 'panelColores');
         toggle('btnToggleBackup', 'panelBackup');
-        toggle('btnToggleSync', 'panelSync');
-        
-        var syncNameInput = document.getElementById('syncNameInput');
-        var syncScanBtn = document.getElementById('syncScanBtn');
-        var syncStopBtn = document.getElementById('syncStopBtn');
-        var syncNowBtn = document.getElementById('syncNowBtn');
-        
-        if (syncNowBtn) {
-            syncNowBtn.addEventListener('click', function () {
-                if (!window.JAMSync) { mostrarNotificacion('Modulo sync no disponible', 'error'); return; }
-                syncNowBtn.disabled = true;
-                syncNowBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Sincronizando...';
-                window.JAMSync.bidirectionalSync().then(function (result) {
-                    syncNowBtn.disabled = false;
-                    syncNowBtn.innerHTML = '<i class="fas fa-sync-alt mr-1"></i> Sincronizar ahora';
-                    if (result && result.ok) {
-                        if (result.added > 0 || result.updated > 0) {
-                            mostrarNotificacion('Sync completada: ' + result.added + ' nuevos, ' + result.updated + ' actualizados', 'success');
-                        } else {
-                            mostrarNotificacion('Bases de datos al dia', 'info');
-                        }
-                    } else if (result && result.msg) {
-                        mostrarNotificacion('Sync: ' + result.msg, 'warning');
-                    }
-                }).catch(function (e) {
-                    syncNowBtn.disabled = false;
-                    syncNowBtn.innerHTML = '<i class="fas fa-sync-alt mr-1"></i> Sincronizar ahora';
-                    mostrarNotificacion('Error sync: ' + e.message, 'error');
-                });
-            });
-        }
-        
-        if (syncNameInput) {
-            var syncDebounce = null;
-            syncNameInput.addEventListener('input', function () {
-                clearTimeout(syncDebounce);
-                var name = syncNameInput.value.trim();
-                if (name.length < 2) {
-                    var qrDiv = document.getElementById('syncQRDiv');
-                    if (qrDiv) qrDiv.style.display = 'none';
-                    return;
-                }
-                syncDebounce = setTimeout(function () {
-                    if (!window.JAMSync) return;
-                    window.JAMSync.setupPrincipal(name).then(function (result) {
-                        var urlRow = document.getElementById('syncUrlRow');
-                        var urlText = document.getElementById('syncUrlText');
-                        if (urlRow) urlRow.style.display = 'block';
-                        if (urlText) urlText.textContent = result.url;
-                        var qrDiv = document.getElementById('syncQRDiv');
-                        if (qrDiv) qrDiv.style.display = 'block';
-                        window.JAMSync.showQR('syncQRCanvas', result.payload);
-                    }).catch(function (e) {
-                        mostrarNotificacion('Error config sync: ' + e.message, 'error');
-                    });
-                }, 300);
-            });
-            if (syncNameInput.value.trim().length >= 2 && window.JAMSync && window.JAMSync.getUrl()) {
-                var urlRow = document.getElementById('syncUrlRow');
-                var urlText = document.getElementById('syncUrlText');
-                if (urlRow) urlRow.style.display = 'block';
-                if (urlText) urlText.textContent = window.JAMSync.getUrl();
-                var qrDiv = document.getElementById('syncQRDiv');
-                if (qrDiv) qrDiv.style.display = 'block';
-                window.JAMSync.showQR('syncQRCanvas', JSON.stringify({u:window.JAMSync.getUrl(),n:window.JAMSync.getName(),k:localStorage.getItem('jam_sync_key')||''}));
-            }
-        }
-        
-        if (syncScanBtn) {
-            syncScanBtn.addEventListener('click', function () {
-                if (!window.JAMSync) return;
-                window.JAMSync.scanAndConnect().then(function (info) {
-                    mostrarNotificacion('Conectado a ' + info.name + ' - Sincronizando...', 'success');
-                    return window.JAMSync.bidirectionalSync();
-                }).then(function () {
-                    window.JAMSync.startSync();
-                    renderConfig();
-                }).catch(function (e) {
-                    mostrarNotificacion('Error: ' + e.message, 'error');
-                });
-            });
-        }
-        
-        if (syncStopBtn) {
-            syncStopBtn.addEventListener('click', function () {
-                if (!window.JAMSync) return;
-                window.JAMSync.stopSync();
-                localStorage.removeItem('jam_sync_url');
-                localStorage.removeItem('jam_sync_name');
-                localStorage.removeItem('jam_sync_key');
-                mostrarNotificacion('Desconectado', 'info');
-                renderConfig();
-            });
-        }
-        
-        if (window.JAMSync && window.JAMSync.isConnected()) {
-            window.JAMSync.startSync();
-        }
-
-        // Firebase panel handlers
-        toggle('btnToggleGun', 'panelGun');
-        const gunSaveNameBtn = document.getElementById('gunSaveNameBtn');
-        if (gunSaveNameBtn) {
-            gunSaveNameBtn.onclick = () => {
-                const name = document.getElementById('gunDeviceName').value.trim();
-                if (name && window.JAMSync2) { window.JAMSync2.setDeviceName(name); mostrarNotificacion('✅ Nombre guardado: ' + name, 'success'); }
-            };
-        }
-        const gunSyncNowBtn = document.getElementById('gunSyncNowBtn');
-        if (gunSyncNowBtn) {
-            gunSyncNowBtn.onclick = async () => {
-                if (!window.JAMSync2 || !window.JAMSync2.isAvailable()) { mostrarNotificacion('⚠️ Sync no disponible', 'error'); return; }
-                gunSyncNowBtn.disabled = true;
-                gunSyncNowBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Sincronizando...';
-                await window.JAMSync2.sync();
-                gunSyncNowBtn.disabled = false;
-                gunSyncNowBtn.innerHTML = '<i class="fas fa-sync-alt mr-1"></i> Sincronizar ahora';
-                mostrarNotificacion('✅ Sync completada', 'success');
-            };
-        }
-        const gunToggleAutoSync = document.getElementById('gunToggleAutoSync');
-        if (gunToggleAutoSync) {
-            gunToggleAutoSync.onclick = () => {
-                if (!window.JAMSync2) return;
-                if (window.JAMSync2.isAvailable()) {
-                    window.JAMSync2.stopAutoSync();
-                    mostrarNotificacion('⏸ Auto-sync desactivada', 'info');
-                } else {
-                    window.JAMSync2.startAutoSync();
-                    mostrarNotificacion('▶️ Auto-sync activada', 'success');
-                }
-                gunToggleAutoSync.innerHTML = '<i class="fas fa-sync-alt mr-1"></i> Auto-sync: ' + (window.JAMSync2.isAvailable() ? 'ACTIVADA' : 'DESACTIVADA');
-            };
-        }
         
         const modoManualCheck = document.getElementById('modoManualCheck');
         const tasaManualDiv = document.getElementById('tasaManualDiv');
@@ -3787,10 +3665,8 @@
             `<div class="guia-item"><i class="fas ${m.icon}"></i><div><strong>${m.nombre}</strong><small>${m.uso}</small></div></div>`
         ).join('');
         const esNativa = typeof esAppNativa === 'function' && esAppNativa();
-        const gunDisponible = typeof JAMSync2 !== 'undefined';
         const featuresHtml = `
             <div class="guia-item"><i class="fas fa-database"></i><div><strong>Dual Persistencia</strong><small>Tus datos se guardan en IndexedDB + archivos JSON como respaldo. Si la base de datos se borra, se restaura automáticamente.</small></div></div>
-            <div class="guia-item"><i class="fas fa-sync-alt"></i><div><strong>Sync entre dispositivos</strong><small>Sincronización P2P vía Gun.js: zero-config, sin servidores, sin cuentas. Los dispositivos se conectan entre sí automáticamente.</small></div></div>
             <div class="guia-item"><i class="fas fa-lock"></i><div><strong>3 modos de candado</strong><small>Visible (prueba 30 días), Silencioso (sin aviso), Libre (sin candado). Configurable por variante.</small></div></div>
             <div class="guia-item"><i class="fas fa-tv"></i><div><strong>Modo Kiosco</strong><small>Pantalla simplificada para punto de venta rápido. Mantén presionado "Ventas" 5 segundos para activarlo. Incluye calculadora integrada.</small></div></div>
             <div class="guia-item"><i class="fas fa-calculator"></i><div><strong>Calculadora USD ⇄ Bs</strong><small>Convertidor integrado en el home y en el kiosco. Formato de miles venezolano: 1.234.567,89</small></div></div>
@@ -3830,7 +3706,6 @@
         { sel: '.home-grid', titulo: 'Tus módulos', texto: 'Cada botón abre un módulo: Ventas, Inventario, Clientes, Proveedores, Gastos, Empleados, Reportes, Calculadora y Configuración.' },
         { sel: '.led-converter', titulo: 'Calculadora USD ⇄ Bs', texto: 'Convertidor rápido integrado. Toca para calcular conversiones al instante sin salir del home.' },
         { sel: null, titulo: 'Modo Kiosco', texto: 'Mantén presionado el botón "Ventas" 5 segundos para activar el modo Kiosco: pantalla simplificada para punto de venta rápido con calculadora integrada.' },
-        { sel: null, titulo: 'Sync entre dispositivos', texto: 'Tus datos se sincronizan P2P vía Gun.js: sin servidores, sin cuentas, sin configuración. Solo instala la app en otro dispositivo y listo.' },
         { sel: '.btn-ayuda-home', titulo: 'Guía de la app', texto: 'Este botón abre la guía completa con todas las características, módulos y cómo usar cada uno.' },
         { sel: null, titulo: '¡Listo!', texto: 'Ya conoces lo esencial. Explora cada módulo cuando quieras, y vuelve a la guía cuando lo necesites.' }
     ];
@@ -3870,8 +3745,6 @@
         { sel: '#btnToggleSeguridad', titulo: '4. Seguridad (PIN)', texto: 'Protege la app con un PIN de 4 dígitos. Se pide al abrir la app.' },
         { sel: '#btnToggleColores', titulo: '5. Temas de color', texto: 'Elige el color de acento de la app entre una paleta de colores predefinidos.' },
         { sel: '#btnToggleBackup', titulo: '6. Copia de seguridad', texto: 'Dual persistencia: tus datos se guardan en IDB + archivos JSON. Exporta/importa JSON, CSV y restaura desde respaldo automático.' },
-        { sel: '#btnToggleSync', titulo: '7. Sync entre terminales', texto: 'Conecta dos dispositivos vía código QR para sincronizar datos por WiFi local. Sin internet necesaria.' },
-        { sel: '#btnToggleGun', titulo: '8. Sync P2P (Gun.js)', texto: 'Sincronización automática entre todos los dispositivos vía internet. Zero-config: sin servidores, sin cuentas. Auto-sync cada 30 segundos.' },
         { sel: null, titulo: '¡Listo!', texto: 'Con Config personalizas la app a tu negocio. Los datos se sincronizan y respaldan automáticamente.' }
     ];
     const GUIA_MODULOS = {
@@ -4122,11 +3995,6 @@
         }, { passive: true });
     })();
     loadAllData().then(() => {
-        if(window.JAMSync && window.JAMSync.tryAutoReconnect){
-            window.JAMSync.tryAutoReconnect().then(function(ok){
-                if(ok) console.log('[APP] Sync reconectado automaticamente');
-            });
-        }
         if(verificarPruebaInicio()) return;
         if(kioscoVentas) {
             localStorage.setItem('jam_last_module', 'ventas');
