@@ -13,22 +13,28 @@
   "categories": ["business", "productivity", "finance"],
   "shortcuts": [
     {
-      "name": "Abrir caja",
-      "short_name": "Caja",
-      "url": "./?shortcut=caja",
-      "icons": [{ "src": "icon-192.png", "sizes": "192x192" }]
+      "name": "Ventas",
+      "short_name": "Ventas",
+      "url": "./?shortcut=ventas",
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192", "type": "image/png" }]
     },
     {
-      "name": "Productos",
-      "short_name": "Productos",
-      "url": "?shortcut=productos",
-      "icons": [{ "src": "icon-192.png", "sizes": "192x192" }]
+      "name": "Inventario",
+      "short_name": "Inventario",
+      "url": "./?shortcut=inventario",
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Clientes",
+      "short_name": "Clientes",
+      "url": "./?shortcut=clientes",
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192", "type": "image/png" }]
     },
     {
       "name": "Reportes",
       "short_name": "Reportes",
-      "url": "?shortcut=reportes",
-      "icons": [{ "src": "icon-192.png", "sizes": "192x192" }]
+      "url": "./?shortcut=reportes",
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192", "type": "image/png" }]
     }
   ],
   "icons": [

@@ -1732,6 +1732,27 @@
         if(el) el.remove();
     }
     
+    // Atajos PWA (manifest shortcuts) -> navegar al modulo real desde ?shortcut=
+    const MODULOS_VALIDOS = ['ventas','inventario','clientes','proveedores','gastos','empleados','reportes','config'];
+    window.jamShortcutModule = function(){
+        try {
+            const m = new URLSearchParams(location.search).get('shortcut');
+            if(!m) return null;
+            const id = MODULOS_VALIDOS.indexOf(m) >= 0 ? m : null;
+            if(id){
+                localStorage.setItem('jam_last_module', id);
+                // remover el parametro para no re-dirigir en recargas/back
+                try {
+                    const url = new URL(location.href);
+                    url.searchParams.delete('shortcut');
+                    history.replaceState(null, '', url.toString());
+                } catch(e) {}
+                return id;
+            }
+            return null;
+        } catch(e) { return null; }
+    };
+
     window.navigateTo = m => {
         if(kioscoVentas && m !== 'ventas') { mostrarAvisoKiosco(); return; }
         if(volverBloqueado && currentModule !== 'home') { mostrarOverlayBloqueo(); return; }
@@ -2391,7 +2412,8 @@
                 else if(store === 'proveedores') detalles = `<div class="text-xs text-gray-500 mt-1">📞 ${escapeHtml(i.telefono||'')} | 👤 ${escapeHtml(i.contacto||'')}</div>`;
                 else if(store === 'gastos') detalles = `<div class="text-xs text-gray-500 mt-1">💰 ${fmtPrecio(i.montoBs||0)} Bs | 📅 ${escapeHtml(fmtFechaDisplay(i.fecha)||'')}</div>`;
                 else if(store === 'empleados') detalles = `<div class="text-xs text-gray-500 mt-1">💼 ${escapeHtml(i.cargo||'')} | 💵 ${fmtPrecio(i.salarioBs||0)} Bs | 📅 ${escapeHtml(fmtFechaDisplay(i.fechaContrato)||'')}</div>`;
-                return `<div class="client-card" data-id="${i.id}"><div class="font-bold break-words">${escapeHtml((i[campos[0]]||'Sin nombre').toString())}</div>${detalles}<div class="flex gap-2 mt-2"><button class="btn-editar-item btn-editar-redondeado">✏️ Editar</button><button class="btn-eliminar-item btn-eliminar-redondeado">🗑️ Eliminar</button></div></div>`;
+                let nombreTarjeta = (i.nombre && String(i.nombre).trim()) ? i.nombre : (i[campos[0]] || 'Sin nombre');
+                return `<div class="client-card" data-id="${i.id}"><div class="font-bold break-words">${escapeHtml(String(nombreTarjeta))}</div>${detalles}<div class="flex gap-2 mt-2"><button class="btn-editar-item btn-editar-redondeado">✏️ Editar</button><button class="btn-eliminar-item btn-eliminar-redondeado">🗑️ Eliminar</button></div></div>`;
             }).join('');
             document.querySelectorAll('.btn-editar-item').forEach((btn, idx) => { let it = filt[idx]; btn.onclick = () => window.mostrarFormCrud(store, it.id, campos, false); });
             document.querySelectorAll('.btn-eliminar-item').forEach((btn, idx) => { let it = filt[idx]; btn.onclick = () => eliminarItemCrud(store, it.id); });
@@ -4004,7 +4026,9 @@
             else irKiosco();
             return;
         }
-        const lastModule = localStorage.getItem('jam_last_module');
+        const shortcutModule = window.jamShortcutModule ? window.jamShortcutModule() : null;
+        const lastModule = shortcutModule || localStorage.getItem('jam_last_module');
+        if(shortcutModule) { localStorage.setItem('jam_last_module', shortcutModule); }
         if(lastModule && lastModule !== 'home' && lastModule !== '' && window.navigateTo) {
             if(D.config.pin && D.config.pin.length === 4) {
                 if(!sessionStorage.getItem('jam_pin_authed')) askPin(() => { renderHome(); window.navigateTo(lastModule); actualizarTasa(false); });
