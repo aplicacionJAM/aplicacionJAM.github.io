@@ -74,11 +74,12 @@
         .scroll-area{overflow-y:auto;max-height:none}
         .config-section{border:2px solid var(--accent);border-radius:20px;padding:12px;margin-bottom:20px}
         .config-inner{padding:0 8px}
-        .fuente-opcion{display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:8px 10px;border-radius:12px;border:2px solid rgba(128,128,128,.25);background:transparent;color:inherit;text-align:left;font-size:.85rem;cursor:pointer;user-select:none;touch-action:manipulation;width:100%}
-        .fuente-opcion:active{transform:scale(.98)}
-        .fuente-opcion-activa{border-color:var(--accent);background:rgba(59,130,246,.12);font-weight:700}
-        .fuente-vivo{margin-left:6px;padding:1px 7px;border-radius:999px;background:rgba(59,130,246,.15);font-family:monospace;font-size:.72rem;font-weight:700;white-space:nowrap}
-        body.dark-mode .fuente-vivo{background:rgba(96,165,250,.18)}
+.fuente-titulo{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%}
+.fuente-opcion{display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:8px 10px;border-radius:12px;border:2px solid rgba(128,128,128,.25);background:transparent;color:inherit;text-align:left;font-size:.85rem;cursor:pointer;user-select:none;touch-action:manipulation;width:100%}
+.fuente-opcion:active{transform:scale(.98)}
+.fuente-opcion-activa{border-color:var(--accent);background:rgba(59,130,246,.12);font-weight:700}
+.fuente-vivo{margin-left:6px;padding:1px 7px;border-radius:999px;background:rgba(59,130,246,.15);font-family:monospace;font-size:.72rem;font-weight:700;white-space:nowrap;flex-shrink:0}
+body.dark-mode .fuente-vivo{background:rgba(96,165,250,.18)}
         .tasas-extras{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin:-8px 0 20px;text-align:center}
         .tv-item{display:flex;flex-direction:column;align-items:center;gap:4px;padding:12px;border-radius:20px;border:2px solid var(--accent);background:rgba(128,128,128,.06)}
         .tv-nombre{font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em;opacity:.75}

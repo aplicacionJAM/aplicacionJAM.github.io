@@ -775,7 +775,7 @@
         const container = document.querySelector('.card-bcv .info-dinamica');
         if (!container) return;
         if (D.config.mostrarDolar) {
-            container.innerHTML = `<span id="tasaDolarMostrar" class="text-5xl font-black" style="color:${D.config.theme}">${fmtDolar(D.config.dolarRate)}</span><span class="text-2xl font-bold" style="color:${D.config.theme}">Bs/USD</span>`;
+            container.innerHTML = `<span id="tasaDolarMostrar" class="text-5xl font-black" style="color:${D.config.theme}">${fmtDolar(D.config.dolarRate)}</span><span class="text-2xl font-bold" style="color:${D.config.theme}">Bs</span>`;
         } else {
             const ahora = new Date();
             let diaSemana = ahora.toLocaleDateString('es-ES', { weekday: 'long' }).toUpperCase();
@@ -961,8 +961,8 @@
         ['BCV','ALCB-BCV','ALCB-USDT'].forEach(k => {
             const el = document.getElementById('tv' + k);
             if(el){
-                const v = D.tasasVivas && D.tasasVivas[k];
-                el.innerText = (v && v > 0) ? fmtDolar(v) + ' Bs' : '-- Bs';
+                // En el selector de Config mostramos solo el numero.
+                el.innerText = tasaVivaNumero(k);
             }
             const strip = document.getElementById('strip' + k);
             if(strip){
@@ -975,6 +975,12 @@
     function tasaVivaTexto(k){
         const v = D.tasasVivas && D.tasasVivas[k];
         return (v && v > 0) ? fmtDolar(v) + ' Bs' : '-- Bs';
+    }
+    // Solo el numero (sin "Bs"), para mostrar la tasa a la derecha de cada
+    // boton del selector de fuente en Configuracion.
+    function tasaVivaNumero(k){
+        const v = D.tasasVivas && D.tasasVivas[k];
+        return (v && v > 0) ? fmtDolar(v) : '--';
     }
     // Etiquetas cortas de cada API para los cuadros informativos del home.
     const __TASAS_LABEL = {
@@ -2167,7 +2173,7 @@
         document.querySelectorAll('[id^="_cache_"]').forEach(el => el.remove());
         let accent = D.config.theme;
         let mostrarDolarHtml = D.config.mostrarDolar ? 
-            `<div class="flex justify-center items-baseline gap-1 info-dinamica"><span id="tasaDolarMostrar" class="text-5xl font-black" style="color:${accent}">${fmtDolar(D.config.dolarRate)}</span><span class="text-2xl font-bold" style="color:${accent}">Bs/USD</span></div>` :
+            `<div class="flex justify-center items-baseline gap-1 info-dinamica"><span id="tasaDolarMostrar" class="text-5xl font-black" style="color:${accent}">${fmtDolar(D.config.dolarRate)}</span><span class="text-2xl font-bold" style="color:${accent}">Bs</span></div>` :
             `<div class="info-dinamica" style="text-align:center"></div>`;
         const enDesktop = esDesktop();
         const homeGridHtml = enDesktop ? `<div class="home-grid sidebar-hidden">` : `<div class="home-grid">`;
@@ -2183,7 +2189,7 @@
                 </div>
                 <div class="card-bcv">
                     <div class="led-converter" onclick="mostrarConvertidor()"><i class="fas fa-calculator text-sm"></i></div>
-                    <p class="text-xs font-bold">${D.config.mostrarDolar ? 'TIPO DE CAMBIO (USD → VES)' : 'FECHA'}</p>
+                    <p class="text-xs font-bold">${D.config.mostrarDolar ? (fuenteRegidoraClave() === 'ALCB-USDT' ? 'TIPO DE CAMBIO (USDT → VES)' : 'TIPO DE CAMBIO (USD → VES)') : 'FECHA'}</p>
                     ${mostrarDolarHtml}
                     <p class="text-[11px] mt-1">${D.config.mostrarDolar ? 'Actualizado: ' + D.config.lastUpdate : ''}</p>
                     <p class="text-[9px] opacity-70 mt-0.5">Fuente: ${nombreFuenteTasa(D.config.fuenteTasa)}</p>
@@ -3595,7 +3601,7 @@
             <div class="page-header-fixed"><div class="module-header"><h2 id="tituloModule" class="module-title ${bloqueado?'module-title-bloqueado':''}" style="color:${accent}" onmousedown="iniciarBloqueo(this,'Configuración')" onmouseup="cancelarBloqueo()" onmouseleave="cancelarBloqueo()">Configuración</h2><div id="btnVolverModule" class="btn-back ${bloqueado?'btn-back-bloqueado':''}" onclick="${bloqueado?'':'backToHome()'}">${bloqueado?'<i class="fas fa-lock"></i> Bloqueado':'<i class="fas fa-arrow-left"></i> Volver'}</div></div></div>
             <div class="page-container">
                 <div class="config-section"><button id="btnToggleEmpresa" class="btn-azul-redondeado btn-redondeado w-full mb-2 py-2">🏢 Datos de la Empresa</button><div id="panelEmpresa" style="display:none;" class="mt-2 config-inner"><div class="mb-2"><label>Nombre de la tienda</label><input type="text" id="empresaNombre" value="${escapeHtml(D.config.empresa.nombre)}" class="border rounded-xl p-2 w-full"></div><div class="mb-2"><label>Dirección</label><input type="text" id="empresaDireccion" value="${escapeHtml(D.config.empresa.direccion)}" class="border rounded-xl p-2 w-full"></div><div class="mb-2"><label>Teléfono</label><input type="text" id="empresaTelefono" value="${escapeHtml(D.config.empresa.telefono)}" class="border rounded-xl p-2 w-full"></div><div class="mb-2"><label>RIF</label><input type="text" id="empresaRif" value="${escapeHtml(D.config.empresa.rif)}" class="border rounded-xl p-2 w-full"></div><div class="mb-2"><label>Logo (URL o emoji)</label><input type="text" id="empresaLogo" value="${escapeHtml(D.config.empresa.logo)}" placeholder="🛍️ o URL de imagen" class="border rounded-xl p-2 w-full"></div><button id="guardarEmpresa" class="btn-azul-redondeado btn-redondeado w-full mt-2 py-2">💾 Guardar datos empresa</button></div></div>
-                <div class="config-section"><button id="btnToggleTasa" class="btn-azul-redondeado btn-redondeado w-full mb-2 py-2">💰 Tasa de Cambio (USD/BS)</button><div id="panelTasa" style="display:none;" class="mt-2 config-inner">
+                <div class="config-section"><button id="btnToggleTasa" class="btn-azul-redondeado btn-redondeado w-full mb-2 py-2">💰 Tasa de Cambio (${fuenteRegidoraClave() === 'ALCB-USDT' ? 'USDT/BS' : 'USD/BS'})</button><div id="panelTasa" style="display:none;" class="mt-2 config-inner">
                     <div class="mb-3">
                         <div class="bg-gray-100 dark:bg-gray-800 p-3 rounded-lg mb-3">
                             <div class="flex justify-between items-center">
@@ -3605,15 +3611,15 @@
                             <div class="mt-2">
                                 <div class="text-xs font-semibold opacity-70 mb-1">Cambiar fuente de referencia (toca la deseada):</div>
                                 <div class="flex flex-col gap-1.5">
-                                    <button data-fuente="BCV" class="fuente-opcion ${(D.config.fuenteTasa || 'BCV')==='BCV' ? 'fuente-opcion-activa' : ''}"><span>📘 Tasa BCV <span class="fuente-vivo" id="tvBCV">${tasaVivaTexto('BCV')}</span></span><span class="text-xs opacity-60">(oficial · por defecto)</span></button>
-                                    <button data-fuente="ALCB-BCV" class="fuente-opcion ${(D.config.fuenteTasa || 'BCV')==='ALCB-BCV' ? 'fuente-opcion-activa' : ''}"><span>🌐 Tasa Al Cambio BCV <span class="fuente-vivo" id="tvALCB-BCV">${tasaVivaTexto('ALCB-BCV')}</span></span><span class="text-xs opacity-60">(BCV vía API Al Cambio)</span></button>
-                                    <button data-fuente="ALCB-USDT" class="fuente-opcion ${(D.config.fuenteTasa || 'BCV')==='ALCB-USDT' ? 'fuente-opcion-activa' : ''}"><span>🪙 Tasa Al Cambio USDT <span class="fuente-vivo" id="tvALCB-USDT">${tasaVivaTexto('ALCB-USDT')}</span></span><span class="text-xs opacity-60">(USDT vía API Al Cambio)</span></button>
+                                    <button data-fuente="BCV" class="fuente-opcion ${(D.config.fuenteTasa || 'BCV')==='BCV' ? 'fuente-opcion-activa' : ''}"><span class="fuente-titulo"><span>📘 Tasa BCV</span><span class="fuente-vivo" id="tvBCV">${tasaVivaNumero('BCV')}</span></span><span class="text-xs opacity-60">(oficial · por defecto)</span></button>
+                                    <button data-fuente="ALCB-BCV" class="fuente-opcion ${(D.config.fuenteTasa || 'BCV')==='ALCB-BCV' ? 'fuente-opcion-activa' : ''}"><span class="fuente-titulo"><span>🌐 Tasa Al Cambio BCV</span><span class="fuente-vivo" id="tvALCB-BCV">${tasaVivaNumero('ALCB-BCV')}</span></span><span class="text-xs opacity-60">(BCV vía API Al Cambio)</span></button>
+                                    <button data-fuente="ALCB-USDT" class="fuente-opcion ${(D.config.fuenteTasa || 'BCV')==='ALCB-USDT' ? 'fuente-opcion-activa' : ''}"><span class="fuente-titulo"><span>🪙 Tasa Al Cambio USDT</span><span class="fuente-vivo" id="tvALCB-USDT">${tasaVivaNumero('ALCB-USDT')}</span></span><span class="text-xs opacity-60">(USDT vía API Al Cambio)</span></button>
                                 </div>
                             </div>
                             <div class="flex justify-between items-center mt-2">
                                 <span>Tasa actual:</span>
                                 <span id="tasaActualDisplay" class="font-mono text-xl font-bold" style="color:${accent}">${fmtDolar(D.config.dolarRate)}</span>
-                                <span>Bs/USD</span>
+                                <span id="tasaMonedaEtiqueta">${fuenteRegidoraClave() === 'ALCB-USDT' ? 'Bs/USDT' : 'Bs/USD'}</span>
                             </div>
                             <div class="text-xs text-gray-500 mt-1">Actualizado: ${D.config.lastUpdate}</div>
                             ${D.config.tasaManual ? `<div class="text-xs mt-1 p-2 rounded" style="background:rgba(239,68,68,.1);color:#ef4444;font-weight:600">⚠️ Modo manual activo. Verifique siempre el valor actual en el BCV antes de fijar un precio.</div>` : `<div class="text-xs mt-1 p-2 rounded" style="background:rgba(16,185,129,.1);color:#10b981;font-weight:600">✅ Modo automático — la tasa se actualiza sola al abrir la app.</div>`}
@@ -3729,6 +3735,8 @@
                 await actualizarTasa(true);
                 const tasaActualDisplay = document.getElementById('tasaActualDisplay');
                 if (tasaActualDisplay) tasaActualDisplay.innerText = fmtDolar(D.config.dolarRate);
+                const tasaMonedaEtiqueta = document.getElementById('tasaMonedaEtiqueta');
+                if (tasaMonedaEtiqueta) tasaMonedaEtiqueta.innerText = (fuente === 'ALCB-USDT') ? 'Bs/USDT' : 'Bs/USD';
                 actualizarInfoCard();
                 await recalcularPreciosPorTasa();
                 actualizarDisplayTasa();
