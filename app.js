@@ -4000,7 +4000,7 @@
     // Bloquear menú contextual, selección y copia de texto (feeling nativo).
     (function bloquearCopiadoYSeleccion() {
         const editable = t => t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
-        document.addEventListener('contextmenu', e => e.preventDefault());
+        document.addEventListener('contextmenu', e => { if(!editable(e.target)) e.preventDefault(); });
         document.addEventListener('selectstart', e => { if(!editable(e.target)) e.preventDefault(); });
         document.addEventListener('copy', e => { if(!editable(e.target)) e.preventDefault(); });
         document.addEventListener('cut', e => { if(!editable(e.target)) e.preventDefault(); });
