@@ -66,6 +66,14 @@
         .modal-form-content input:focus, .modal-form-content select:focus, .modal-form-content textarea:focus,
         .kpi-popup input:focus, .kpi-popup select:focus, .kpi-popup textarea:focus,
         .backup-popup input:focus, .backup-popup select:focus, .backup-popup textarea:focus{border-color:var(--accent,#3b82f6)!important;box-shadow:0 0 0 2px color-mix(in srgb,var(--accent,#3b82f6) 30%,transparent)}
+        /* Popups en modo oscuro: el fondo del popup usa el gris oscuro (antes era casi negro,
+           se mimeticaba con el fondo de la app) y los campos de entrada pasan a negro total
+           para que se diferencien del fondo del popup. */
+        body.dark-mode .modal-form-content{background:#1f1f1f!important;border:2px solid #3a3a3a!important;box-shadow:0 8px 32px rgba(0,0,0,.55)!important}
+        body.dark-mode .modal-form-content input:not([type=range]):not([type=checkbox]), body.dark-mode .modal-form-content select, body.dark-mode .modal-form-content textarea{background:#000!important}
+        body.dark-mode .kpi-popup input:not([type=range]):not([type=checkbox]), body.dark-mode .kpi-popup select, body.dark-mode .kpi-popup textarea{background:#000!important}
+        body.dark-mode .backup-popup input:not([type=range]):not([type=checkbox]), body.dark-mode .backup-popup select, body.dark-mode .backup-popup textarea{background:#000!important}
+        body.dark-mode .backup-popup{background:#1f1f1f!important;color:#e0e0e0!important;border:2px solid #3a3a3a!important}
         /* Barra deslizante de % ganancia (bloqueada por defecto, se desbloquea al mantener 2s) */
         .gan-range{cursor:not-allowed;opacity:.45;transition:opacity .2s ease}
         .gan-range:not(.gan-bloqueada){cursor:pointer;opacity:1;accent-color:var(--accent,#3b82f6)}
@@ -238,7 +246,7 @@ body.has-sidebar .tasas-extras{max-width:450px;margin-left:auto;margin-right:aut
         .kpi-popup-val{font-size:.82rem;font-weight:800;line-height:1.2;color:inherit}
         .kpi-popup-lbl{font-size:.6rem;opacity:.55;color:inherit}
         .kpi-popup-totales{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:8px;padding-top:6px;border-top:1px solid rgba(128,128,128,.15);font-size:.6rem;opacity:.6;color:inherit}
-        body.dark-mode .kpi-popup{background:#1a1a1a;color:#e0e0e0;border-color:var(--accent)}
+        body.dark-mode .kpi-popup{background:#1f1f1f;color:#e0e0e0;border-color:var(--accent)}
         body.dark-mode .kpi-popup-overlay{background:rgba(0,0,0,.6)}
         body.dark-mode .kpi-popup-card{background:rgba(255,255,255,.06)}
         body.dark-mode .kpi-popup-cerrar:hover{background:rgba(255,255,255,.1)}
