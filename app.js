@@ -756,6 +756,13 @@
         }
         themeColorMeta.setAttribute('content', navBarColor);
         
+        // Sincronizar también los metas theme-color con media query, para que la barra
+        // de estado siga al fondo de la app (blanco en claro, negro en oscuro).
+        const lightMeta = document.querySelector('meta[name="theme-color"][media="(prefers-color-scheme: light)"]');
+        const darkMeta = document.querySelector('meta[name="theme-color"][media="(prefers-color-scheme: dark)"]');
+        if(lightMeta) lightMeta.setAttribute('content', '#ffffff');
+        if(darkMeta) darkMeta.setAttribute('content', '#000000');
+        
         // Forzar tintado de barra de navegación inferior mediante función especial
         setNavigationBarColor(navBarColor);
         
