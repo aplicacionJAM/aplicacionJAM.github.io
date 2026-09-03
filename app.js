@@ -858,9 +858,6 @@
     // Consulta las TRES tasas en paralelo (solo para mostrar el monto en vivo
     // en el selector): BCV vigente, Al Cambio BCV y Al Cambio USDT.
     // No altera D.config.dolarRate (la fuente elegida se aplica con actualizarTasa).
-    // Consulta las TRES tasas en paralelo (solo para mostrar el monto en vivo
-    // en el selector): BCV vigente, Al Cambio BCV y Al Cambio USDT.
-    // No altera D.config.dolarRate (la fuente elegida se aplica con actualizarTasa).
     // Ademas: si es APK envia las 3 al puente nativo (widget + notificacion +
     // sonido/popup de cambio); si es web/PWA notifica + suena al cambiar.
     async function refrescarTasasVivas() {
@@ -927,20 +924,38 @@
     }
     function reproducirSonidoCambio() {
         try {
-            const ctx = D.__audioCtx || (D.__audioCtx = new (window.AudioContext || window.webkitAudioContext)());
-            ctx.resume && ctx.resume();
-            if (ctx.state === 'running') {
-                const o = ctx.createOscillator();
-                const g = ctx.createGain();
-                o.connect(g); g.connect(ctx.destination);
-                o.frequency.value = 880; o.type = 'sine';
-                g.gain.setValueAtTime(0.001, ctx.currentTime);
-                g.gain.exponentialRampToValueAtTime(0.4, ctx.currentTime + 0.02);
-                g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
-                o.start(); o.stop(ctx.currentTime + 0.45);
-            }
+            if (!D.__audioCtx) D.__audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const ctx = D.__audioCtx;
+            const reanudar = (ctx.resume && ctx.resume()) || Promise.resolve();
+            reanudar.then(() => {
+                if (ctx.state === 'running') {
+                    const o = ctx.createOscillator();
+                    const g = ctx.createGain();
+                    o.connect(g); g.connect(ctx.destination);
+                    o.frequency.value = 880; o.type = 'sine';
+                    g.gain.setValueAtTime(0.001, ctx.currentTime);
+                    g.gain.exponentialRampToValueAtTime(0.4, ctx.currentTime + 0.02);
+                    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+                    o.start(); o.stop(ctx.currentTime + 0.45);
+                }
+            }).catch(() => {});
         } catch(e) {}
     }
+    // Desbloquea el audio del navegador en el primer gesto del usuario para
+    // que el sonido de cambio de tasa funcione aunque el refresco ocurra
+    // mucho despues sin interaccion (politica de autoplay de los navegadores).
+    (function desbloquearAudio() {
+        const unlock = () => {
+            try {
+                if (!D.__audioCtx) D.__audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                if (D.__audioCtx && D.__audioCtx.state === 'suspended' && D.__audioCtx.resume) {
+                    D.__audioCtx.resume().catch(() => {});
+                }
+            } catch(e) {}
+        };
+        window.addEventListener('pointerdown', unlock, { once: true, passive: true });
+        window.addEventListener('keydown', unlock, { once: true, passive: true });
+    })();
     // Actualiza los montos en vivo en la UI del selector (si esta renderizado)
     function pintarTasasVivas() {
         ['BCV','ALCB-BCV','ALCB-USDT'].forEach(k => {
@@ -3704,14 +3719,16 @@
                 D.config.fuenteTasa = fuente;
                 // Al cambiar de fuente se deja de usar tasa manual (usa la API elegida)
                 D.config.tasaManual = false;
-                document.getElementById('tasaManualDiv').style.display = 'none';
+                const tasaManualDiv = document.getElementById('tasaManualDiv');
+                if (tasaManualDiv) tasaManualDiv.style.display = 'none';
                 const modoCheck = document.getElementById('modoManualCheck'); if (modoCheck) modoCheck.checked = false;
                 const etiqueta = document.getElementById('fuenteTasaActiva'); if (etiqueta) etiqueta.innerText = nombreFuenteTasa(fuente);
                 document.querySelectorAll('.fuente-opcion').forEach(o => o.classList.toggle('fuente-opcion-activa', o === btn));
                 mostrarNotificacion('Cambiando fuente a: ' + nombreFuenteTasa(fuente) + '...', 'info');
                 saveConfig();
                 await actualizarTasa(true);
-                document.getElementById('tasaActualDisplay').innerText = fmtDolar(D.config.dolarRate);
+                const tasaActualDisplay = document.getElementById('tasaActualDisplay');
+                if (tasaActualDisplay) tasaActualDisplay.innerText = fmtDolar(D.config.dolarRate);
                 actualizarInfoCard();
                 await recalcularPreciosPorTasa();
                 actualizarDisplayTasa();
@@ -3824,7 +3841,15 @@
         actualizarUICarpeta();
         // 3) Al abrir Configuracion > Tasa de cambio se refrescan los montos en vivo
         //    de las tres fuentes para saber en cuanto esta cada API antes de elegir.
-        refrescarTasasVivas();
+        //    Solo se hace si la seccion de config esta visible y no se refresco
+        //    hace menos de 30s, para no repetir 3 consultas en cada re-render.
+        if (currentModule === 'config') {
+            const haceFalta = !D.__ultimaTasasVivas || (Date.now() - D.__ultimaTasasVivas) > 30000;
+            if (haceFalta) {
+                D.__ultimaTasasVivas = Date.now();
+                refrescarTasasVivas();
+            }
+        }
     }
     
     // ==================== SERVICE WORKER Y PWA ====================
@@ -4288,9 +4313,23 @@
             }
         }, { passive: true });
     })();
+    // Sistema de refresco/consulta de tasas (sin saturar). Se llama UNA vez en
+    // todos los caminos de arranque (normal, modo kiosco y restauracion de
+    // modulo), para que el selector de fuentes y el monitoreo de 30 min
+    // funcionen siempre, independientemente de donde arranque la app.
+    function iniciarCicloTasas() {
+        // 1) Al abrir la app se consultan TODAS las tasas (BCV, Al Cambio BCV y USDT)
+        //    para mostrar los montos en vivo en el selector de configuracion.
+        refrescarTasasVivas();
+        // 2) Cada 30 minutos se vuelven a consultar (monitoreo constante).
+        setInterval(() => { refrescarTasasVivas(); actualizarTasa(false); }, 30 * 60 * 1000);
+        // 3) Al abrir la opcion Tasa de cambio en Configuracion, renderConfig()
+        //    tambien llama a refrescarTasasVivas() (bajo "al abrir la opcion").
+    }
     loadAllData().then(() => {
         if(window.JAMUltimateTrial && window.JAMUltimateTrial.bloquearInmediato()) return;
         if(verificarPruebaInicio()) return;
+        iniciarCicloTasas();
         if(kioscoVentas) {
             localStorage.setItem('jam_last_module', 'ventas');
             const irKiosco = () => { currentModule = 'ventas'; renderVentas(); actualizarTasa(false); };
@@ -4319,14 +4358,6 @@
             renderHome();
             actualizarTasa(false);
         }
-        // Sistema de refresco/consulta de tasas (sin saturar):
-        //  1) Al abrir la app se consultan TODAS las tasas (BCV, Al Cambio BCV y USDT)
-        //     para mostrar los montos en vivo en el selector de configuracion.
-        refrescarTasasVivas();
-        //  2) Cada 30 minutos se vuelven a consultar (monitoreo constante).
-        setInterval(() => { refrescarTasasVivas(); actualizarTasa(false); }, 30 * 60 * 1000);
-        //  3) Al abrir la opcion Tasa de cambio en Configuracion, renderConfig()
-        //     tambien llama a refrescarTasasVivas() (bajo "al abrir la opcion").
     });
     
     // Detectar cambio de tamaño (rotación, resize escritorio)
