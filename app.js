@@ -597,9 +597,9 @@
     let D = {
         productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas: [],
         config: { 
-            key:'mainConfig', theme:'#3b82f6', dolarRate:777.42, lastUpdate:new Date().toLocaleDateString(), 
+            key:'mainConfig', theme:'#3b82f6', dolarRate:804.81, lastUpdate:new Date().toLocaleDateString(), 
             ivaActivo:false, ivaPorcentaje:16, usarMargen:false, backgroundMode:'light', autoOscuro:true, prevenirCierre:true,
-            mostrarDolar: true, tasaManual: false, tasaManualValue: 777.42,
+            mostrarDolar: true, tasaManual: false, tasaManualValue: 804.81,
             empresa: { nombre:'JAM POS', direccion:'', telefono:'', rif:'', logo:'' },
             alertaStockBajo: true, alertaTasa: true, sonidoAlertas: true
         }
@@ -700,7 +700,7 @@
         if(D.config.mostrarDolar === undefined) D.config.mostrarDolar = true;
         if(D.config.prevenirCierre === undefined) D.config.prevenirCierre = true;
         if(D.config.tasaManual === undefined) D.config.tasaManual = false;
-        if(!D.config.tasaManualValue) D.config.tasaManualValue = D.config.dolarRate || 777.42;
+        if(!D.config.tasaManualValue) D.config.tasaManualValue = D.config.dolarRate || 804.81;
         if(D.config.autoOscuro === undefined) D.config.autoOscuro = true;
         if(D.config.ivaActivo === undefined) D.config.ivaActivo = false;
         
@@ -817,7 +817,7 @@
             saveConfig();
             if(forzar) mostrarNotificacion(`Tasa actualizada: ${fmtDolar(tasaNueva)} Bs/USD`, 'success');
             notificarTasaActualizada(tasaPrevia, tasaNueva);
-        } else if(!D.config.dolarRate) D.config.dolarRate = 777.42;
+        } else if(!D.config.dolarRate) D.config.dolarRate = 804.81;
         actualizarDisplayTasa();
         recalcularPreciosPorTasa();
     }
@@ -3374,7 +3374,7 @@
                                 <span>🔒 Usar tasa manual (fija, sin internet)</span>
                             </label>
                             <div id="tasaManualDiv" style="${D.config.tasaManual ? 'display:flex' : 'display:none'}" class="flex gap-2 items-center">
-                                <input type="number" id="tasaManualInput" step="0.01" value="${D.config.tasaManualValue}" placeholder="Ej: 777.42" class="border rounded-xl p-2 flex-1">
+                                <input type="number" id="tasaManualInput" step="0.01" value="${D.config.tasaManualValue}" placeholder="Ej: 804.81" class="border rounded-xl p-2 flex-1">
                                 <button id="guardarTasaManualBtn" class="btn-azul-redondeado btn-redondeado py-2 px-4">Fijar</button>
                             </div>
                             <button id="actualizarTasaInternetBtn" class="btn-redondeado py-2 px-4" style="background:#3b82f6; color:white;">
