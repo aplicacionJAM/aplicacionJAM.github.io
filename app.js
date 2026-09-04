@@ -596,12 +596,10 @@
     // ==================== DATOS GLOBALES ====================
     let D = {
         productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas: [],
-        tasasVivas: {},
         config: { 
-            key:'mainConfig', theme:'#3b82f6', dolarRate:804.81, lastUpdate:new Date().toLocaleDateString(), 
+            key:'mainConfig', theme:'#3b82f6', dolarRate:777.42, lastUpdate:new Date().toLocaleDateString(), 
             ivaActivo:false, ivaPorcentaje:16, usarMargen:false, backgroundMode:'light', autoOscuro:true, prevenirCierre:true,
-            mostrarDolar: true, tasaManual: false, tasaManualValue: 804.81,
-            fuenteTasa: 'BCV',
+            mostrarDolar: true, tasaManual: false, tasaManualValue: 777.42,
             empresa: { nombre:'JAM POS', direccion:'', telefono:'', rif:'', logo:'' },
             alertaStockBajo: true, alertaTasa: true, sonidoAlertas: true
         }
@@ -702,7 +700,7 @@
         if(D.config.mostrarDolar === undefined) D.config.mostrarDolar = true;
         if(D.config.prevenirCierre === undefined) D.config.prevenirCierre = true;
         if(D.config.tasaManual === undefined) D.config.tasaManual = false;
-        if(!D.config.tasaManualValue) D.config.tasaManualValue = D.config.dolarRate || 804.81;
+        if(!D.config.tasaManualValue) D.config.tasaManualValue = D.config.dolarRate || 777.42;
         if(D.config.autoOscuro === undefined) D.config.autoOscuro = true;
         if(D.config.ivaActivo === undefined) D.config.ivaActivo = false;
         
@@ -775,7 +773,7 @@
         const container = document.querySelector('.card-bcv .info-dinamica');
         if (!container) return;
         if (D.config.mostrarDolar) {
-            container.innerHTML = `<span id="tasaDolarMostrar" class="text-5xl font-black" style="color:${D.config.theme}">${fmtDolar(D.config.dolarRate)}</span><span class="text-2xl font-bold" style="color:${D.config.theme}">Bs</span>`;
+            container.innerHTML = `<span id="tasaDolarMostrar" class="text-5xl font-black" style="color:${D.config.theme}">${fmtDolar(D.config.dolarRate)}</span><span class="text-2xl font-bold" style="color:${D.config.theme}">Bs/USD</span>`;
         } else {
             const ahora = new Date();
             let diaSemana = ahora.toLocaleDateString('es-ES', { weekday: 'long' }).toUpperCase();
@@ -787,238 +785,17 @@
     }
     
     // ==================== API TASA ====================
-    // Fuente de referencia seleccionable en Configuracion > Tasa de cambio:
-    //   'BCV'      -> la vigente por defecto (exchangerate-api, se muestra como "oficial BCV")
-    //   'ALCB-BCV' -> tasa BCV segun la API de la pagina Al Cambio (getCountryConversions VE)
-    //   'ALCB-USDT'-> tasa USDT segun la web de Al Cambio (Binance P2P via getBinanceP2PAverages)
-    function nombreFuenteTasa(f){
-        if(f === 'ALCB-BCV') return 'Al Cambio BCV';
-        if(f === 'ALCB-USDT') return 'Al Cambio USDT';
-        return 'BCV';
-    }
-    // Lee la tasa desde la fuente elegida. Devuelve numero >0 o null si falla.
     async function obtenerTasaDesdeAPI() {
-        const fuente = (D.config && D.config.fuenteTasa) || 'BCV';
         try {
-            if (fuente === 'ALCB-BCV') {
-                return await obtenerTasaAlCambioBcv();
-            } else if (fuente === 'ALCB-USDT') {
-                return await obtenerTasaAlCambioUsdt();
-            }
-            // fuente por defecto 'BCV' (vigente): exchangerate-api -> VES
-            return await obtenerTasaBcvVigente();
-        } catch(e) { return null; }
-    }
-
-    // Tasa BCV oficial via API GraphQL de Al Cambio (getCountryConversions VE)
-    async function obtenerTasaAlCambioBcv() {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 12000);
-        try {
-            const query = 'query getCountryConversions($countryCode: String!){getCountryConversions(payload:{countryCode:$countryCode}){conversionRates{official principal rateCurrency{code} baseValue}}}';
-            const r = await fetch('https://api.alcambio.app/graphql', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ operationName: 'getCountryConversions', variables: { countryCode: 'VE' }, query: query }),
-                signal: controller.signal
-            });
-            if (!r.ok) throw new Error();
-            const d = await r.json();
-            const rates = d && d.data && d.data.getCountryConversions && d.data.getCountryConversions.conversionRates;
-            if (Array.isArray(rates)) {
-                const usd = rates.find(x => x && x.official === true && x.rateCurrency && x.rateCurrency.code === 'USD');
-                if (usd && usd.baseValue > 0) return parseFloat((+usd.baseValue).toFixed(2));
-            }
-            throw new Error();
-        } catch(e) { return null; }
-        finally { clearTimeout(timeoutId); }
-    }
-
-    // Tasa USDT via API GraphQL de Al Cambio (getBinanceP2PAverages)
-    async function obtenerTasaAlCambioUsdt() {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 12000);
-        try {
-            const query = 'query getBinanceP2PAverages { getBinanceP2PAverages { sellAverage buyAverage asset } }';
-            const r = await fetch('https://api.alcambio.app/graphql', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ operationName: 'getBinanceP2PAverages', variables: {}, query: query }),
-                signal: controller.signal
-            });
-            if (!r.ok) throw new Error();
-            const d = await r.json();
-            const p = d && d.data && d.data.getBinanceP2PAverages;
-            if (p && p.sellAverage > 0) return parseFloat((+p.sellAverage).toFixed(2));
-            throw new Error();
-        } catch(e) { return null; }
-        finally { clearTimeout(timeoutId); }
-    }
-
-    // Consulta las TRES tasas en paralelo (solo para mostrar el monto en vivo
-    // en el selector): BCV vigente, Al Cambio BCV y Al Cambio USDT.
-    // No altera D.config.dolarRate (la fuente elegida se aplica con actualizarTasa).
-    // Ademas: si es APK envia las 3 al puente nativo (widget + notificacion +
-    // sonido/popup de cambio); si es web/PWA notifica + suena al cambiar.
-    async function refrescarTasasVivas() {
-        if(!D.tasasVivas) D.tasasVivas = {};
-        const [bcv, alcBcv, alcUsdt] = await Promise.all([
-            (async () => { try { return await obtenerTasaBcvVigente(); } catch(e){ return null; } })(),
-            obtenerTasaAlCambioBcv(),
-            obtenerTasaAlCambioUsdt()
-        ]);
-        D.tasasVivas['BCV'] = bcv;
-        D.tasasVivas['ALCB-BCV'] = alcBcv;
-        D.tasasVivas['ALCB-USDT'] = alcUsdt;
-        pintarTasasVivas();
-        // Enviar al nativo (APK): mantiene widget + notificacion + avisa del cambio.
-        if (window.AndroidBridge && typeof AndroidBridge.enviarTasas === 'function') {
-            try {
-                const nB = (bcv && bcv > 0) ? bcv : 0;
-                const nA = (alcBcv && alcBcv > 0) ? alcBcv : 0;
-                const nU = (alcUsdt && alcUsdt > 0) ? alcUsdt : 0;
-                if (nB > 0 && nA > 0 && nU > 0) {
-                    AndroidBridge.enviarTasas(nB, nA, nU);
-                } else {
-                    // Envio parcial: solo refresca widget (sin sonido de cambio).
-                    if (nB > 0 && window.AndroidBridge && typeof AndroidBridge.guardarTasaWidget === 'function') {
-                        AndroidBridge.guardarTasaWidget(fmtDolar(nB), D.config.lastUpdate || '');
-                    }
-                }
-            } catch(e) {}
-        }
-        // En web/PWA (Windows/Linux): notificar + sonar si alguna tasa cambio.
-        if (window.AndroidBridge === undefined) {
-            avisarCambioWeb();
-        }
-        return D.tasasVivas;
-    }
-    // En web/PWA: detecta cambio y emite Web Notification + sonido del sistema.
-    let __tasasPrevWeb = null;
-    function avisarCambioWeb() {
-        try {
-            const cur = { BCV: D.tasasVivas['BCV'], ALCB: D.tasasVivas['ALCB-BCV'], USDT: D.tasasVivas['ALCB-USDT'] };
-            const ant = __tasasPrevWeb;
-            if (ant) {
-                const cambios = [];
-                if (ant.BCV && cur.BCV && Math.abs(cur.BCV - ant.BCV) > 0.001) cambios.push('BCV');
-                if (ant.ALCB && cur.ALCB && Math.abs(cur.ALCB - ant.ALCB) > 0.001) cambios.push('Al Cambio BCV');
-                if (ant.USDT && cur.USDT && Math.abs(cur.USDT - ant.USDT) > 0.001) cambios.push('Al Cambio USDT');
-                if (cambios.length > 0) {
-                    emitirNotificacionWeb('Tasa actualizada', 'Cambio en: ' + cambios.join(', '));
-                    reproducirSonidoCambio();
-                }
-            }
-            __tasasPrevWeb = cur;
-        } catch(e) {}
-    }
-    function emitirNotificacionWeb(titulo, cuerpo) {
-        try {
-            if (!('Notification' in window)) return;
-            if (Notification.permission === 'granted') {
-                new Notification(titulo, { body: cuerpo, icon: './icon-192.png' });
-            } else if (Notification.permission !== 'denied') {
-                if (!D.__notifSolicitada) { D.__notifSolicitada = true; Notification.requestPermission(); }
-            }
-        } catch(e) {}
-    }
-    function reproducirSonidoCambio() {
-        try {
-            if (!D.__audioCtx) D.__audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            const ctx = D.__audioCtx;
-            const reanudar = (ctx.resume && ctx.resume()) || Promise.resolve();
-            reanudar.then(() => {
-                if (ctx.state === 'running') {
-                    const o = ctx.createOscillator();
-                    const g = ctx.createGain();
-                    o.connect(g); g.connect(ctx.destination);
-                    o.frequency.value = 880; o.type = 'sine';
-                    g.gain.setValueAtTime(0.001, ctx.currentTime);
-                    g.gain.exponentialRampToValueAtTime(0.4, ctx.currentTime + 0.02);
-                    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
-                    o.start(); o.stop(ctx.currentTime + 0.45);
-                }
-            }).catch(() => {});
-        } catch(e) {}
-    }
-    // Desbloquea el audio del navegador en el primer gesto del usuario para
-    // que el sonido de cambio de tasa funcione aunque el refresco ocurra
-    // mucho despues sin interaccion (politica de autoplay de los navegadores).
-    (function desbloquearAudio() {
-        const unlock = () => {
-            try {
-                if (!D.__audioCtx) D.__audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                if (D.__audioCtx && D.__audioCtx.state === 'suspended' && D.__audioCtx.resume) {
-                    D.__audioCtx.resume().catch(() => {});
-                }
-            } catch(e) {}
-        };
-        window.addEventListener('pointerdown', unlock, { once: true, passive: true });
-        window.addEventListener('keydown', unlock, { once: true, passive: true });
-    })();
-    // Actualiza los montos en vivo en la UI del selector (si esta renderizado)
-    function pintarTasasVivas() {
-        ['BCV','ALCB-BCV','ALCB-USDT'].forEach(k => {
-            const el = document.getElementById('tv' + k);
-            if(el){
-                // En el selector de Config mostramos solo el numero.
-                el.innerText = tasaVivaNumero(k);
-            }
-            const strip = document.getElementById('strip' + k);
-            if(strip){
-                const v = D.tasasVivas && D.tasasVivas[k];
-                strip.innerText = (v && v > 0) ? fmtDolar(v) + ' Bs' : '-- Bs';
-            }
-        });
-    }
-    // Monto en vivo para insertar por defecto en el render del selector
-    function tasaVivaTexto(k){
-        const v = D.tasasVivas && D.tasasVivas[k];
-        return (v && v > 0) ? fmtDolar(v) + ' Bs' : '-- Bs';
-    }
-    // Solo el numero (sin "Bs"), para mostrar la tasa a la derecha de cada
-    // boton del selector de fuente en Configuracion.
-    function tasaVivaNumero(k){
-        const v = D.tasasVivas && D.tasasVivas[k];
-        return (v && v > 0) ? fmtDolar(v) : '--';
-    }
-    // Etiquetas cortas de cada API para los cuadros informativos del home.
-    const __TASAS_LABEL = {
-        'BCV': 'BCV',
-        'ALCB-BCV': 'Al Cambio BCV',
-        'ALCB-USDT': 'USDT'
-    };
-    // Clave (en D.tasasVivas) de la fuente elegida como REGIDORA del sistema.
-    function fuenteRegidoraClave(){
-        const f = (D.config && D.config.fuenteTasa) || 'BCV';
-        return (f === 'ALCB-BCV' || f === 'ALCB-USDT') ? f : 'BCV';
-    }
-    // Devuelve las claves de las DOS tasas que NO son la regidora, en orden fijo.
-    // Asi el card principal muestra la regidora y los cuadros extra las otras dos.
-    function tasasExtras(){
-        const reg = fuenteRegidoraClave();
-        return ['BCV','ALCB-BCV','ALCB-USDT'].filter(k => k !== reg);
-    }
-    // HTML de los cuadros informativos extra (solo escritorio/pantalla grande).
-    // Se anclan al mismo ancho que la barra buscadora y el card del dolar.
-    function tasasExtrasHtml(){
-        return tasasExtras().map(k => `
-            <div class="tv-item tv-extra">
-                <span class="tv-nombre">${__TASAS_LABEL[k]}</span>
-                <span class="tv-valor" id="strip${k}">${tasaVivaTexto(k)}</span>
-            </div>`).join('');
-    }
-    async function obtenerTasaBcvVigente() {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 8000);
-        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 8000);
             const response = await fetch('https://api.exchangerate-api.com/v4/latest/USD', { signal: controller.signal });
+            clearTimeout(timeoutId);
             if (!response.ok) throw new Error();
             const data = await response.json();
             if (data && data.rates && data.rates.VES) return parseFloat(data.rates.VES.toFixed(2));
             throw new Error();
         } catch(e) { return null; }
-        finally { clearTimeout(timeoutId); }
     }
     
     async function actualizarTasa(forzar = false) {
@@ -1040,7 +817,7 @@
             saveConfig();
             if(forzar) mostrarNotificacion(`Tasa actualizada: ${fmtDolar(tasaNueva)} Bs/USD`, 'success');
             notificarTasaActualizada(tasaPrevia, tasaNueva);
-        } else if(!D.config.dolarRate) D.config.dolarRate = 804.81;
+        } else if(!D.config.dolarRate) D.config.dolarRate = 777.42;
         actualizarDisplayTasa();
         recalcularPreciosPorTasa();
     }
@@ -1955,27 +1732,6 @@
         if(el) el.remove();
     }
     
-    // Atajos PWA (manifest shortcuts) -> navegar al modulo real desde ?shortcut=
-    const MODULOS_VALIDOS = ['ventas','inventario','clientes','proveedores','gastos','empleados','reportes','config'];
-    window.jamShortcutModule = function(){
-        try {
-            const m = new URLSearchParams(location.search).get('shortcut');
-            if(!m) return null;
-            const id = MODULOS_VALIDOS.indexOf(m) >= 0 ? m : null;
-            if(id){
-                localStorage.setItem('jam_last_module', id);
-                // remover el parametro para no re-dirigir en recargas/back
-                try {
-                    const url = new URL(location.href);
-                    url.searchParams.delete('shortcut');
-                    history.replaceState(null, '', url.toString());
-                } catch(e) {}
-                return id;
-            }
-            return null;
-        } catch(e) { return null; }
-    };
-
     window.navigateTo = m => {
         if(kioscoVentas && m !== 'ventas') { mostrarAvisoKiosco(); return; }
         if(volverBloqueado && currentModule !== 'home') { mostrarOverlayBloqueo(); return; }
@@ -2173,7 +1929,7 @@
         document.querySelectorAll('[id^="_cache_"]').forEach(el => el.remove());
         let accent = D.config.theme;
         let mostrarDolarHtml = D.config.mostrarDolar ? 
-            `<div class="flex justify-center items-baseline gap-1 info-dinamica"><span id="tasaDolarMostrar" class="text-5xl font-black" style="color:${accent}">${fmtDolar(D.config.dolarRate)}</span><span class="text-2xl font-bold" style="color:${accent}">Bs</span></div>` :
+            `<div class="flex justify-center items-baseline gap-1 info-dinamica"><span id="tasaDolarMostrar" class="text-5xl font-black" style="color:${accent}">${fmtDolar(D.config.dolarRate)}</span><span class="text-2xl font-bold" style="color:${accent}">Bs/USD</span></div>` :
             `<div class="info-dinamica" style="text-align:center"></div>`;
         const enDesktop = esDesktop();
         const homeGridHtml = enDesktop ? `<div class="home-grid sidebar-hidden">` : `<div class="home-grid">`;
@@ -2189,12 +1945,11 @@
                 </div>
                 <div class="card-bcv">
                     <div class="led-converter" onclick="mostrarConvertidor()"><i class="fas fa-calculator text-sm"></i></div>
-                    <p class="text-xs font-bold">${D.config.mostrarDolar ? (fuenteRegidoraClave() === 'ALCB-USDT' ? 'TIPO DE CAMBIO (USDT → VES)' : 'TIPO DE CAMBIO (USD → VES)') : 'FECHA'}</p>
+                    <p class="text-xs font-bold">${D.config.mostrarDolar ? 'TIPO DE CAMBIO (USD → VES)' : 'FECHA'}</p>
                     ${mostrarDolarHtml}
                     <p class="text-[11px] mt-1">${D.config.mostrarDolar ? 'Actualizado: ' + D.config.lastUpdate : ''}</p>
-                    <p class="text-[9px] opacity-70 mt-0.5">Fuente: ${nombreFuenteTasa(D.config.fuenteTasa)}</p>
+                    <p class="text-[9px] opacity-70 mt-0.5">Tasa oficial BCV</p>
                 </div>
-                ${enDesktop && !esAppNativa() && D.config.mostrarDolar ? `<div class="tasas-extras">${tasasExtrasHtml()}</div>` : ''}
                 ${homeGridHtml}
                     ${MODULOS_SIDEBAR.map(m => `<button onclick="navigateTo('${m.id}')" class="main-module-btn" style="background:${accent};"><i class="fas ${m.icon}"></i><span>${m.label}</span></button>`).join('')}
                 </div>
@@ -2636,8 +2391,7 @@
                 else if(store === 'proveedores') detalles = `<div class="text-xs text-gray-500 mt-1">📞 ${escapeHtml(i.telefono||'')} | 👤 ${escapeHtml(i.contacto||'')}</div>`;
                 else if(store === 'gastos') detalles = `<div class="text-xs text-gray-500 mt-1">💰 ${fmtPrecio(i.montoBs||0)} Bs | 📅 ${escapeHtml(fmtFechaDisplay(i.fecha)||'')}</div>`;
                 else if(store === 'empleados') detalles = `<div class="text-xs text-gray-500 mt-1">💼 ${escapeHtml(i.cargo||'')} | 💵 ${fmtPrecio(i.salarioBs||0)} Bs | 📅 ${escapeHtml(fmtFechaDisplay(i.fechaContrato)||'')}</div>`;
-                let nombreTarjeta = (i.nombre && String(i.nombre).trim()) ? i.nombre : (i[campos[0]] || 'Sin nombre');
-                return `<div class="client-card" data-id="${i.id}"><div class="font-bold break-words">${escapeHtml(String(nombreTarjeta))}</div>${detalles}<div class="flex gap-2 mt-2"><button class="btn-editar-item btn-editar-redondeado">✏️ Editar</button><button class="btn-eliminar-item btn-eliminar-redondeado">🗑️ Eliminar</button></div></div>`;
+                return `<div class="client-card" data-id="${i.id}"><div class="font-bold break-words">${escapeHtml((i[campos[0]]||'Sin nombre').toString())}</div>${detalles}<div class="flex gap-2 mt-2"><button class="btn-editar-item btn-editar-redondeado">✏️ Editar</button><button class="btn-eliminar-item btn-eliminar-redondeado">🗑️ Eliminar</button></div></div>`;
             }).join('');
             document.querySelectorAll('.btn-editar-item').forEach((btn, idx) => { let it = filt[idx]; btn.onclick = () => window.mostrarFormCrud(store, it.id, campos, false); });
             document.querySelectorAll('.btn-eliminar-item').forEach((btn, idx) => { let it = filt[idx]; btn.onclick = () => eliminarItemCrud(store, it.id); });
@@ -2892,30 +2646,6 @@
         if(/^\d{4}-\d{2}-\d{2}$/.test(s)){ let p = s.split('-'); return p[2] + '/' + p[1] + '/' + p[0]; }
         return s;
     }
-    // Etiqueta de dia en la tarjeta de tasa del dolar (ultimos 7 dias):
-    // "Miercoles 02/09/2026 Hora 8:13 am"
-    function fmtTasaSemanaEtiqueta(h){
-        let s = String(h.fecha || '');
-        let dia = '', fecha = fmtFechaDisplay(h.fecha);
-        if(/^\d{4}-\d{2}-\d{2}$/.test(s)){
-            let p = s.split('-');
-            let d = new Date(+p[0], +p[1] - 1, +p[2]);
-            let dnombre = d.toLocaleDateString('es-ES', { weekday: 'long' });
-            dia = dnombre ? dnombre.charAt(0).toUpperCase() + dnombre.slice(1) + ' ' : '';
-        }
-        let hora = '';
-        let hh = h && h.hora ? String(h.hora) : '';
-        if(hh){
-            let partes = hh.split(':');
-            let hr = parseInt(partes[0], 10), mn = parseInt(partes[1], 10);
-            if(!isNaN(hr) && !isNaN(mn)){
-                let ampm = hr >= 12 ? 'pm' : 'am';
-                let hr12 = hr % 12 === 0 ? 12 : hr % 12;
-                hora = ' Hora ' + hr12 + ':' + (mn < 10 ? '0' + mn : mn) + ' ' + ampm;
-            }
-        }
-        return (dia + fecha + hora).trim();
-    }
     function generarDiasSemana(){
         let dias = [];
         for(let i=6; i>=0; i--){
@@ -3018,7 +2748,7 @@
                 if(diff > 0.001) flecha = '<span style="color:#ef4444">▲</span>';
                 else if(diff < -0.001) flecha = '<span style="color:#10b981">▼</span>';
             }
-            return `<div class="flex justify-between items-center" style="padding:5px 0;border-bottom:1px solid rgba(128,128,128,.1)"><span class="text-xs" style="opacity:.6">${fmtTasaSemanaEtiqueta(h)}</span><span class="text-xs font-bold" style="color:${accent}">${flecha} ${fmtDolar(h.tasa)} Bs</span></div>`;
+            return `<div class="flex justify-between items-center" style="padding:5px 0;border-bottom:1px solid rgba(128,128,128,.1)"><span class="text-xs" style="opacity:.6">${fmtFechaDisplay(h.fecha)}</span><span class="text-xs font-bold" style="color:${accent}">${flecha} ${fmtDolar(h.tasa)} Bs</span></div>`;
         }).join('') : '<div class="text-xs" style="opacity:.5;text-align:center;padding:8px">Sin datos de tasa esta semana</div>';
         document.getElementById('appRoot').innerHTML = `
             <div class="page-header-fixed"><div class="module-header"><h2 id="tituloModule" class="module-title ${bloqueado?'module-title-bloqueado':''}" style="color:${accent}" onmousedown="iniciarBloqueo(this,'Reportes')" onmouseup="cancelarBloqueo()" onmouseleave="cancelarBloqueo()">Reportes</h2><div id="btnVolverModule" class="btn-back ${bloqueado?'btn-back-bloqueado':''}" onclick="${bloqueado?'':'backToHome()'}">${bloqueado?'<i class="fas fa-lock"></i> Bloqueado':'<i class="fas fa-arrow-left"></i> Volver'}</div></div></div>
@@ -3601,25 +3331,17 @@
             <div class="page-header-fixed"><div class="module-header"><h2 id="tituloModule" class="module-title ${bloqueado?'module-title-bloqueado':''}" style="color:${accent}" onmousedown="iniciarBloqueo(this,'Configuración')" onmouseup="cancelarBloqueo()" onmouseleave="cancelarBloqueo()">Configuración</h2><div id="btnVolverModule" class="btn-back ${bloqueado?'btn-back-bloqueado':''}" onclick="${bloqueado?'':'backToHome()'}">${bloqueado?'<i class="fas fa-lock"></i> Bloqueado':'<i class="fas fa-arrow-left"></i> Volver'}</div></div></div>
             <div class="page-container">
                 <div class="config-section"><button id="btnToggleEmpresa" class="btn-azul-redondeado btn-redondeado w-full mb-2 py-2">🏢 Datos de la Empresa</button><div id="panelEmpresa" style="display:none;" class="mt-2 config-inner"><div class="mb-2"><label>Nombre de la tienda</label><input type="text" id="empresaNombre" value="${escapeHtml(D.config.empresa.nombre)}" class="border rounded-xl p-2 w-full"></div><div class="mb-2"><label>Dirección</label><input type="text" id="empresaDireccion" value="${escapeHtml(D.config.empresa.direccion)}" class="border rounded-xl p-2 w-full"></div><div class="mb-2"><label>Teléfono</label><input type="text" id="empresaTelefono" value="${escapeHtml(D.config.empresa.telefono)}" class="border rounded-xl p-2 w-full"></div><div class="mb-2"><label>RIF</label><input type="text" id="empresaRif" value="${escapeHtml(D.config.empresa.rif)}" class="border rounded-xl p-2 w-full"></div><div class="mb-2"><label>Logo (URL o emoji)</label><input type="text" id="empresaLogo" value="${escapeHtml(D.config.empresa.logo)}" placeholder="🛍️ o URL de imagen" class="border rounded-xl p-2 w-full"></div><button id="guardarEmpresa" class="btn-azul-redondeado btn-redondeado w-full mt-2 py-2">💾 Guardar datos empresa</button></div></div>
-                <div class="config-section"><button id="btnToggleTasa" class="btn-azul-redondeado btn-redondeado w-full mb-2 py-2">💰 Tasa de Cambio (${fuenteRegidoraClave() === 'ALCB-USDT' ? 'USDT/BS' : 'USD/BS'})</button><div id="panelTasa" style="display:none;" class="mt-2 config-inner">
+                <div class="config-section"><button id="btnToggleTasa" class="btn-azul-redondeado btn-redondeado w-full mb-2 py-2">💰 Tasa de Cambio (USD/BS)</button><div id="panelTasa" style="display:none;" class="mt-2 config-inner">
                     <div class="mb-3">
                         <div class="bg-gray-100 dark:bg-gray-800 p-3 rounded-lg mb-3">
                             <div class="flex justify-between items-center">
                                 <span class="font-semibold">API activa:</span>
-                                <span id="fuenteTasaActiva" class="text-xs font-mono">${nombreFuenteTasa(D.config.fuenteTasa)}</span>
-                            </div>
-                            <div class="mt-2">
-                                <div class="text-xs font-semibold opacity-70 mb-1">Cambiar fuente de referencia (toca la deseada):</div>
-                                <div class="flex flex-col gap-1.5">
-                                    <button data-fuente="BCV" class="fuente-opcion ${(D.config.fuenteTasa || 'BCV')==='BCV' ? 'fuente-opcion-activa' : ''}"><span class="fuente-titulo"><span>📘 Tasa BCV</span><span class="fuente-vivo" id="tvBCV">${tasaVivaNumero('BCV')}</span></span><span class="text-xs opacity-60">(oficial · por defecto)</span></button>
-                                    <button data-fuente="ALCB-BCV" class="fuente-opcion ${(D.config.fuenteTasa || 'BCV')==='ALCB-BCV' ? 'fuente-opcion-activa' : ''}"><span class="fuente-titulo"><span>🌐 Tasa Al Cambio BCV</span><span class="fuente-vivo" id="tvALCB-BCV">${tasaVivaNumero('ALCB-BCV')}</span></span><span class="text-xs opacity-60">(BCV vía API Al Cambio)</span></button>
-                                    <button data-fuente="ALCB-USDT" class="fuente-opcion ${(D.config.fuenteTasa || 'BCV')==='ALCB-USDT' ? 'fuente-opcion-activa' : ''}"><span class="fuente-titulo"><span>🪙 Tasa Al Cambio USDT</span><span class="fuente-vivo" id="tvALCB-USDT">${tasaVivaNumero('ALCB-USDT')}</span></span><span class="text-xs opacity-60">(USDT vía API Al Cambio)</span></button>
-                                </div>
+                                <span class="text-xs font-mono">BCV</span>
                             </div>
                             <div class="flex justify-between items-center mt-2">
                                 <span>Tasa actual:</span>
                                 <span id="tasaActualDisplay" class="font-mono text-xl font-bold" style="color:${accent}">${fmtDolar(D.config.dolarRate)}</span>
-                                <span id="tasaMonedaEtiqueta">${fuenteRegidoraClave() === 'ALCB-USDT' ? 'Bs/USDT' : 'Bs/USD'}</span>
+                                <span>Bs/USD</span>
                             </div>
                             <div class="text-xs text-gray-500 mt-1">Actualizado: ${D.config.lastUpdate}</div>
                             ${D.config.tasaManual ? `<div class="text-xs mt-1 p-2 rounded" style="background:rgba(239,68,68,.1);color:#ef4444;font-weight:600">⚠️ Modo manual activo. Verifique siempre el valor actual en el BCV antes de fijar un precio.</div>` : `<div class="text-xs mt-1 p-2 rounded" style="background:rgba(16,185,129,.1);color:#10b981;font-weight:600">✅ Modo automático — la tasa se actualiza sola al abrir la app.</div>`}
@@ -3630,7 +3352,7 @@
                                 <span>🔒 Usar tasa manual (fija, sin internet)</span>
                             </label>
                             <div id="tasaManualDiv" style="${D.config.tasaManual ? 'display:flex' : 'display:none'}" class="flex gap-2 items-center">
-                                <input type="number" id="tasaManualInput" step="0.01" value="${D.config.tasaManualValue}" placeholder="Ej: 804.81" class="border rounded-xl p-2 flex-1">
+                                <input type="number" id="tasaManualInput" step="0.01" value="${D.config.tasaManualValue}" placeholder="Ej: 777.42" class="border rounded-xl p-2 flex-1">
                                 <button id="guardarTasaManualBtn" class="btn-azul-redondeado btn-redondeado py-2 px-4">Fijar</button>
                             </div>
                             <button id="actualizarTasaInternetBtn" class="btn-redondeado py-2 px-4" style="background:#3b82f6; color:white;">
@@ -3713,34 +3435,6 @@
             document.getElementById('tasaActualDisplay').innerText = fmtDolar(D.config.dolarRate);
             actualizarInfoCard();
             await recalcularPreciosPorTasa();
-        });
-
-        // Selector de fuente de tasa (BCV / Al Cambio BCV / Al Cambio USDT).
-        // Al tocar una fuente se guarda, se refresca la tasa con esa fuente y
-        // se actualiza todo lo que depende de la tasa (home + operaciones).
-        document.querySelectorAll('.fuente-opcion').forEach(btn => {
-            btn.addEventListener('click', async () => {
-                const fuente = btn.getAttribute('data-fuente');
-                if (!fuente || fuente === (D.config.fuenteTasa || 'BCV')) return;
-                D.config.fuenteTasa = fuente;
-                // Al cambiar de fuente se deja de usar tasa manual (usa la API elegida)
-                D.config.tasaManual = false;
-                const tasaManualDiv = document.getElementById('tasaManualDiv');
-                if (tasaManualDiv) tasaManualDiv.style.display = 'none';
-                const modoCheck = document.getElementById('modoManualCheck'); if (modoCheck) modoCheck.checked = false;
-                const etiqueta = document.getElementById('fuenteTasaActiva'); if (etiqueta) etiqueta.innerText = nombreFuenteTasa(fuente);
-                document.querySelectorAll('.fuente-opcion').forEach(o => o.classList.toggle('fuente-opcion-activa', o === btn));
-                mostrarNotificacion('Cambiando fuente a: ' + nombreFuenteTasa(fuente) + '...', 'info');
-                saveConfig();
-                await actualizarTasa(true);
-                const tasaActualDisplay = document.getElementById('tasaActualDisplay');
-                if (tasaActualDisplay) tasaActualDisplay.innerText = fmtDolar(D.config.dolarRate);
-                const tasaMonedaEtiqueta = document.getElementById('tasaMonedaEtiqueta');
-                if (tasaMonedaEtiqueta) tasaMonedaEtiqueta.innerText = (fuente === 'ALCB-USDT') ? 'Bs/USDT' : 'Bs/USD';
-                actualizarInfoCard();
-                await recalcularPreciosPorTasa();
-                actualizarDisplayTasa();
-            });
         });
         
         document.getElementById('guardarPinBtn').onclick = () => {
@@ -3847,17 +3541,6 @@
             if (n === 0) mostrarNotificacion('ℹ️ No se encontraron respaldos para restaurar', 'info');
         };
         actualizarUICarpeta();
-        // 3) Al abrir Configuracion > Tasa de cambio se refrescan los montos en vivo
-        //    de las tres fuentes para saber en cuanto esta cada API antes de elegir.
-        //    Solo se hace si la seccion de config esta visible y no se refresco
-        //    hace menos de 30s, para no repetir 3 consultas en cada re-render.
-        if (currentModule === 'config') {
-            const haceFalta = !D.__ultimaTasasVivas || (Date.now() - D.__ultimaTasasVivas) > 30000;
-            if (haceFalta) {
-                D.__ultimaTasasVivas = Date.now();
-                refrescarTasasVivas();
-            }
-        }
     }
     
     // ==================== SERVICE WORKER Y PWA ====================
@@ -4295,21 +3978,11 @@
     // Bloquear menú contextual, selección y copia de texto (feeling nativo).
     (function bloquearCopiadoYSeleccion() {
         const editable = t => t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
-        document.addEventListener('contextmenu', e => { if(!editable(e.target)) e.preventDefault(); });
+        document.addEventListener('contextmenu', e => e.preventDefault());
         document.addEventListener('selectstart', e => { if(!editable(e.target)) e.preventDefault(); });
         document.addEventListener('copy', e => { if(!editable(e.target)) e.preventDefault(); });
         document.addEventListener('cut', e => { if(!editable(e.target)) e.preventDefault(); });
         document.addEventListener('dragstart', e => e.preventDefault());
-        // Android: informar al WebView cuando el foco esta en un campo editable,
-        // para que el menu nativo Copiar/Cortar/Pegar se muestre SOLO alli.
-        const esEditable = t => t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
-        const notificarFoco = () => {
-            if(!window.AndroidBridge || typeof AndroidBridge.setCampoEditable !== 'function') return;
-            AndroidBridge.setCampoEditable(esEditable(document.activeElement));
-        };
-        document.addEventListener('focusin', notificarFoco);
-        document.addEventListener('focusout', notificarFoco);
-        document.addEventListener('visibilitychange', notificarFoco);
     })();
     // Feedback háptico nativo al presionar botones
     (function setupHaptico() {
@@ -4321,23 +3994,8 @@
             }
         }, { passive: true });
     })();
-    // Sistema de refresco/consulta de tasas (sin saturar). Se llama UNA vez en
-    // todos los caminos de arranque (normal, modo kiosco y restauracion de
-    // modulo), para que el selector de fuentes y el monitoreo de 30 min
-    // funcionen siempre, independientemente de donde arranque la app.
-    function iniciarCicloTasas() {
-        // 1) Al abrir la app se consultan TODAS las tasas (BCV, Al Cambio BCV y USDT)
-        //    para mostrar los montos en vivo en el selector de configuracion.
-        refrescarTasasVivas();
-        // 2) Cada 30 minutos se vuelven a consultar (monitoreo constante).
-        setInterval(() => { refrescarTasasVivas(); actualizarTasa(false); }, 30 * 60 * 1000);
-        // 3) Al abrir la opcion Tasa de cambio en Configuracion, renderConfig()
-        //    tambien llama a refrescarTasasVivas() (bajo "al abrir la opcion").
-    }
     loadAllData().then(() => {
-        if(window.JAMUltimateTrial && window.JAMUltimateTrial.bloquearInmediato()) return;
         if(verificarPruebaInicio()) return;
-        iniciarCicloTasas();
         if(kioscoVentas) {
             localStorage.setItem('jam_last_module', 'ventas');
             const irKiosco = () => { currentModule = 'ventas'; renderVentas(); actualizarTasa(false); };
@@ -4345,9 +4003,7 @@
             else irKiosco();
             return;
         }
-        const shortcutModule = window.jamShortcutModule ? window.jamShortcutModule() : null;
-        const lastModule = shortcutModule || localStorage.getItem('jam_last_module');
-        if(shortcutModule) { localStorage.setItem('jam_last_module', shortcutModule); }
+        const lastModule = localStorage.getItem('jam_last_module');
         if(lastModule && lastModule !== 'home' && lastModule !== '' && window.navigateTo) {
             if(D.config.pin && D.config.pin.length === 4) {
                 if(!sessionStorage.getItem('jam_pin_authed')) askPin(() => { renderHome(); window.navigateTo(lastModule); actualizarTasa(false); });
