@@ -66,14 +66,6 @@
         .modal-form-content input:focus, .modal-form-content select:focus, .modal-form-content textarea:focus,
         .kpi-popup input:focus, .kpi-popup select:focus, .kpi-popup textarea:focus,
         .backup-popup input:focus, .backup-popup select:focus, .backup-popup textarea:focus{border-color:var(--accent,#3b82f6)!important;box-shadow:0 0 0 2px color-mix(in srgb,var(--accent,#3b82f6) 30%,transparent)}
-        /* Popups en modo oscuro: el fondo del popup usa el gris oscuro (antes era casi negro,
-           se mimeticaba con el fondo de la app) y los campos de entrada pasan a negro total
-           para que se diferencien del fondo del popup. */
-        body.dark-mode .modal-form-content{background:#1f1f1f!important;border:2px solid #3a3a3a!important;box-shadow:0 8px 32px rgba(0,0,0,.55)!important}
-        body.dark-mode .modal-form-content input:not([type=range]):not([type=checkbox]), body.dark-mode .modal-form-content select, body.dark-mode .modal-form-content textarea{background:#000!important}
-        body.dark-mode .kpi-popup input:not([type=range]):not([type=checkbox]), body.dark-mode .kpi-popup select, body.dark-mode .kpi-popup textarea{background:#000!important}
-        body.dark-mode .backup-popup input:not([type=range]):not([type=checkbox]), body.dark-mode .backup-popup select, body.dark-mode .backup-popup textarea{background:#000!important}
-        body.dark-mode .backup-popup{background:#1f1f1f!important;color:#e0e0e0!important;border:2px solid #3a3a3a!important}
         /* Barra deslizante de % ganancia (bloqueada por defecto, se desbloquea al mantener 2s) */
         .gan-range{cursor:not-allowed;opacity:.45;transition:opacity .2s ease}
         .gan-range:not(.gan-bloqueada){cursor:pointer;opacity:1;accent-color:var(--accent,#3b82f6)}
@@ -82,17 +74,6 @@
         .scroll-area{overflow-y:auto;max-height:none}
         .config-section{border:2px solid var(--accent);border-radius:20px;padding:12px;margin-bottom:20px}
         .config-inner{padding:0 8px}
-.fuente-titulo{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%}
-.fuente-opcion{display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:8px 10px;border-radius:12px;border:2px solid rgba(128,128,128,.25);background:transparent;color:inherit;text-align:left;font-size:.85rem;cursor:pointer;user-select:none;touch-action:manipulation;width:100%}
-.fuente-opcion:active{transform:scale(.98)}
-.fuente-opcion-activa{border-color:var(--accent);background:rgba(59,130,246,.12);font-weight:700}
-.fuente-vivo{margin-left:6px;padding:1px 7px;border-radius:999px;background:rgba(59,130,246,.15);font-family:monospace;font-size:.72rem;font-weight:700;white-space:nowrap;flex-shrink:0}
-body.dark-mode .fuente-vivo{background:rgba(96,165,250,.18)}
-        .tasas-extras{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin:-8px 0 20px;text-align:center}
-        .tv-item{display:flex;flex-direction:column;align-items:center;gap:4px;padding:12px;border-radius:20px;border:2px solid var(--accent);background:rgba(128,128,128,.06)}
-        .tv-nombre{font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em;opacity:.75}
-        .tv-valor{font-family:monospace;font-size:1.1rem;font-weight:800;white-space:nowrap}
-        body.dark-mode .tv-item{background:rgba(255,255,255,.05)}
 
         .module-header{display:flex;justify-content:space-between;align-items:center}
         .install-btn{position:fixed;bottom:20px;right:20px;z-index:9999;border-radius:50px;padding:10px 20px;font-weight:bold;box-shadow:0 2px 8px rgba(0,0,0,.2);cursor:pointer}
@@ -212,7 +193,6 @@ body.dark-mode{background:#000!important}
             body.has-sidebar .config-section{max-width:600px;margin-left:auto;margin-right:auto}
             body.has-sidebar .product-card,body.has-sidebar .client-card{max-width:600px;margin-left:auto;margin-right:auto}
             body.has-sidebar .card-bcv{max-width:450px;margin-left:auto;margin-right:auto}
-body.has-sidebar .tasas-extras{max-width:450px;margin-left:auto;margin-right:auto}
             body.has-sidebar input,body.has-sidebar select,body.has-sidebar textarea{max-width:100%;display:block}
             body.has-sidebar .cliente-wrapper{max-width:100%;margin-left:auto;margin-right:auto}
             body.has-sidebar .cliente-search-wrap,body.has-sidebar .sugerencias-wrap,body.has-sidebar .buscador{max-width:100%;width:100%}
@@ -246,7 +226,7 @@ body.has-sidebar .tasas-extras{max-width:450px;margin-left:auto;margin-right:aut
         .kpi-popup-val{font-size:.82rem;font-weight:800;line-height:1.2;color:inherit}
         .kpi-popup-lbl{font-size:.6rem;opacity:.55;color:inherit}
         .kpi-popup-totales{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:8px;padding-top:6px;border-top:1px solid rgba(128,128,128,.15);font-size:.6rem;opacity:.6;color:inherit}
-        body.dark-mode .kpi-popup{background:#1f1f1f;color:#e0e0e0;border-color:var(--accent)}
+        body.dark-mode .kpi-popup{background:#1a1a1a;color:#e0e0e0;border-color:var(--accent)}
         body.dark-mode .kpi-popup-overlay{background:rgba(0,0,0,.6)}
         body.dark-mode .kpi-popup-card{background:rgba(255,255,255,.06)}
         body.dark-mode .kpi-popup-cerrar:hover{background:rgba(255,255,255,.1)}
