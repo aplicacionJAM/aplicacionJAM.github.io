@@ -1,8 +1,7 @@
         *{transition:all .2s ease;-webkit-tap-highlight-color:transparent;box-sizing:border-box}
-        html{overscroll-behavior:none}
-        input,textarea,select,[contenteditable]{user-select:auto!important;-webkit-user-select:auto!important;-webkit-touch-callout:default!important;font-size:16px!important}
-        button,.btn-redondeado,.sidebar-item,.main-module-btn,.color-circle{cursor:pointer;user-select:none;touch-action:manipulation}
-        body{font-family:'Inter',system-ui,sans-serif;margin:0;padding:0;min-height:100vh;overflow-x:hidden;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;overscroll-behavior:none;padding-top:env(safe-area-inset-top);padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right);padding-bottom:env(safe-area-inset-bottom)}
+        input,textarea,select,[contenteditable]{user-select:auto;-webkit-user-select:auto}
+        button,.btn-redondeado,.sidebar-item,.main-module-btn,.color-circle{cursor:pointer;user-select:none}
+        body{font-family:'Inter',system-ui,sans-serif;margin:0;padding:0;min-height:100vh;overflow-x:hidden;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
         .main-container{max-width:100%;margin:0 auto;padding:0;min-height:100vh}
         .page-header-fixed{position:sticky;top:0;z-index:100;background:inherit;padding:12px 12px;margin-bottom:16px}
         .page-container,.home-container{padding:0 16px 20px 16px;min-height:auto}
@@ -55,20 +54,6 @@
         input,select,textarea{border-radius:20px;padding:10px 14px;width:100%;outline:none}
         .modal-form{position:fixed;inset:0;background:rgba(0,0,0,.5);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:1000;padding:16px}
         .modal-form-content{max-width:460px;width:100%;border-radius:28px;padding:20px;max-height:85vh;overflow:auto}
-        /* SOLO popups: campos de entrada marcados con borde en reposo y color del tema al enfocar.
-           Las ventanas principales y módulos conservan sus bordes originales de tema. */
-        .modal-form-content input:not([type=range]):not([type=checkbox]), .modal-form-content select, .modal-form-content textarea,
-        .kpi-popup input:not([type=range]):not([type=checkbox]), .kpi-popup select, .kpi-popup textarea,
-        .backup-popup input:not([type=range]):not([type=checkbox]), .backup-popup select, .backup-popup textarea{border:2px solid;border-color:#1e1e1e!important}
-        body.dark-mode .modal-form-content input:not([type=range]):not([type=checkbox]), body.dark-mode .modal-form-content select, body.dark-mode .modal-form-content textarea,
-        body.dark-mode .kpi-popup input:not([type=range]):not([type=checkbox]), body.dark-mode .kpi-popup select, body.dark-mode .kpi-popup textarea,
-        body.dark-mode .backup-popup input:not([type=range]):not([type=checkbox]), body.dark-mode .backup-popup select, body.dark-mode .backup-popup textarea{border-color:#e0e0e0!important}
-        .modal-form-content input:focus, .modal-form-content select:focus, .modal-form-content textarea:focus,
-        .kpi-popup input:focus, .kpi-popup select:focus, .kpi-popup textarea:focus,
-        .backup-popup input:focus, .backup-popup select:focus, .backup-popup textarea:focus{border-color:var(--accent,#3b82f6)!important;box-shadow:0 0 0 2px color-mix(in srgb,var(--accent,#3b82f6) 30%,transparent)}
-        /* Barra deslizante de % ganancia (bloqueada por defecto, se desbloquea al mantener 2s) */
-        .gan-range{cursor:not-allowed;opacity:.45;transition:opacity .2s ease}
-        .gan-range:not(.gan-bloqueada){cursor:pointer;opacity:1;accent-color:var(--accent,#3b82f6)}
         .color-circle{width:40px;height:40px;border-radius:50%;cursor:pointer;box-shadow:0 2px 5px rgba(0,0,0,.2)}
         .ticket-line{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed #ddd}
         .scroll-area{overflow-y:auto;max-height:none}
@@ -357,74 +342,17 @@ body.dark-mode{background:#000!important}
         .tuto-contador{font-size:10px;opacity:.55;text-align:center;margin-top:8px}
         .tuto-botones{display:flex;gap:8px}
         .tuto-botones button{flex:1;padding:10px;border:none;border-radius:14px;font-weight:700;cursor:pointer;font-size:.92rem}
-        .prueba-banner{display:flex;align-items:center;justify-content:space-between;gap:8px;background:rgba(234,179,8,.13);border:1px solid rgba(234,179,8,.5);border-radius:14px;padding:8px 12px;font-size:.85rem;margin-bottom:14px}
+        .prueba-banner{display:flex;align-items:center;justify-content:space-between;gap:10px;background:rgba(234,179,8,.13);border:1px solid rgba(234,179,8,.5);border-radius:14px;padding:8px 12px;font-size:.85rem;margin-bottom:14px}
         .prueba-banner b{color:#ca8a04}
         body.dark-mode .prueba-banner b{color:#facc15}
         .prueba-banner button{background:none;border:none;font-size:1rem;cursor:pointer;color:inherit;padding:0 4px;opacity:.7}
-        .prueba-banner-link{background:#ca8a04;color:#fff;padding:4px 10px;border-radius:10px;font-size:.75rem;font-weight:700;text-decoration:none;white-space:nowrap}
-        .prueba-bloqueo{position:fixed;inset:0;background:rgba(8,8,18,.96);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;z-index:30000;padding:20px;overflow-y:auto}
-        .prueba-bloqueo-caja{max-width:400px;width:100%;text-align:center;background:#14141f;color:#e5e5e5;border-radius:28px;padding:32px 24px;border:1px solid #2c2c3a}
-        .prueba-bloqueo-icono{font-size:3.5rem;margin-bottom:12px}
-        .prueba-bloqueo-caja h2{font-size:1.4rem;font-weight:800;margin-bottom:10px;color:#fca5a5}
+        .prueba-bloqueo{position:fixed;inset:0;background:rgba(8,8,18,.94);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;z-index:30000;padding:24px}
+        .prueba-bloqueo-caja{max-width:380px;width:100%;text-align:center;background:#14141f;color:#e5e5e5;border-radius:28px;padding:30px 22px;border:1px solid #2c2c3a}
+        .prueba-bloqueo-icono{font-size:3.2rem;margin-bottom:10px}
+        .prueba-bloqueo-caja h2{font-size:1.35rem;font-weight:800;margin-bottom:10px;color:#fca5a5}
         .prueba-bloqueo-caja p{font-size:.92rem;opacity:.85;line-height:1.5;margin-bottom:8px}
         .prueba-bloqueo-detalle{opacity:.6;font-size:.85rem}
-        .prueba-bloqueo-email{margin:18px 0;padding:14px;background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.3);border-radius:14px}
-        .prueba-bloqueo-email-label{font-size:.8rem;opacity:.7;margin-bottom:6px}
-        .prueba-bloqueo-email-link{color:#3b82f6;font-size:1rem;font-weight:700;text-decoration:none;word-break:break-all}
-        .prueba-bloqueo-premium{text-align:left;margin:16px 0;padding:14px;background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.2);border-radius:14px}
-        .prueba-bloqueo-premium-titulo{font-size:.8rem;font-weight:700;color:#10b981;margin-bottom:8px}
-        .prueba-bloqueo-premium-item{font-size:.82rem;opacity:.85;padding:3px 0}
-        .prueba-bloqueo-btn{margin-top:12px;width:100%;padding:13px;border:none;border-radius:16px;background:#3b82f6;color:#fff;font-weight:700;font-size:1rem;cursor:pointer}
-        .prueba-bloqueo-btn:active{transform:scale(.97)}
-        .prueba-bloqueo-btn-cerrar{margin-top:8px;width:100%;padding:11px;border:none;border-radius:16px;background:transparent;color:#888;font-weight:600;font-size:.9rem;cursor:pointer;border:1px solid #333}
-        .prueba-contador-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;z-index:29999;padding:20px}
-        .prueba-contador-caja{max-width:360px;width:100%;background:#fff;border-radius:28px;padding:32px 24px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.4)}
-        body.dark-mode .prueba-contador-caja{background:#1a1a2e;color:#e5e5e5}
-        .prueba-contador-header{margin-bottom:20px}
-        .prueba-contador-icono{font-size:2.5rem;margin-bottom:6px}
-        .prueba-contador-header h2{font-size:1.3rem;font-weight:800;margin:0}
-        .prueba-contador-tag{display:inline-block;background:rgba(234,179,8,.15);color:#ca8a04;padding:3px 12px;border-radius:20px;font-size:.75rem;font-weight:700;margin-top:6px}
-        body.dark-mode .prueba-contador-tag{color:#facc15}
-        .prueba-contador-cuerpo{margin-bottom:20px}
-        .prueba-contador-numero{font-size:3.5rem;font-weight:900;color:#3b82f6;line-height:1}
-        .prueba-contador-urgente{color:#ef4444}
-        .prueba-contador-label{font-size:1rem;font-weight:600;margin:6px 0 14px;opacity:.8}
-        .prueba-contador-barra{width:100%;height:10px;background:#e5e7eb;border-radius:10px;overflow:hidden}
-        body.dark-mode .prueba-contador-barra{background:#333}
-        .prueba-contador-barra-fill{height:100%;background:linear-gradient(90deg,#3b82f6,#8b5cf6);border-radius:10px;transition:width .5s ease}
-        .prueba-contador-urgente .prueba-contador-barra-fill{background:linear-gradient(90deg,#ef4444,#f97316)}
-        .prueba-contador-dias-total{font-size:.75rem;opacity:.5;margin-top:6px}
-        .prueba-contador-footer p{font-size:.85rem;opacity:.7;margin-bottom:4px}
-        .prueba-contador-email{color:#3b82f6;font-weight:700;text-decoration:none;font-size:.9rem}
-        .prueba-contador-btn{margin-top:16px;width:100%;padding:13px;border:none;border-radius:16px;background:#3b82f6;color:#fff;font-weight:700;font-size:1rem;cursor:pointer}
-        .prueba-contador-btn:active{transform:scale(.97)}
+        .prueba-bloqueo-btn{margin-top:18px;width:100%;padding:12px;border:none;border-radius:16px;background:#ef4444;color:#fff;font-weight:700;font-size:1rem;cursor:pointer}
         .tuto-saltar{background:rgba(0,0,0,.08);color:inherit}
         .tuto-siguiente{background:var(--accent,#3b82f6);color:#fff}
         .tuto-inicial{display:flex;align-items:center;justify-content:center;height:100%}
-        .kiosco-candado{position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:1.05rem;color:#dc2626;cursor:pointer;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:none;transition:transform .15s ease;padding:6px 10px}
-        .kiosco-candado i{color:#dc2626;font-size:1.05rem;pointer-events:none}
-        body.dark-mode .kiosco-candado i{color:#fca5a5!important}
-        .kiosco-candado::after{content:'';position:absolute;left:0;bottom:0;height:3px;width:var(--kiosco-p,0%);background:#ef4444;border-radius:3px;box-shadow:0 0 6px rgba(239,68,68,.6)}
-        .kiosco-candado.kiosco-sostenido{transform:scale(1.15);animation:kiosco-pulso .9s ease-in-out infinite}
-        @keyframes kiosco-pulso{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.45)}50%{box-shadow:0 0 0 10px rgba(239,68,68,0)}}
-        .kiosco-title-calc{display:inline-flex;align-items:center;font-size:.85rem;margin-left:10px;cursor:pointer;opacity:.7;transition:opacity .15s;position:relative;top:-1px}
-        .kiosco-title-calc:active{opacity:1}
-        .titulo-sostenido{background:rgba(220,38,38,.12);transform:scale(.97);animation:kiosco-pulso .9s ease-in-out infinite}
-        .titulo-kiosco{cursor:default}
-        #tituloModule{user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
-        .module-title.titulo-sostenido{position:relative;overflow:hidden}
-        
-        .module-title.titulo-sostenido::after{content:'';position:absolute;left:8px;bottom:4px;height:3px;width:calc(var(--kiosco-p,0%) - 16px);min-width:0;background:#dc2626;border-radius:3px;box-shadow:0 0 6px rgba(220,38,38,.6)}
-
-        /* ==================== BACKUP INTELIGENTE ==================== */
-        .backup-popup-fondo{position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;animation:fadeIn .3s}
-        .backup-popup{background:var(--card-bg,#fff);border-radius:16px;padding:24px;max-width:340px;width:90%;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,.3)}
-        .backup-popup-icono{font-size:2.5rem;margin-bottom:8px}
-        .backup-popup h3{margin:0 0 8px;font-size:1.1rem}
-        .backup-popup p{margin:0 0 16px;font-size:.85rem;opacity:.8}
-        .backup-popup-opciones{display:flex;flex-direction:column;gap:8px}
-        .backup-popup-btn{border:none;border-radius:12px;padding:12px;font-size:.9rem;cursor:pointer;font-weight:600}
-        .backup-popup-btn-principal{color:#fff}
-        .backup-popup-btn-secundario{background:rgba(59,130,246,.1);color:#3b82f6;border:1px solid rgba(59,130,246,.3)}
-        .backup-popup-btn-texto{background:none;color:#999;font-size:.8rem;font-weight:400}
-        @keyframes fadeIn{from{opacity:0}to{opacity:1}}
