@@ -277,7 +277,8 @@
         session_meta: 'jam_pos_meta',
         tasa_diaria: 'jam_pos_tasa_diaria',
         entregas: 'jam_pos_entregas',
-        tickets: 'jam_pos_tickets'
+        tickets: 'jam_pos_tickets',
+        session_cart: 'jam_pos_session_cart'
     };
 
     let _idbAvisada = false;
@@ -511,8 +512,8 @@
                 configurar(req2);
                 req2.onerror = () => { avisarIDBCaida(req2.error || errOriginal); reject(req2.error || errOriginal); };
             };
-            // Versión 4: incluye el almacén 'entregas' (entregas de proveedores)
-            const req1 = indexedDB.open('jampos_db', 4);
+            // Versión 5: incluye 'entregas' (v4) + 'tickets' (v5) — fallback crea stores faltantes.
+            const req1 = indexedDB.open('jampos_db', 5);
             configurar(req1);
             req1.onerror = () => abrirSinVersion(req1.error);
             req1.onblocked = () => abrirSinVersion(new Error('DB bloqueada'));
@@ -606,7 +607,7 @@
     
     // ==================== DATOS GLOBALES ====================
     let D = {
-productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas: [], entregas: [],
+productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas: [], entregas: [], tickets: [],
         tasasVivas: {},
         config: { 
             key:'mainConfig', theme:'#3b82f6', dolarRate:0, lastUpdate:new Date().toLocaleDateString(), 
@@ -682,7 +683,8 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         saveToStorage(STORAGE_KEYS.session_meta, { tipoPago, clienteSeleccionadoId, clienteInputText });
     }
     function cargarSesionVenta() {
-        const savedCart = loadFromStorage(STORAGE_KEYS.session_cart, null);
+        let savedCart = loadFromStorage(STORAGE_KEYS.session_cart, null);
+        if(savedCart == null) { const viejo = loadFromStorage('undefined', null); if(viejo && Array.isArray(viejo)) savedCart = viejo; }
         if(savedCart && Array.isArray(savedCart)) carrito = savedCart;
         const savedMeta = loadFromStorage(STORAGE_KEYS.session_meta, null);
         if(savedMeta) { tipoPago = savedMeta.tipoPago || 'pago_movil'; clienteSeleccionadoId = savedMeta.clienteSeleccionadoId || null; clienteInputText = savedMeta.clienteInputText || ''; }
@@ -704,6 +706,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         D.ventas = await getAll('ventas');
         D.entregas = await getAll('entregas');
         D.tasaDiaria = await getAll('tasa_diaria');
+        try { D.tickets = await getAll('tickets'); } catch(e) { console.warn('tickets load', e); }
 
         // Dual persistencia: si IDB vino vacío, restaurar desde archivos
         if (esAppNativa()) {
@@ -758,8 +761,6 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         refrescarCacheTasaDiaria();
         if(!(D.config.dolarRate > 0)){ const __t = tasaAlmacenada(); if(__t > 0) D.config.dolarRate = __t; }
         
-        if(D.productos.length === 0){}
-        if(D.clientes.length === 0){}
         aplicarModoSistema();
         applyTheme();
         saveConfig();
@@ -920,6 +921,11 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         D.tasasVivas['ALCB-BCV'] = alcBcv;
         D.tasasVivas['ALCB-USDT'] = alcUsdt;
         pintarTasasVivas();
+        // Indicar al nativo cual es la fuente REGIDORA (la visible en el home)
+        // para que la barra de fondo muestre SOLO las otras dos, sin repetir.
+        if (window.AndroidBridge && typeof AndroidBridge.guardarFuenteTasa === 'function') {
+            try { AndroidBridge.guardarFuenteTasa(fuenteRegidoraClave()); } catch(e) {}
+        }
         // Enviar al nativo (APK): mantiene widget + notificacion + avisa del cambio.
         if (window.AndroidBridge && typeof AndroidBridge.enviarTasas === 'function') {
             try {
@@ -1373,7 +1379,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
                 await jamDialogo({ titulo:'Faltan datos', tipo:'error', mensaje: `No se puede guardar el ${titulosStore[store] || store}. Complete los siguientes campos:\n\n• ${errores.join('\n• ')}`, botones:[{ texto:'Entendido', valor:true, destacado:true }] });
                 return;
             }
-            let nuevo = { id: id || (store === 'clientes' ? 'c' : 'pr') + Date.now() + '_' + Date.now() };
+            let nuevo = { id: id || (store === 'clientes' ? 'c' : 'pr') + Date.now() + '_' + Math.random().toString(36).slice(2, 7) };
             for(let i=0; i<campos.length; i++) {
                 let val = document.getElementById(`field${i}`).value.trim();
                 nuevo[campos[i]] = (campos[i] === 'nombre' || campos[i] === 'concepto' || campos[i] === 'contacto' || campos[i] === 'cargo') ? capitalizeWords(val) : val;
@@ -1447,7 +1453,10 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         modal.querySelector('#cancelarPrecio').onclick = () => modal.remove();
         modal.onclick = e => { if(e.target === modal) modal.remove(); };
     }
+    let _ultimoToqueAdd = null;
+    function proteccionDobleToque(id){ const a = Date.now(); if(_ultimoToqueAdd && _ultimoToqueAdd[0] === id && a - _ultimoToqueAdd[1] < 600) return false; _ultimoToqueAdd = [id, a]; return true; }
     function agregarProductoAlCarrito(prod){
+        if(!proteccionDobleToque(prod.id)) return false;
         let ex = carrito.find(c => c.id === prod.id);
         let enCarrito = ex ? ex.cantidad : 0;
         if(prod.stock <= 0) { mostrarNotificacion(`⚠️ "${escapeHtml(prod.nombre)}" está agotado`, 'error'); return false; }
@@ -1676,7 +1685,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
     async function finalizarVenta(){
         if(carrito.length === 0) { alert("Carrito vacío"); return; }
         if(!(await jamConfirm(`¿Desea finalizar la venta por ${fmtPrecio(totalVenta)} Bs?`))) return;
-        let pagado = totalVenta, detallePagos = null, esCredito = false;
+        let pagado = totalVenta, detallePagos = null, esCredito = false, pagoUsd = 0, cambioUsd = 0;
         if(tipoPago === 'efectivo_bs') {
             pagado = parseBs(document.getElementById('montoPagado')?.value);
             if(isNaN(pagado) || pagado < totalVenta) { alert("Monto insuficiente"); return; }
@@ -1684,6 +1693,15 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
             pagado = pagosDivididos.reduce((s,p) => s + (parseFloat(p.monto) || 0), 0);
             if(pagado < totalVenta - 0.01) { alert(`Monto insuficiente. Asignó ${fmtPrecio(pagado)} Bs, necesita ${fmtPrecio(totalVenta)} Bs`); return; }
             detallePagos = pagosDivididos.map(p => ({ ...p }));
+        } else if(tipoPago === 'dolares') {
+            const rate = parseFloat(D.config.dolarRate) || 0;
+            if(!(rate > 0)) { await jamAlert('No hay tasa activa para cobrar en dólares. Usa efectivo (Bs) o actualiza la tasa.', 'error'); return; }
+            const usdRaw = parseFloat((await jamPrompt(`Monto recibido en USD (1 USD = ${fmtDolar(rate)} Bs):`, '', '0.00') || '').replace(',', '.'));
+            if(!(usdRaw > 0)) return;
+            pagado = Math.round(Math.round(usdRaw * 100) / 100 * rate * 100) / 100;
+            pagoUsd = Math.round(usdRaw * 100) / 100;
+            if(pagado < totalVenta - 0.01) { await jamAlert(`El monto en USD no cubre el total (equivalen a ${fmtPrecio(pagado)} Bs).`, 'error'); return; }
+            cambioUsd = Math.round(((pagado - totalVenta) / rate) * 100) / 100;
         } else if(tipoPago === 'credito') {
             if(!clienteSeleccionadoId) { await jamAlert('El crédito requiere seleccionar un cliente registrado (búscalo arriba)', 'error'); return; }
             esCredito = true;
@@ -1739,6 +1757,8 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
             ivaPorcentaje: D.config.ivaPorcentaje,
             pago: esCredito ? 0 : pagado, 
             cambio: esCredito ? 0 : pagado - totalVenta, 
+            pagoUsd: pagoUsd || undefined,
+            cambioUsd: esCredito ? 0 : cambioUsd || undefined,
             tipoPago: tipoPago,
             credito: esCredito,
             detallePagos: detallePagos
@@ -1753,15 +1773,20 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
             }
         }
         mostrarNotificacionNativa('Venta registrada', `${clienteNombre} — ${fmtPrecio(totalVenta)} Bs`, 'venta');
-        mostrarTicket(nuevaVenta);
+        mostrarTicket(nuevaVenta, true);
         carrito = [];
         clienteSeleccionadoId = null;
         clienteInputText = '';
         tipoPago = 'pago_movil';
         pagosDivididos = [{ metodo: 'efectivo_bs', monto: 0 }];
         guardarSesionVenta();
+        const montoPagadoEl = document.getElementById('montoPagado');
+        if(montoPagadoEl) montoPagadoEl.value = '';
+        const cambioMsg = document.getElementById('cambioMensaje');
+        if(cambioMsg) cambioMsg.innerHTML = '';
         if(document.getElementById('clienteInput')) document.getElementById('clienteInput').value = '';
         if(document.getElementById('clienteIdHidden')) document.getElementById('clienteIdHidden').value = '';
+        sincronizarUIVenta();
         actualizarCarritoUI();
     }
     
@@ -1828,8 +1853,8 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         if (venta.iva) t += padR('IVA (' + (venta.ivaPorcentaje != null ? venta.ivaPorcentaje : D.config.ivaPorcentaje) + '%)', W - 10) + padL(fmtPrecio(venta.iva) + ' Bs', 10) + '\n';
         t += padR('TOTAL', W - 10) + padL(fmtPrecio(venta.total) + ' Bs', 10) + '\n';
         t += gui + '\n';
-        t += padR('PAGO', W - 10) + padL(fmtPrecio(venta.pago) + ' Bs', 10) + '\n';
-        if (esPagoEfectivo(venta)) t += padR('CAMBIO', W - 10) + padL(fmtPrecio(venta.cambio) + ' Bs', 10) + '\n';
+        t += (venta.credito ? padR('CREDITO', W - 10) : padR('PAGO', W - 10)) + padL(fmtPrecio(venta.credito ? venta.total : venta.pago) + ' Bs', 10) + '\n';
+        if (esPagoEfectivo(venta) && !venta.credito) t += padR('CAMBIO', W - 10) + padL(fmtPrecio(venta.cambio) + ' Bs', 10) + '\n';
         if (venta.detallePagos) {
             t += padR('FORMA DE PAGO:', W - 10) + padL('DIVIDIDO', 10) + '\n';
             venta.detallePagos.forEach(d => {
@@ -1900,11 +1925,13 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
                     await saveItem('productos', prod);
                 }
             }
-            if(venta.credito && venta.clienteId && venta.total > 0){
+            if(venta.credito && venta.clienteId){
                 const clientes = await getAll('clientes');
                 const cli = clientes.find(c => c.id === venta.clienteId);
                 if(cli){
-                    cli.adeudo = Math.max(0, (parseFloat(cli.adeudo) || 0) - venta.total);
+                    const pendCredito = (D.ventas || []).filter(v => v.credito && !v.anulada && v.id !== ventaId && v.clienteId === venta.clienteId).reduce((s,v) => s + (parseFloat(v.total) || 0), 0);
+                    const abonado = (cli.abonos || []).reduce((s,a) => s + (parseFloat(a.monto) || 0), 0);
+                    cli.adeudo = Math.max(0, Math.round((pendCredito - abonado) * 100) / 100);
                     await saveItem('clientes', cli);
                 }
             }
@@ -1937,6 +1964,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
             if(x.detallePagos && x.detallePagos.length){ x.detallePagos.forEach(d => { const k = d.metodo; if(out[k] !== undefined) out[k] += Number(d.monto) || 0; }); }
             else { const k = x.tipoPago; if(out[k] !== undefined) out[k] += Number(x.total) || 0; }
         });
+        (D.clientes || []).forEach(c => { (c.abonos || []).forEach(a => { const ft = a.timestamp ? a.timestamp : (a.fecha ? new Date(a.fecha).getTime() : 0); if(ft && msToDateStr(ft) === hoy && parseFloat(a.monto) > 0){ const k = a.metodo; if(out[k] !== undefined) out[k] += Number(a.monto) || 0; } }); });
         return out;
     }
     function formatoCajaContado(c){ const r = {}; METODOS_CAJA.forEach(m => { r[m] = (c && typeof c[m] === 'number') ? c[m] : 0; }); return r; }
@@ -2043,7 +2071,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
             const ok = await jamConfirm(`¿CERRAR caja?\n\nEsperado: ${fmtPrecio(totalEsperado)} Bs\nContado: ${fmtPrecio(totalContado)} Bs\nDiferencia: ${fmtPrecio(difTotal)} Bs\n\nEl cierre quedará en el historial.`);
             if(!ok) return;
             const ahora = new Date();
-            caja.cierres.push({ fecha: msToDateStr(ahora.getTime()), hora: ahora.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}), aperturaBs: caja.abierta.aperturaBs||0, porMetodo: contado, totalEsperado: Math.round(totalEsperado*100)/100, totalContado: Math.round(totalContado*100)/100, difTotal: Math.round(difTotal*100)/100, nVentas: ventas.length });
+            caja.cierres.push({ fecha: msToDateStr(ahora.getTime()), hora: ahora.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}), aperturaBs: caja.abierta.aperturaBs||0, porMetodo: contado, totalEsperado: Math.round(totalEsperado*100)/100, totalContado: Math.round(totalContado*100)/100, difTotal: Math.round(difTotal*100)/100, nVentas: ventas.filter(v => !v.anulada && msToDateStr(v.timestamp || new Date(v.fecha).getTime()) === msToDateStr(ahora.getTime())).length });
             caja.abierta = null;
             caja.ultimoArqueo = null;
             guardarCaja(caja);
@@ -2074,7 +2102,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         venta.items.forEach(item => { mensaje += `${item.cantidad}x ${item.nombre} → ${fmtPrecio(item.subtotal)} Bs\n`; });
         mensaje += `━━━━━━━━━━━━━━━━━━━━\n💰 *SUBTOTAL:* ${fmtPrecio(venta.subtotal)} Bs\n`;
         if(venta.iva) mensaje += `📊 *IVA:* ${fmtPrecio(venta.iva)} Bs\n`;
-        mensaje += `💵 *TOTAL:* ${fmtPrecio(venta.total)} Bs\n💸 *PAGO:* ${fmtPrecio(venta.pago)} Bs\n${esPagoEfectivo(venta) ? `🔄 *CAMBIO:* ${fmtPrecio(venta.cambio)} Bs\n` : ''}`;
+        mensaje += venta.credito ? `💵 *TOTAL:* ${fmtPrecio(venta.total)} Bs (CRÉDITO PENDIENTE)\n` : `💵 *TOTAL:* ${fmtPrecio(venta.total)} Bs\n💸 *PAGO:* ${fmtPrecio(venta.pago)} Bs\n${esPagoEfectivo(venta) ? `🔄 *CAMBIO:* ${fmtPrecio(venta.cambio)} Bs\n` : ''}`;
         if(venta.detallePagos) {
             venta.detallePagos.forEach(d => { mensaje += `└ ${etiqMetodo[d.metodo]||d.metodo}: ${fmtPrecio(d.monto)} Bs\n`; });
         } else {
@@ -2701,26 +2729,27 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
             ${!(D.config.dolarRate > 0) ? `<div id="sinTasaAvisoProd" class="mb-2 p-2 rounded text-sm" style="background:#fef3c7;color:#92400e;font-weight:600">⚠️ Sin tasa de cambio registrada: los precios en Bs se activarán cuando haya tasa (conéctate a internet o fíjala manualmente en Configuración).</div>` : ''}
             <div class="mb-2"><label class="opacity-70">Nombre</label><input id="nombre" value="${escapeHtml(prod?.nombre||'')}" class="border rounded p-1 w-full"></div>
             <div class="mb-2"><label class="opacity-70">📷 Código de barras</label><div class="flex gap-2"><input id="codigo" value="${escapeHtml(prod?.codigo||'')}" class="border rounded p-1 flex-1" style="border-color:var(--accent,#3b82f6)"><button id="btnScanProducto" class="btn-icon-cuadrado" title="Escanear con cámara"><i class="fas fa-camera"></i></button></div></div>
-            <div class="mb-2"><label class="opacity-70">Categoría</label><input id="categoria" value="${escapeHtml(prod?.categoria||'')}" class="border rounded p-1 w-full"></div>
+            <div class="mb-2"><div class="grid grid-cols-2 gap-2"><div><label class="opacity-70">Categoría</label><input id="categoria" value="${escapeHtml(prod?.categoria||'')}" class="border rounded p-1 w-full"></div><div><label class="opacity-70">Tipo</label><input id="tipo" value="${escapeHtml(prod?.tipo||'')}" class="border rounded p-1 w-full"></div></div></div>
             <div class="mb-2"><div class="grid grid-cols-10 gap-2 relative"><div class="col-span-8 relative"><label class="opacity-70">Proveedor</label><input id="proveedor" value="${escapeHtml(prod?.proveedor||'')}" placeholder="Escriba para buscar..." class="border rounded p-1 w-full" autocomplete="off"><div id="sugProveedor" style="display:none;position:absolute;left:0;right:0;z-index:100;background:var(--bg,#fff);border:1px solid rgba(128,128,128,0.2);border-radius:12px;max-height:150px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.1)"></div></div><div class="col-span-2"><label class="opacity-70">Descuento</label><input type="number" id="descProvInput" step="any" min="0" max="99.99" value="${descProvIni || ''}" placeholder="%" class="border rounded p-1 w-full"></div></div></div>
             <div class="grid grid-cols-10 gap-2 mb-2 items-end">
                 <div class="col-span-3"><label class="opacity-70">💵 Costo (USD)</label><input type="number" id="compraUsd" step="any" min="0" value="${prod?.costoRealUsd||''}" placeholder="Ej: 3.00" class="border rounded p-1 w-full"></div>
                 <div class="col-span-3"><label class="opacity-70">Costo en Bs</label><input type="text" id="compraBs" value="${fmtPrecio(prIni.costoBs)}" class="border rounded p-1 w-full"></div>
+                <div class="col-span-2"><label class="opacity-70">Ganancia</label><input type="number" id="gananciaInput" step="any" min="5" max="100" value="${ganIni}" class="border rounded p-1 w-full"></div>
                 <div class="col-span-2"><label class="opacity-70">Stock</label><input type="number" id="stock" value="${prod?.stock||0}" class="border rounded p-1 w-full"></div>
-                <div class="col-span-2"><label class="opacity-70">% Ganancia</label><input type="number" id="gananciaInput" step="any" min="5" max="100" value="${ganIni}" class="border rounded p-1 w-full"></div>
             </div>
             <div class="grid grid-cols-2 gap-2 mb-2 items-end">
-                <div><label class="opacity-70">Venta en Bs</label><input type="text" id="ventaBs" value="${fmtPrecio(prIni.normalBs)}" class="border rounded p-1 w-full"></div>
                 <div><label class="opacity-70">Venta en USD</label><input type="number" id="ventaUsd" step="any" min="0" value="${prIni.normalUsd || ''}" class="border rounded p-1 w-full"></div>
+                <div><label class="opacity-70">Venta en Bs</label><input type="text" id="ventaBs" value="${fmtPrecio(prIni.normalBs)}" class="border rounded p-1 w-full"></div>
             </div>
             <div id="costoNetoInfo" class="text-xs mb-2" style="color:#f59e0b;${descProvIni > 0 ? '' : 'display:none'}">📦 Costo neto prov: $<span id="costoNetoMostrar">${(prIni.costoNetoUsd || 0).toFixed(2)}</span> <span id="costoNetoAntes" style="text-decoration:line-through;opacity:0.6">${descProvIni > 0 ? '$' + (prIni.costoUsd || 0).toFixed(2) : ''}</span></div>
             <div class="rounded-xl p-3 mb-3" style="background:rgba(128,128,128,0.08)">
                 <p class="font-bold text-sm mb-2" style="color:var(--accent)">💲 Precios calculados <span class="text-xs opacity-60">(tasa: 1 USD = ${fmtDolar(tasa)} Bs)</span></p>
                 <div class="text-xs space-y-2">
-                    <div class="mb-2"><div class="flex items-center justify-between"><label class="font-bold text-sm">🏷️ Oferta del producto</label><label class="switch"><input type="checkbox" id="descOn" ${descPct > 0 ? 'checked' : ''}><span class="slider"></span></label></div><div id="descDiv" style="${descPct > 0 ? 'display:block' : 'display:none'}"><label class="opacity-70">% de Descuento</label><input type="number" id="descuentoInput" step="any" min="0" max="99.99" value="${descPct || ''}" placeholder="Ej: 10" class="border rounded p-1 w-full"></div></div>
-                    <div id="ofertaGrid" class="grid grid-cols-2 gap-2" style="${descPct > 0 ? '' : 'display:none'}">
-                        <div><label class="opacity-70">Oferta en Bs</label><input type="text" id="descBs" value="${fmtPrecio(descBsIni)}" class="border rounded p-1 w-full"></div>
-                        <div><label class="opacity-70">Oferta en USD</label><input type="number" id="descUsd" step="any" min="0" value="${descUsdIni || ''}" class="border rounded p-1 w-full"></div>
+                    <div class="flex items-center justify-between"><label class="font-bold text-sm">🏷️ Oferta del producto</label><label class="switch"><input type="checkbox" id="descOn" ${descPct > 0 ? 'checked' : ''}><span class="slider"></span></label></div>
+                    <div id="descDiv" class="grid grid-cols-10 gap-2 items-end" style="${descPct > 0 ? '' : 'display:none'}">
+                        <div class="col-span-4"><label class="opacity-70">Oferta en USD</label><input type="number" id="descUsd" step="any" min="0" value="${descUsdIni || ''}" class="border rounded p-1 w-full"></div>
+                        <div class="col-span-4"><label class="opacity-70">Oferta en Bs</label><input type="text" id="descBs" value="${fmtPrecio(descBsIni)}" class="border rounded p-1 w-full"></div>
+                        <div class="col-span-2"><label class="opacity-70">Descuento</label><input type="number" id="descuentoInput" step="any" min="0" max="99.99" value="${descPct || ''}" placeholder="Ej: 10" class="border rounded p-1 w-full"></div>
                     </div>
                     <div class="flex justify-end"><button id="recalcBtn" class="btn-redondeado py-1 px-3 text-xs" style="border:1px solid var(--accent,#3b82f6)">↺ Recalcular</button></div>
                 </div>
@@ -2767,9 +2796,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
                 descBs.value = (dUsd > 0 && !sinTasa) ? fmtPrecio(tRedondeo(dUsd * tasaV)) : '';
                 sincronizarBs(descBs);
             }
-            descDiv.style.display = descOn.checked ? 'block' : 'none';
-            const ofertaGrid = document.getElementById('ofertaGrid');
-            if(ofertaGrid) ofertaGrid.style.display = descOn.checked ? '' : 'none';
+            descDiv.style.display = descOn.checked ? '' : 'none';
             if(costoNetoInfo) costoNetoInfo.style.display = descProvVal > 0 && costoUsdVal > 0 ? '' : 'none';
             if(costoNetoMostrar) costoNetoMostrar.textContent = costoNetoUsd.toFixed(2);
             if(costoNetoAntes) costoNetoAntes.textContent = descProvVal > 0 ? '$' + costoUsdVal.toFixed(2) : '';
@@ -2836,14 +2863,14 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
             if(!document.getElementById('nombre').value.trim()) { await jamAlert('El nombre del producto es obligatorio', 'error'); return; }
             if(precioVentaBs <= 0) { await jamAlert('El precio de venta debe ser mayor a 0', 'error'); return; }
             let nombre = capitalizeWords(document.getElementById('nombre').value.trim());
-            let nuevo = { id: esNuevo ? 'p'+Date.now() : prod.id, nombre, codigo: document.getElementById('codigo').value, categoria: document.getElementById('categoria').value, proveedor: document.getElementById('proveedor').value, stock: parseInt(document.getElementById('stock').value) || 0, precioVentaBs, precioVentaUsd, costoRealBs, costoRealUsd, descuentoProveedor: descProveedor, costoNetoUsd, costoNetoBs, porcentajeGanancia, porcentajeDescuento, precioDescuentoUsd, precioDescuentoBs, tasaRegistro: tasaV };
+            let nuevo = { id: esNuevo ? 'p'+Date.now()+'_'+Math.random().toString(36).slice(2,7) : prod.id, nombre, codigo: document.getElementById('codigo').value, categoria: document.getElementById('categoria').value, tipo: document.getElementById('tipo').value, proveedor: document.getElementById('proveedor').value, stock: parseInt(document.getElementById('stock').value) || 0, precioVentaBs, precioVentaUsd, costoRealBs, costoRealUsd, descuentoProveedor: descProveedor, costoNetoUsd, costoNetoBs, porcentajeGanancia, porcentajeDescuento, precioDescuentoUsd, precioDescuentoBs, tasaRegistro: tasaV };
             await saveItem('productos', nuevo);
             const provNombre = document.getElementById('proveedor').value.trim();
             if(provNombre) {
                 D.proveedores = D.proveedores || [];
                 const yaExiste = D.proveedores.some(p => normalizeText(p.nombre) === normalizeText(provNombre));
                 if(!yaExiste) {
-                    const nuevoProv = { id: 'prov'+Date.now(), nombre: capitalizeWords(provNombre), telefono: '', email: '', contacto: '', direccion: '' };
+                    const nuevoProv = { id: 'prov'+Date.now()+'_'+Math.random().toString(36).slice(2,7), nombre: capitalizeWords(provNombre), telefono: '', email: '', contacto: '', direccion: '' };
                     await saveItem('proveedores', nuevoProv);
                 }
             }
@@ -2853,7 +2880,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         };
     }
     
-    window.eliminarProducto = async id => { if(await jamConfirm('¿Eliminar producto?')){ await deleteItem('productos', id); D.productos = D.productos.filter(p => p.id !== id); renderInventario(); } };
+    window.eliminarProducto = async id => { const prod = D.productos.find(p => p.id === id); const aviso = prod && (parseInt(prod.stock)||0) > 0 ? `\n\n⚠️ Este producto tiene ${parseInt(prod.stock)} unidades en stock que se descargarán del conteo.` : ''; if(await jamConfirm('¿Eliminar producto?' + aviso)){ await deleteItem('productos', id); D.productos = D.productos.filter(p => p.id !== id); renderInventario(); } };
     
     // ==================== AJUSTE MANUAL DE STOCK ====================
     // Permite sumar/restar existencias de un producto con un motivo (merma,
@@ -2906,11 +2933,13 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
     async function renderCrud(store, titulo, campos){
         let bloqueado = volverBloqueado, accent = D.config.theme;
         let items = await getAll(store); D[store] = items;
-        document.getElementById('appRoot').innerHTML = `<div class="page-header-fixed"><div class="module-header"><div class="flex items-center gap-2" style="min-width:0"><h2 id="tituloModule" class="module-title ${bloqueado?'module-title-bloqueado':''}" style="color:${accent}" onmousedown="iniciarBloqueo(this,'${titulo}')" onmouseup="cancelarBloqueo()" onmouseleave="cancelarBloqueo()">${titulo}</h2>${store === 'proveedores' ? `<button id="btnIrEntregas" class="btn-cabezal-sub" type="button" title="Entregas de proveedores">📦 Entregas</button>` : ''}</div><div id="btnVolverModule" class="btn-back ${bloqueado?'btn-back-bloqueado':''}" onclick="${bloqueado?'':'backToHome()'}">${bloqueado?'<i class="fas fa-lock"></i> Bloqueado':'<i class="fas fa-arrow-left"></i> Volver'}</div></div></div><div class="page-container"><div class="mb-3 relative"><i class="fas fa-search absolute left-3 top-3 text-gray-400"></i><input type="text" id="searchCrud" placeholder="Buscar..." class="pl-9 pr-3 py-2 border-2 rounded-xl w-full" style="border-color:${accent}"></div><div class="flex gap-2 mb-4 items-center"><button id="agregarBtn" class="btn-azul-redondeado btn-redondeado py-2 px-4">+ Agregar ${titulo}</button></div><div id="listaCrud" class="scroll-area"></div></div>`;
+        document.getElementById('appRoot').innerHTML = `<div class="page-header-fixed"><div class="module-header"><div class="flex items-center gap-2" style="min-width:0"><h2 id="tituloModule" class="module-title ${bloqueado?'module-title-bloqueado':''}" style="color:${accent}" onmousedown="iniciarBloqueo(this,'${titulo}')" onmouseup="cancelarBloqueo()" onmouseleave="cancelarBloqueo()">${titulo}</h2>${store === 'proveedores' ? `<button id="btnIrEntregas" class="btn-cabezal-sub" type="button" title="Entregas de proveedores">📦 Entregas</button>` : ''}${store === 'clientes' ? `<button id="btnIrCartera" class="btn-cabezal-sub" type="button" title="Cartera por cobrar (créditos de clientes)">💰 Cartera</button>` : ''}</div><div id="btnVolverModule" class="btn-back ${bloqueado?'btn-back-bloqueado':''}" onclick="${bloqueado?'':'backToHome()'}">${bloqueado?'<i class="fas fa-lock"></i> Bloqueado':'<i class="fas fa-arrow-left"></i> Volver'}</div></div></div><div class="page-container"><div class="mb-3 relative"><i class="fas fa-search absolute left-3 top-3 text-gray-400"></i><input type="text" id="searchCrud" placeholder="Buscar..." class="pl-9 pr-3 py-2 border-2 rounded-xl w-full" style="border-color:${accent}"></div><div class="flex gap-2 mb-4 items-center"><button id="agregarBtn" class="btn-azul-redondeado btn-redondeado py-2 px-4">+ Agregar ${titulo}</button></div><div id="listaCrud" class="scroll-area"></div></div>`;
         if(volverBloqueado) document.getElementById('btnVolverModule').onclick = () => mostrarOverlayBloqueo();
         let search = document.getElementById('searchCrud'), agregar = document.getElementById('agregarBtn');
         const btnEntregas = document.getElementById('btnIrEntregas');
         if(btnEntregas) btnEntregas.onclick = () => renderEntregas();
+        const btnCartera = document.getElementById('btnIrCartera');
+        if(btnCartera) btnCartera.onclick = () => renderCartera();
         let renderLista = filtro => {
             let norm = normalizeText(filtro);
             let filt = items.filter(i => { let texto = campos.map(c => (i[c]!==undefined && i[c]!==null ? String(i[c]) : '')).join(' '); return normalizeText(texto).includes(norm); });
@@ -2936,6 +2965,10 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
     }
     
     async function eliminarItemCrud(store, id){
+        if(store === 'clientes'){
+            const cli = (D.clientes || []).find(c => c.id === id);
+            if(cli && (parseFloat(cli.adeudo) || 0) > 0){ await jamAlert(`No se puede eliminar: ${cli.nombre} tiene un adeudo pendiente de ${fmtPrecio(cli.adeudo)} Bs. Registra un abono antes.`, 'error'); return; }
+        }
         if(await jamConfirm('¿Eliminar este elemento?')){
             await deleteItem(store, id);
             D[store] = D[store].filter(i => i.id !== id);
@@ -2955,7 +2988,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         const ok = await jamConfirm(`¿Registrar pago de nómina de ${emp.nombre} por ${fmtPrecio(monto)} Bs?`);
         if(!ok) return;
         const hoy = msToDateStr(Date.now());
-        const gasto = { id:'g'+Date.now(), concepto:'Nómina: '+emp.nombre+' (pago)', montoBs: monto, categoria:'Nómina', fecha: hoy, timestamp: Date.now() };
+        const gasto = { id:'g'+Date.now()+'_'+Math.random().toString(36).slice(2,7), concepto:'Nómina: '+emp.nombre+' (pago)', montoBs: monto, categoria:'Nómina', fecha: hoy, timestamp: Date.now() };
         await saveItem('gastos', gasto);
         emp.fechaPago = hoy; emp.fechaPagoTs = Date.now();
         await saveItem('empleados', emp);
@@ -2967,7 +3000,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         let total = 0; const hoy = new Date(ms);
         (D.empleados || []).forEach(e => {
             const sal = parseFloat(e.salarioBs) || 0; if(!(sal > 0)) return;
-            const pagado = e.fechaPagoTs || (e.fechaPago ? new Date(String(e.fechaPago).split('-').map(Number).concat([1,0]).join(',')).getTime() : 0);
+            const pagado = e.fechaPagoTs || (e.fechaPago ? tsFechaISO(e.fechaPago) : 0);
             const pagadoEnMes = pagado && new Date(pagado).getFullYear() === hoy.getFullYear() && new Date(pagado).getMonth() === hoy.getMonth();
             if(!pagadoEnMes) total += sal;
         });
@@ -2978,7 +3011,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         if(!emp.length) return '<div class="text-xs" style="opacity:.5;text-align:center;padding:8px">Sin empleados con salario registrado</div>';
         let html = ''; const base = Date.now();
         emp.forEach(e => {
-            const pagado = e.fechaPagoTs || (e.fechaPago ? new Date(String(e.fechaPago).split('-').map(Number).concat([1,0]).join(',')).getTime() : 0);
+            const pagado = e.fechaPagoTs || (e.fechaPago ? tsFechaISO(e.fechaPago) : 0);
             const pagadoEnMes = pagado && new Date(pagado).getFullYear() === new Date(base).getFullYear() && new Date(pagado).getMonth() === new Date(base).getMonth();
             html += `<div class="flex justify-between items-center" style="padding:5px 0;border-bottom:1px solid rgba(128,128,128,.1)"><span class="text-xs" style="opacity:.7">🧑‍💼 ${escapeHtml(e.nombre)}</span><span class="text-xs font-bold" style="color:${pagadoEnMes ? '#10b981' : '#f59e0b'}">${pagadoEnMes ? 'Pagado ✓' : fmtPrecio(e.salarioBs) + ' Bs'}</span></div>`;
         });
@@ -3045,11 +3078,12 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
     function productosEntrega(nombreProducto){
         if(!nombreProducto) return [];
         const nom = normalizeText(nombreProducto);
-        return (D.productos || []).filter(p => normalizeText(p.nombre).includes(nom) || (nom.length > 2 && nom.includes(normalizeText(p.nombre))));
+        return (D.productos || []).filter(p => normalizeText(p.nombre) === nom);
     }
     function ajustarStockEntregaProductos(nombreProducto, delta){
         if(!delta) return 0;
         const found = productosEntrega(nombreProducto);
+        if(found.length === 0){ mostrarNotificacion('⚠️ Ningún producto coincide exactamente con "' + nombreProducto + '": el stock no se ajustó', 'error'); return 0; }
         found.forEach(p => { p.stock = Math.max(0, (parseInt(p.stock)||0) + delta); saveItem('productos', p); });
         return found.length;
     }
@@ -3106,7 +3140,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
             if(!prov || !producto){ await jamAlert('Proveedor y producto son obligatorios', 'error'); return; }
             const fecha = document.getElementById('entFecha').value;
             const fechaVencimiento = vencEl.value || fecha;
-            let nueva = { id: e ? e.id : 'en'+Date.now(), proveedor: prov, producto, cantidad: parseFloat(document.getElementById('entCantidad').value) || 0, fecha, hora: document.getElementById('entHora').value || '', lapsoDias: parseInt(lapsoEl.value) || 0, fechaVencimiento, estado: document.getElementById('entEstado').value, notas: document.getElementById('entNotas').value.trim(), timestamp: Date.now() };
+            let nueva = { id: e ? e.id : 'en'+Date.now()+'_'+Math.random().toString(36).slice(2,7), proveedor: prov, producto, cantidad: parseFloat(document.getElementById('entCantidad').value) || 0, fecha, hora: document.getElementById('entHora').value || '', lapsoDias: parseInt(lapsoEl.value) || 0, fechaVencimiento, estado: document.getElementById('entEstado').value, notas: document.getElementById('entNotas').value.trim(), timestamp: Date.now() };
             if(e && e.stockAplicado && nueva.estado === 'recibido'){
                 const delta = (parseInt(nueva.cantidad)||0) - (parseInt(e.cantidad)||0);
                 const nombreCambio = normalizeText(nueva.producto) !== normalizeText(e.producto);
@@ -3176,6 +3210,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
     
     // ==================== REPORTES (Dashboard KPIs) ====================
     function msToDateStr(ms){ let d = new Date(ms); return d.getFullYear()+'-'+(d.getMonth()+1).toString().padStart(2,'0')+'-'+d.getDate().toString().padStart(2,'0'); }
+    function tsFechaISO(f){ const p = String(f||'').split('-').map(Number); return (p.length >= 3 && p[0] > 0) ? new Date(p[0], (p[1]||1)-1, p[2]||1, 12).getTime() : 0; }
     const KEY_HISTORIAL_TASA = 'jam_pos_historial_tasa';
     function cargarHistorialTasa(){ try { return JSON.parse(localStorage.getItem(KEY_HISTORIAL_TASA)) || []; } catch(e) { return []; } }
     function guardarHistorialTasa(arr){ try { localStorage.setItem(KEY_HISTORIAL_TASA, JSON.stringify(arr)); } catch(e) {} }
@@ -3494,12 +3529,12 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         let ventasAll = D.ventas || [];
         let ventasDia = ventasAll.filter(v => msToDateStr(v.timestamp || new Date(v.fecha).getTime()) === fecha);
         let totalVentasAll = ventasAll.reduce((a,b)=>a+(b.total||0),0);
-        let totalGananciaAll = ventasAll.reduce((a,b)=>a+(b.gananciaTotal||0),0);
+        let totalGananciaAll = ventasAll.filter(v => !v.credito).reduce((a,b)=>a+(b.gananciaTotal||0),0);
         let totalGastosAll = D.gastos.reduce((a,b)=>a+(b.montoBs||0),0);
         let utilidadAll = totalGananciaAll - totalGastosAll;
         let cnt = ventasDia.length;
         let total = ventasDia.reduce((a,b)=>a+(b.total||0),0);
-        let ganancia = ventasDia.reduce((a,b)=>a+(b.gananciaTotal||0),0);
+        let ganancia = ventasDia.filter(v => !v.credito).reduce((a,b)=>a+(b.gananciaTotal||0),0);
         let gastos = D.gastos.filter(g => msToDateStr(g.timestamp || new Date(g.fecha).getTime()) === fecha).reduce((a,b)=>a+(b.montoBs||0),0);
         let utilidad = ganancia - gastos;
         let accent = D.config.theme;
@@ -3513,12 +3548,12 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         <div class="kpi-popup-grid">
             <div class="kpi-popup-card"><div class="kpi-popup-icon">💰</div><div class="kpi-popup-val">${fmtPrecio(total)} Bs</div><div class="kpi-popup-lbl">Ventas</div></div>
             <div class="kpi-popup-card"><div class="kpi-popup-icon">🧾</div><div class="kpi-popup-val">${cnt}</div><div class="kpi-popup-lbl">Ticket(s)</div></div>
-            <div class="kpi-popup-card"><div class="kpi-popup-icon">📈</div><div class="kpi-popup-val">${fmtPrecio(ganancia)} Bs</div><div class="kpi-popup-lbl">Ganancia</div></div>
+            <div class="kpi-popup-card"><div class="kpi-popup-icon">📈</div><div class="kpi-popup-val">${fmtPrecio(ganancia)} Bs</div><div class="kpi-popup-lbl">Ganancia cobrada</div></div>
             <div class="kpi-popup-card"><div class="kpi-popup-icon">💸</div><div class="kpi-popup-val">${fmtPrecio(gastos)} Bs</div><div class="kpi-popup-lbl">Gastos</div></div>
             <div class="kpi-popup-card"><div class="kpi-popup-icon">📊</div><div class="kpi-popup-val" style="color:${utilidad >= 0 ? '#10b981' : '#ef4444'}">${fmtPrecio(utilidad)} Bs</div><div class="kpi-popup-lbl">Utilidad</div></div>
             <div class="kpi-popup-card"><div class="kpi-popup-icon">👥</div><div class="kpi-popup-val">${new Set(ventasDia.map(v => v.clienteId)).size}</div><div class="kpi-popup-lbl">Clientes</div></div>
         </div>
-        <div class="kpi-popup-totales"><span>Acumulado: ${fmtPrecio(totalVentasAll)} Bs</span><span>Ganancia: ${fmtPrecio(totalGananciaAll)} Bs</span><span>Gastos: ${fmtPrecio(totalGastosAll)} Bs</span><span>Utilidad: <b style="color:${utilidadAll >= 0 ? '#10b981' : '#ef4444'}">${fmtPrecio(utilidadAll)} Bs</b></span></div>`;
+        <div class="kpi-popup-totales"><span>Acumulado: ${fmtPrecio(totalVentasAll)} Bs</span><span>Ganancia cobrada: ${fmtPrecio(totalGananciaAll)} Bs</span><span>Gastos: ${fmtPrecio(totalGastosAll)} Bs</span><span>Utilidad: <b style="color:${utilidadAll >= 0 ? '#10b981' : '#ef4444'}">${fmtPrecio(utilidadAll)} Bs</b></span></div>`;
         overlay.appendChild(popup);
         document.body.appendChild(overlay);
     }
@@ -3547,9 +3582,9 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
                     const sal = parseFloat(e.salarioBs) || 0;
                     if(sal <= 0) return;
                     if(hayGastosNomina){
-                        const pag = e.fechaPago ? new Date(String(e.fechaPago).split('-').map(Number).concat([1,0]).join(',')) : null;
-                        const pagadoEsteMes = !!(pag && !isNaN(pag.getTime()) && pag.getFullYear() === ahora.getFullYear() && pag.getMonth() === ahora.getMonth());
-                        const mesPagado = (pag && !isNaN(pag.getTime()) && pag.getFullYear() === ahora.getFullYear()) ? (pag.getMonth() + 1) : 0;
+                        const pag = e.fechaPago ? tsFechaISO(e.fechaPago) : 0;
+                        const pagadoEsteMes = !!(pag && !isNaN(new Date(pag).getTime()) && new Date(pag).getFullYear() === ahora.getFullYear() && new Date(pag).getMonth() === ahora.getMonth());
+                        const mesPagado = (pag && new Date(pag).getFullYear() === ahora.getFullYear()) ? (new Date(pag).getMonth() + 1) : 0;
                         const pend = Math.max(0, mesActual - mesPagado - (pagadoEsteMes ? 1 : 0));
                         total += sal * pend;
                     } else {
@@ -3568,13 +3603,17 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
             const gastos = await getAll('gastos');
             const empleados = await getAll('empleados');
             const entregas = await getAll('entregas');
+            const clientesCxC = await getAll('clientes');
+            const conDeudaCxc = clientesCxC.filter(c => (parseFloat(c.adeudo)||0) > 0).sort((a,b) => (parseFloat(b.adeudo)||0) - (parseFloat(a.adeudo)||0));
+            const totalCxc = conDeudaCxc.reduce((a,c) => a + (parseFloat(c.adeudo)||0), 0);
             const histTasa = cargarHistorialTasa();
             const rp = rangoPeriodo(per);
             const enR = (ts) => { const t = msToDateStr(ts); return t >= rp.ini && t <= rp.fin; };
             const ventasPer = ventas.filter(v => enR(v.timestamp || new Date(v.fecha).getTime()));
             const gastosPer = gastos.filter(g => enR(g.timestamp || new Date(g.fecha).getTime()));
             const totVentas = ventasPer.reduce((a,v)=>a+(v.total||0),0);
-            const totGan = ventasPer.reduce((a,v)=>a+(v.gananciaTotal||0),0);
+const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTotal||0),0);
+            const totGanCredito = ventasPer.filter(v => v.credito && !v.anulada).reduce((a,v)=>a+(v.gananciaTotal||0),0);
             const totGastos = gastosPer.reduce((a,g)=>a+(g.montoBs||0),0);
             const { nominaUso, nominaLbl } = periodoNominaInfo(per, empleados, gastos);
             const utilNeta = totGan - totGastos - nominaUso;
@@ -3585,7 +3624,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
             const formas = { 'efectivo_bs':'EFECTIVO Bs','pago_movil':'PAGO MÓVIL','transferencia':'TRANSFERENCIA','tarjeta_debito':'TARJETA DÉBITO','dolares':'DÓLARES','pago_dividido':'PAGO DIVIDIDO','credito':'CRÉDITO' };
             const filasVentas = ventasPer.length ? ventasPer.slice().reverse().map(v => `<tr><td>${escapeHtml(v.id)}</td><td>${escapeHtml(fmtFechaDisplay(v.fecha)||'')}</td><td>${escapeHtml(v.hora || '')}</td><td>${escapeHtml(v.cliente || 'General')}</td><td style="text-align:right">${escapeHtml((v.items||[]).map(i=>i.nombre + (i.cantidad>1?' x'+i.cantidad:'')).join(', '))}</td><td style="text-align:right">${fmtPrecio(v.total)}</td><td style="text-align:right">${fmtDolar(v.dolarRate||0)}</td><td style="text-align:right">${fmtPrecio(v.gananciaTotal||0)}</td><td>${formas[v.tipoPago] || escapeHtml(v.tipoPago||'')}</td></tr>`).join('') : '<tr><td colspan="9" style="text-align:center;opacity:.6">Sin ventas en el período</td></tr>';
             const filasGastos = gastosPer.length ? gastosPer.slice().reverse().map(g => `<tr><td>${escapeHtml(fmtFechaDisplay(g.fecha)||'')}</td><td>${escapeHtml(g.concepto||'')}</td><td>${escapeHtml(g.categoria||'')}</td><td style="text-align:right">${fmtPrecio(g.montoBs||0)}</td></tr>`).join('') : '<tr><td colspan="4" style="text-align:center;opacity:.6">Sin gastos en el período</td></tr>';
-            const filasNomina = empleados.filter(e => (parseFloat(e.salarioBs)||0) > 0).length ? empleados.filter(e => (parseFloat(e.salarioBs)||0) > 0).map(e => { const pag = e.fechaPagoTs || (e.fechaPago ? new Date(String(e.fechaPago).split('-').map(Number).concat([1,0]).join(',')).getTime() : 0); const pm = pag && new Date(pag).getFullYear() === new Date().getFullYear() && new Date(pag).getMonth() === new Date().getMonth(); return `<tr><td>${escapeHtml(e.nombre)}</td><td>${escapeHtml(e.cargo||'')}</td><td>${e.diaPago ? 'Día ' + escapeHtml(e.diaPago) : '—'}</td><td style="text-align:right">${fmtPrecio(e.salarioBs)}</td><td style="text-align:center">${pm ? '✅ Pagado' : '⏳ Pendiente'}</td></tr>`; }).join('') : '<tr><td colspan="5" style="text-align:center;opacity:.6">Sin empleados con salario registrado</td></tr>';
+            const filasNomina = empleados.filter(e => (parseFloat(e.salarioBs)||0) > 0).length ? empleados.filter(e => (parseFloat(e.salarioBs)||0) > 0).map(e => { const pag = e.fechaPagoTs || (e.fechaPago ? tsFechaISO(e.fechaPago) : 0); const pm = pag && new Date(pag).getFullYear() === new Date().getFullYear() && new Date(pag).getMonth() === new Date().getMonth(); return `<tr><td>${escapeHtml(e.nombre)}</td><td>${escapeHtml(e.cargo||'')}</td><td>${e.diaPago ? 'Día ' + escapeHtml(e.diaPago) : '—'}</td><td style="text-align:right">${fmtPrecio(e.salarioBs)}</td><td style="text-align:center">${pm ? '✅ Pagado' : '⏳ Pendiente'}</td></tr>`; }).join('') : '<tr><td colspan="5" style="text-align:center;opacity:.6">Sin empleados con salario registrado</td></tr>';
             const filasEntregas = entregas.length ? entregas.slice().sort((a,b)=>String(a.fecha).localeCompare(String(b.fecha))).map(e => `<tr><td>${escapeHtml(fmtFechaDisplay(e.fecha)||'')}</td><td>${escapeHtml(e.hora||'')}</td><td>${escapeHtml(e.proveedor||'')}</td><td>${escapeHtml(e.producto||'')}</td><td style="text-align:right">${parseInt(e.cantidad)||0}</td><td style="text-align:right">${e.lapsoDias||0}</td><td>${escapeHtml(fmtFechaDisplay(e.fechaVencimiento)||'')}</td><td style="text-align:center">${e.estado==='recibido'?'Recibida':e.estado==='salida'?'Salida':'Pendiente'}</td><td>${escapeHtml(e.notas||'')}</td></tr>`).join('') : '<tr><td colspan="9" style="text-align:center;opacity:.6">Sin entregas registradas</td></tr>';
             const filasTasa = histTasa.filter(h => enR(new Date(h.fecha).getTime())).map(h => `<tr><td>${escapeHtml(h.fecha)}</td><td>${escapeHtml(h.hora||'')}</td><td style="text-align:right">${escapeHtml(h.tasa)}</td></tr>`).join('') || '<tr><td colspan="3" style="text-align:center;opacity:.6">Sin historial</td></tr>';
             const porForma = {};
@@ -3594,6 +3633,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
                 else { const k = v.tipoPago || 'efectivo_bs'; porForma[k] = (porForma[k]||0) + (v.total||0); }
             });
             const filasFormas = Object.keys(porForma).length ? Object.keys(porForma).map(k => { const pct = totVentas > 0 ? (porForma[k] / totVentas * 100) : 0; return `<tr><td>${formas[k] || escapeHtml(k)}</td><td style="text-align:right">${fmtPrecio(porForma[k])}</td><td style="text-align:right">${pct.toFixed(1)}%</td></tr>`; }).join('') : '<tr><td colspan="3" style="text-align:center;opacity:.6">Sin ventas en el período</td></tr>';
+            const filasCartera = conDeudaCxc.length ? conDeudaCxc.map(c => `<tr><td>${escapeHtml(c.nombre||'')}</td><td>${escapeHtml(c.cedula||'')}</td><td>${escapeHtml(c.telefono||'')}</td><td style="text-align:right">${fmtPrecio(c.adeudo)}</td></tr>`).join('') : '<tr><td colspan="4" style="text-align:center;opacity:.6">Sin deudas pendientes 💚</td></tr>';
             const colorNet = utilNeta >= 0 ? '#10b981' : '#ef4444';
             const fechaGen = new Date().toLocaleString('es-ES');
             const html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Reporte ' + labelPeriodo(per) + ' - ' + empresa + '</title><style>' +
@@ -3615,15 +3655,19 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
                 '</style></head><body>' +
                 '<div class="rep-header"><h1>' + escapeHtml(empresa) + '</h1><div class="sub">' + (empDir ? escapeHtml(empDir) + ' · ' : '') + (empTel ? escapeHtml(empTel) + ' · ' : '') + 'REPORTE ' + labelPeriodo(per).toUpperCase() + '</div><div class="sub">Período: ' + rp.ini + ' → ' + rp.fin + ' · Generado: ' + escapeHtml(fechaGen) + ' · Tasa: 1 USD = ' + fmtDolar(tasaHoy) + ' Bs</div></div>' +
                 '<div class="tot-box"><div class="l">Ventas</div><div class="v">' + fmtPrecio(totVentas) + '</div></div>' +
-                '<div class="tot-box"><div class="l">Ganancia</div><div class="v" style="color:#10b981">' + fmtPrecio(totGan) + '</div></div>' +
+                '<div class="tot-box"><div class="l">Ganancia cobrada</div><div class="v" style="color:#10b981">' + fmtPrecio(totGan) + '</div></div>' +
                 '<div class="tot-box"><div class="l">Gastos</div><div class="v" style="color:#ef4444">' + fmtPrecio(totGastos) + '</div></div>' +
                 '<div class="tot-box"><div class="l">' + nominaLbl + '</div><div class="v" style="color:#f59e0b">' + (nominaUso > 0 ? fmtPrecio(nominaUso) : '—') + '</div></div>' +
                 '<div class="tot-box"><div class="l">Utilidad neta</div><div class="v" style="color:' + colorNet + '">' + fmtPrecio(utilNeta) + '</div></div>' +
+                '<div class="tot-box"><div class="l">Por cobrar (CxC)</div><div class="v" style="color:#ef4444">' + fmtPrecio(totalCxc) + '</div></div>' +
+                '<div class="tot-box"><div class="l">Ventas a crédito (período)</div><div class="v" style="color:#f59e0b">' + fmtPrecio(ventasPer.filter(v => v.credito && !v.anulada).reduce((a,v) => a + (parseFloat(v.total) || 0), 0)) + '</div></div>' +
+                '<div class="tot-box"><div class="l">Ganancia a crédito (período)</div><div class="v" style="color:#f59e0b">' + fmtPrecio(totGanCredito) + '</div></div>' +
                 '<h2 class="rep-sec">Ventas del período (' + ventasPer.length + ')</h2><table><thead><tr><th>Ticket</th><th>Fecha</th><th>Hora</th><th>Cliente</th><th>Artículos</th><th>Total Bs</th><th>Tasa</th><th>Ganancia</th><th>Forma de pago</th></tr></thead><tbody>' + filasVentas + '</tbody></table>' +
                 '<h2 class="rep-sec">Ventas por forma de pago</h2><table><thead><tr><th>Forma</th><th>Total Bs</th><th>% del período</th></tr></thead><tbody>' + filasFormas + '</tbody></table>' +
                 '<h2 class="rep-sec">Gastos del período</h2><table><thead><tr><th>Fecha</th><th>Concepto</th><th>Categoría</th><th>Monto Bs</th></tr></thead><tbody>' + filasGastos + '</tbody></table>' +
                 '<h2 class="rep-sec">Nómina de empleados</h2><table><thead><tr><th>Empleado</th><th>Cargo</th><th>Día de pago</th><th>Salario Bs</th><th>Estado mes actual</th></tr></thead><tbody>' + filasNomina + '</tbody></table>' +
                 '<h2 class="rep-sec">Entregas de proveedores</h2><table><thead><tr><th>Fecha</th><th>Hora</th><th>Proveedor</th><th>Producto</th><th>Cant.</th><th>Lapso (días)</th><th>Vence</th><th>Estado</th><th>Notas</th></tr></thead><tbody>' + filasEntregas + '</tbody></table>' +
+                '<h2 class="rep-sec">Cartera por cobrar (' + conDeudaCxc.length + ') · Total: ' + fmtPrecio(totalCxc) + ' Bs</h2><table><thead><tr><th>Cliente</th><th>Cédula</th><th>Teléfono</th><th>Saldo Bs</th></tr></thead><tbody>' + filasCartera + '</tbody></table>' +
                 '<h2 class="rep-sec">Historial de tasas del período</h2><table><thead><tr><th>Fecha</th><th>Hora</th><th>Tasa Bs</th></tr></thead><tbody>' + filasTasa + '</tbody></table>' +
                 '<div class="rep-foot">Documento generado automáticamente por JAM POS · ' + escapeHtml(fechaGen) + '</div>' +
                 '</body></html>';
@@ -3653,10 +3697,11 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         const ventasPer = ventas.filter(v => { const t = msToDateStr(v.timestamp || new Date(v.fecha).getTime()); return t >= rp.ini && t <= rp.fin; });
         const gastosPer = (D.gastos||[]).filter(g => { const t = msToDateStr(g.timestamp || new Date(g.fecha).getTime()); return t >= rp.ini && t <= rp.fin; });
         const totVentas = ventasPer.reduce((a,v)=>a+(v.total||0),0);
-        const totGan = ventasPer.reduce((a,v)=>a+(v.gananciaTotal||0),0);
+        const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTotal||0),0);
         const totGastos = gastosPer.reduce((a,g)=>a+(g.montoBs||0),0);
         const { nominaUso, nominaLbl } = periodoNominaInfo(_p, D.empleados, D.gastos);
         const utilNeta = totGan - totGastos - nominaUso;
+        const totGanCreditoRes = ventasPer.filter(v => v.credito && !v.anulada).reduce((a,v)=>a+(v.gananciaTotal||0),0);
         document.getElementById('appRoot').innerHTML = `
             <div class="page-header-fixed"><div class="module-header"><h2 id="tituloModule" class="module-title ${bloqueado?'module-title-bloqueado':''}" style="color:${accent}" onmousedown="iniciarBloqueo(this,'Resumen')" onmouseup="cancelarBloqueo()" onmouseleave="cancelarBloqueo()">📋 Resumen</h2><div id="btnVolverModule" class="btn-back ${bloqueado?'btn-back-bloqueado':''}" onclick="${bloqueado?'':'backToHome()'}">${bloqueado?'<i class="fas fa-lock"></i> Bloqueado':'<i class="fas fa-arrow-left"></i> Volver'}</div></div></div>
             <div class="page-container">
@@ -3667,10 +3712,11 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
                         <div class="card-bcv" style="padding:10px;margin-bottom:6px"><div class="flex justify-between"><span class="text-xs" style="opacity:.7">Período</span><span class="text-xs font-bold">${labelPeriodo(_p)} · ${rp.ini} → ${rp.fin}</span></div></div>
                         <div class="grid grid-cols-2 gap-2">
                             <div class="card-bcv" style="padding:10px;text-align:center"><div class="font-black text-lg" style="color:${accent}">${fmtPrecio(totVentas)}</div><div class="text-xs opacity-70">Ventas (Bs)</div></div>
-                            <div class="card-bcv" style="padding:10px;text-align:center"><div class="font-black text-lg" style="color:#10b981">${fmtPrecio(totGan)}</div><div class="text-xs opacity-70">Ganancia (Bs)</div></div>
+                            <div class="card-bcv" style="padding:10px;text-align:center"><div class="font-black text-lg" style="color:#10b981">${fmtPrecio(totGan)}</div><div class="text-xs opacity-70">Ganancia cobrada (Bs)</div></div>
                             <div class="card-bcv" style="padding:10px;text-align:center"><div class="font-black text-lg" style="color:#ef4444">${fmtPrecio(totGastos)}</div><div class="text-xs opacity-70">Gastos (Bs)</div></div>
                             <div class="card-bcv" style="padding:10px;text-align:center"><div class="font-black text-lg" style="color:#f59e0b">${nominaUso > 0 ? fmtPrecio(nominaUso) : '—'}</div><div class="text-xs opacity-70">${nominaLbl}</div></div>
                         </div>
+                        <div class="card-bcv" style="padding:10px;margin-top:6px"><div class="flex justify-between items-center"><span class="text-xs" style="opacity:.7">Ganancia a crédito (período)</span><span class="text-lg font-black" style="color:#f59e0b">${totGanCreditoRes > 0 ? fmtPrecio(totGanCreditoRes) + ' Bs' : '—'}</span></div></div>
                         <div class="card-bcv" style="padding:10px;margin-top:6px"><div class="flex justify-between items-center"><span class="text-xs" style="opacity:.7">Utilidad neta</span><span class="text-lg font-black" style="color:${utilNeta >= 0 ? '#10b981' : '#ef4444'}">${fmtPrecio(utilNeta)} Bs</span></div></div>
                     </div>
                     <div class="flex gap-2 mt-2"><button id="btnDocExcel" class="btn-azul-redondeado btn-redondeado flex-1 py-2 text-xs">📊 Exportar Excel</button><button id="btnDocPrint" class="btn-redondeado flex-1 py-2 text-xs" style="border:1.5px solid ${accent};color:${accent}">📄 Documento (imprimir)</button></div>
@@ -3885,11 +3931,76 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         document.getElementById('btnAbonoDetalle').onclick = () => { modal.remove(); registrarAbono(clienteId); };
         modal.onclick = e => { if(e.target === modal) modal.remove(); };
     };
+    // ==================== CARTERA CxC (créditos por cobrar) ====================
+    // Vista consolidada de los adeudos de todos los clientes (ventas a crédito).
+    // Muestra total por cobrar, cobrado acumulado, filtros y permite registrar
+    // abonos desde el mismo listado (reutiliza registrarAbono).
+    let _filtroCartera = 'deuda';
+    async function renderCartera(){
+        currentSub = 'cartera';
+        let bloqueado = volverBloqueado, accent = D.config.theme;
+        D.clientes = await getAll('clientes');
+        const todos = D.clientes || [];
+        const conDeuda = todos.filter(c => (parseFloat(c.adeudo) || 0) > 0);
+        const totalCxC = conDeuda.reduce((a,c) => a + (parseFloat(c.adeudo) || 0), 0);
+        const totalAbonos = todos.reduce((a,c) => a + (c.abonos || []).reduce((x,ab) => x + (ab.monto || 0), 0), 0);
+        document.getElementById('appRoot').innerHTML = `
+            <div class="page-header-fixed"><div class="module-header"><h2 id="tituloModule" class="module-title ${bloqueado?'module-title-bloqueado':''}" style="color:${accent}" onmousedown="iniciarBloqueo(this,'Cartera')" onmouseup="cancelarBloqueo()" onmouseleave="cancelarBloqueo()">💰 Cartera (CxC)</h2><div id="btnVolverModule" class="btn-back ${bloqueado?'btn-back-bloqueado':''}" onclick="${bloqueado?'':'backToHome()'}">${bloqueado?'<i class="fas fa-lock"></i> Bloqueado':'<i class="fas fa-arrow-left"></i> Volver'}</div></div></div>
+            <div class="page-container">
+                <div class="config-section" style="margin-bottom:16px">
+                    <div class="config-section-title" style="font-size:.75rem;font-weight:700;opacity:.6;margin-bottom:8px">📊 Resumen de cartera</div>
+                    <div class="grid grid-cols-3 gap-2">
+                        <div class="card-bcv" style="padding:10px;text-align:center"><div class="font-black text-lg" style="color:#ef4444">${fmtPrecio(totalCxC)}</div><div class="text-xs opacity-70">Por cobrar (Bs)</div></div>
+                        <div class="card-bcv" style="padding:10px;text-align:center"><div class="font-black text-lg" style="color:${accent}">${conDeuda.length}</div><div class="text-xs opacity-70">Clientes con deuda</div></div>
+                        <div class="card-bcv" style="padding:10px;text-align:center"><div class="font-black text-lg" style="color:#10b981">${fmtPrecio(totalAbonos)}</div><div class="text-xs opacity-70">Cobrado (abonos)</div></div>
+                    </div>
+                </div>
+                <div class="flex gap-1 mb-2" style="flex-wrap:wrap">
+                    <button id="filtroCartera_deuda" class="btn-redondeado py-1 px-3 text-xs" style="${_filtroCartera==='deuda' ? `background:${accent};color:#fff` : `border:1px solid ${accent};color:${accent}`}">💳 Deudores (${conDeuda.length})</button>
+                    <button id="filtroCartera_todos" class="btn-redondeado py-1 px-3 text-xs" style="${_filtroCartera==='todos' ? `background:${accent};color:#fff` : `border:1px solid ${accent};color:${accent}`}">👥 Todos (${todos.length})</button>
+                </div>
+                <div class="mb-3 relative">
+                    <i class="fas fa-search absolute left-3 top-3 text-gray-400"></i>
+                    <input type="text" id="searchCartera" placeholder="Buscar por nombre o cédula..." class="pl-9 pr-3 py-2 border-2 rounded-xl w-full" style="border-color:${accent}">
+                </div>
+                <div id="listaCartera" class="scroll-area"></div>
+            </div>`;
+        if(volverBloqueado) document.getElementById('btnVolverModule').onclick = () => mostrarOverlayBloqueo();
+        document.getElementById('filtroCartera_deuda').onclick = () => { _filtroCartera = 'deuda'; renderCartera(); };
+        document.getElementById('filtroCartera_todos').onclick = () => { _filtroCartera = 'todos'; renderCartera(); };
+        const inpC = document.getElementById('searchCartera');
+        if(inpC) inpC.oninput = e => renderListaCartera(e.target.value.toLowerCase());
+        renderListaCartera('');
+    }
+    function renderListaCartera(norm){
+        const todos = D.clientes || [];
+        let filt = todos.map(c => ({ c, adeudo: parseFloat(c.adeudo) || 0 }))
+            .filter(x => _filtroCartera === 'todos' || x.adeudo > 0)
+            .filter(x => {
+                const texto = [x.c.nombre||'', x.c.cedula||'', x.c.telefono||''].join(' ');
+                return normalizeText(texto).includes(norm);
+            })
+            .sort((a,b) => b.adeudo - a.adeudo);
+        const cont = document.getElementById('listaCartera'); if(!cont) return;
+        if(!filt.length){ cont.innerHTML = '<div class="text-center py-4 text-gray-500">' + (_filtroCartera==='deuda' ? 'Sin clientes con deuda 💚' : 'No hay clientes registrados') + '</div>'; return; }
+        cont.innerHTML = filt.map(x => `
+            <div class="client-card" data-id="${x.c.id}">
+                <div class="font-bold break-words">${escapeHtml(String(x.c.nombre || 'Sin nombre'))}</div>
+                <div class="text-xs text-gray-500 mt-1">🪪 ${escapeHtml(x.c.cedula || 'N/A')} | 📞 ${escapeHtml(x.c.telefono || '—')}</div>
+                <div class="flex justify-between items-center mt-1"><span class="text-xs" style="opacity:.7">Saldo</span><span class="text-sm font-bold" style="color:${x.adeudo > 0 ? '#ef4444' : '#10b981'}">${fmtPrecio(x.adeudo)} Bs</span></div>
+                ${(x.c.abonos && x.c.abonos.length) ? `<div class="text-xs mt-1" style="opacity:.6">📜 Último abono: ${escapeHtml(fmtFechaDisplay(x.c.abonos[x.c.abonos.length-1].fecha)||'')} · ${fmtPrecio(x.c.abonos[x.c.abonos.length-1].monto)} Bs</div>` : ''}
+                <div class="flex gap-2 mt-2"><button class="btn-abono-cartera btn-verde-redondeado">💵 Abono</button><button class="btn-detalle-cartera btn-editar-redondeado">👤 Detalle</button></div>
+            </div>`).join('');
+        document.querySelectorAll('.btn-abono-cartera').forEach((btn, idx) => { btn.onclick = () => registrarAbono(filt[idx].c.id); });
+        document.querySelectorAll('.btn-detalle-cartera').forEach((btn, idx) => { btn.onclick = () => mostrarDetalleCliente(filt[idx].c.id); });
+    }
+
     // ==================== COBRANZA / ABONOS DE CLIENTES ====================
-    // Registra abonos al crédito de un cliente, descuenta su adeudo y deja
-    // constancia en 'abonos' del cliente y en el libro de gastos como ingreso
-    // (categoría 'Cobranza'). Se guardan como un gasto negativo para que
-    // reduzcan la utilidad bruta y cuadren con la caja.
+    // Registra abonos al crédito de un cliente: descuenta su adeudo y deja
+    // constancia en 'abonos' del cliente. El dinero cobrado NO altera la
+    // utilidad de reportes (la ganancia ya se contó con la venta a crédito);
+    // se suma al arqueo del cierre de caja del día (ventasEsperadasCaja)
+    // para que cuadre con el efectivo físico recaudado hoy.
     window.registrarAbono = async (clienteId) => {
         const cli = (D.clientes || []).find(c => c.id === clienteId);
         if(!cli){ mostrarNotificacion('Cliente no encontrado', 'error'); return; }
@@ -3898,7 +4009,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         const modal = document.createElement('div'); modal.className = 'modal-form';
         modal.innerHTML = `<div class="modal-form-content" style="max-width:400px"><h3 class="text-xl font-bold mb-2">💵 Abono de ${escapeHtml(cli.nombre)}</h3>
             <div class="text-sm mb-3" style="opacity:.7">Adeudo actual: <b style="color:#ef4444">${fmtPrecio(adeudo)} Bs</b></div>
-            <div class="mb-3"><label>Monto del abono (Bs)</label><input type="text" id="abonoMonto" inputmode="decimal" value="${adeudo > 0 ? fmtPrecio(Math.min(adeudo, adeudo)) : ''}" class="border rounded-xl p-2 w-full"></div>
+            <div class="mb-3"><label>Monto del abono (Bs)</label><input type="text" id="abonoMonto" inputmode="decimal" value="${adeudo > 0 ? fmtPrecio(adeudo) : ''}" class="border rounded-xl p-2 w-full"></div>
             <div class="mb-3"><label>Método de cobro</label><select id="abonoMetodo" class="border rounded-xl p-2 w-full"><option value="efectivo_bs">💵 Efectivo Bs</option><option value="pago_movil">📱 Pago Móvil</option><option value="transferencia">🏦 Transferencia</option><option value="tarjeta_debito">💳 Tarjeta Débito</option></select></div>
             <div class="mb-3"><label>Nota (opcional)</label><input type="text" id="abonoNota" placeholder="Ej: primer corte" class="border rounded-xl p-2 w-full"></div>
             <div class="flex gap-3 mt-4"><button id="guardarAbono" class="btn-azul-redondeado btn-redondeado flex-1 py-2 font-bold">Registrar abono</button><button id="cancelarAbono" class="btn-redondeado flex-1 py-2 bg-gray-200">Cancelar</button></div></div>`;
@@ -3920,7 +4031,8 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
             await saveItem('clientes', cliActual);
             D.clientes = await getAll('clientes');
             modal.remove();
-            renderCrud('clientes','Clientes',['cedula','nombre','telefono','direccion','email']);
+            if(currentSub === 'cartera') renderCartera();
+            else renderCrud('clientes','Clientes',['cedula','nombre','telefono','direccion','email']);
             mostrarNotificacion('💵 Abono registrado', 'success');
         };
     };
@@ -3986,11 +4098,12 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         if (btn) btn.innerText = carpetaNativa && carpetaNativa.uri ? '📂 Cambiar carpeta' : '📂 Elegir carpeta';
     }
     async function obtenerTodosLosDatos(){
-        let stores = ['productos','clientes','proveedores','gastos','empleados','ventas','entregas'];
+        let stores = ['productos','clientes','proveedores','gastos','empleados','ventas','entregas','tickets'];
         let data = { config: D.config, timestamp: new Date().toISOString(), version: '0.1' };
         for (const s of stores) { data[s] = await getAll(s); }
         data.historialTasa = cargarHistorialTasa();
         data.tasaDiaria = await cargarTasaDiaria();
+        data.caja = cargarCaja();
         return data;
     }
     async function exportarBackupJSON(){
@@ -4049,6 +4162,13 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
             csvLines.push('# === TASADIARIA ===');
             csvLines.push('fecha,hora,tasa,fijada');
             data.tasaDiaria.forEach(h => { csvLines.push(celdaCSV(h.fecha) + ',' + celdaCSV(h.hora || '') + ',' + celdaCSV(h.tasa) + ',' + celdaCSV(h.fijada ? 1 : 0)); });
+            csvLines.push('');
+        }
+        const cajaExport = cargarCaja();
+        if((cajaExport.cierres && cajaExport.cierres.length) || cajaExport.abierta || cajaExport.ultimoArqueo){
+            csvLines.push('# === CAJA ===');
+            csvLines.push('json');
+            csvLines.push(celdaCSV(JSON.stringify(cajaExport)));
             csvLines.push('');
         }
         if (esAppNativa()) {
@@ -4150,7 +4270,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
             try {
                 let data = JSON.parse(e.target.result);
                 if(!data || typeof data !== 'object') { alert('Archivo JSON no válido'); return; }
-                let stores = ['productos','clientes','proveedores','gastos','empleados','ventas','entregas'];
+                let stores = ['productos','clientes','proveedores','gastos','empleados','ventas','entregas','tickets'];
                 let resumen = stores.filter(s => data[s] && Array.isArray(data[s]) && data[s].length).map(s => `  • ${s}: ${data[s].length} registros`);
                 if(resumen.length === 0) { alert('El archivo no contiene registros que integrar'); return; }
                 let confirmacion = await jamConfirm(`¿INTEGRAR datos del archivo?\nSe agregarán los registros que no existan ya en el teléfono:\n${resumen.join('\n')}\n\n✅ Los datos actuales (ventas, artículos, gastos...) NO se borrarán.`);
@@ -4182,13 +4302,20 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
                     const tasaInfo = aplicarConfigInteligente(data.config, data.timestamp);
                     if(tasaInfo) resumenFinal.push(tasaInfo);
                 }
+                if(data.caja && typeof data.caja === 'object'){
+                    const cj = data.caja;
+                    if((cj.cierres && cj.cierres.length) || cj.abierta || cj.ultimoArqueo){
+                        guardarCaja(cj);
+                        resumenFinal.push(`cierre de caja: historial de ${(cj.cierres || []).length} cierre(s) restaurado(s)`);
+                    }
+                }
                 mostrarNotificacion('✅ Integración completada\n' + resumenFinal.join('\n'), 'success');
                 if(currentModule === 'home') renderHome(); else renderConfig();
             } catch(err) { alert('Error al leer el archivo: ' + err.message); }
         };
         reader.readAsText(file);
     }
-    const CAMPOS_NUMERICOS_CSV = new Set(['stock','cantidad','precioVentaBs','precioVentaUsd','costoRealBs','costoRealUsd','precioUnitario','costoUnitario','subtotal','ganancia','gananciaTotal','total','pago','cambio','monto','dolarRate','iva','ivaPorcentaje','timestamp','salario','tasa','lapsoDias']);
+    const CAMPOS_NUMERICOS_CSV = new Set(['stock','cantidad','precioVentaBs','precioVentaUsd','costoRealBs','costoRealUsd','precioUnitario','costoUnitario','subtotal','ganancia','gananciaTotal','total','pago','cambio','monto','montoBs','adeudo','salario','salarioBs','dolarRate','iva','ivaPorcentaje','timestamp','tasa','lapsoDias']);
     function parsearValorCSV(campo, val){
         if(val === '' ) return '';
         let v = val.trim();
@@ -4201,8 +4328,8 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         return val;
     }
     function parsearBackupCSV(text){
-        let data = { config: null, productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas: [], entregas: [], historialTasa: [], tasaDiaria: [] };
-        let storeMap = { 'PRODUCTOS':'productos','CLIENTES':'clientes','PROVEEDORES':'proveedores','GASTOS':'gastos','EMPLEADOS':'empleados','VENTAS':'ventas','ENTREGAS':'entregas','HISTORIALTASA':'historialTasa','TASADIARIA':'tasaDiaria' };
+        let data = { config: null, productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas: [], entregas: [], historialTasa: [], tasaDiaria: [], caja: [] };
+        let storeMap = { 'PRODUCTOS':'productos','CLIENTES':'clientes','PROVEEDORES':'proveedores','GASTOS':'gastos','EMPLEADOS':'empleados','VENTAS':'ventas','ENTREGAS':'entregas','HISTORIALTASA':'historialTasa','TASADIARIA':'tasaDiaria','CAJA':'caja' };
         let currentStore = null, headers = null;
         for(let line of text.split('\n')){
             line = line.trim();
@@ -4254,6 +4381,13 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
                 if(data.tasaDiaria && Array.isArray(data.tasaDiaria)){
                     let nTd = await importarTasaDiariaDesde(data.tasaDiaria);
                     if(nTd > 0) resumenFinal.push(`tasa diaria: +${nTd} día(s)`);
+                }
+                if(data.caja && data.caja.length && data.caja[0] && data.caja[0].json && typeof data.caja[0].json === 'object'){
+                    const cj = data.caja[0].json;
+                    if((cj.cierres && cj.cierres.length) || cj.abierta || cj.ultimoArqueo){
+                        guardarCaja(cj);
+                        resumenFinal.push(`cierre de caja: historial de ${(cj.cierres || []).length} cierre(s) restaurado(s)`);
+                    }
                 }
                 mostrarNotificacion('✅ Integración completada\n' + resumenFinal.join('\n'), 'success');
                 if(currentModule === 'home') renderHome(); else renderConfig();
@@ -4458,6 +4592,10 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
                 document.querySelectorAll('.fuente-opcion').forEach(o => o.classList.toggle('fuente-opcion-activa', o === btn));
                 mostrarNotificacion('Cambiando fuente a: ' + nombreFuenteTasa(fuente) + '...', 'info');
                 saveConfig();
+                // Avisar al nativo para que la barra de fondo rote a las otras dos.
+                if (window.AndroidBridge && typeof AndroidBridge.guardarFuenteTasa === 'function') {
+                    try { AndroidBridge.guardarFuenteTasa(fuente); } catch(e) {}
+                }
                 await actualizarTasa(true);
                 const tasaActualDisplay = document.getElementById('tasaActualDisplay');
                 if (tasaActualDisplay) tasaActualDisplay.innerText = fmtDolar(D.config.dolarRate);
@@ -4667,15 +4805,15 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
     const APP_NOMBRE = 'JAM POS';
     const APP_TAGLINE = 'Tienda Profesional';
     const MODULOS_GUIA = [
-        { icon: 'fa-shopping-cart', nombre: 'Ventas', uso: 'Registra ventas buscando por nombre o código de barras, escáner de cámara, tipo de pago, descuentos y ticket. Incluye modo Kiosco para punto de venta rápido.' },
-        { icon: 'fa-boxes', nombre: 'Inventario', uso: 'Administra tus productos: precios en Bs y USD con conversión automática, stock mínimo, categorías, escaneo de código de barras, imágenes y selección en lote.' },
-        { icon: 'fa-users', nombre: 'Clientes', uso: 'Lleva tu cartera de clientes con cédula, teléfono, saldo pendiente, historial de compras y búsqueda inteligente.' },
-        { icon: 'fa-truck', nombre: 'Proveedores', uso: 'Registra tus proveedores, tiempos de entrega y datos de contacto para tus compras.' },
-        { icon: 'fa-coins', nombre: 'Gastos', uso: 'Registra los gastos del negocio y clasifícalos por categoría para controlar tus costos.' },
-        { icon: 'fa-user-tie', nombre: 'Empleados', uso: 'Gestiona tu personal: cédula, cargo, salario en Bs y fecha de contratación.' },
-        { icon: 'fa-chart-line', nombre: 'Reportes', uso: 'Consulta estadísticas: ventas, ticket promedio, gráficos diarios, calendario de ventas y utilidad.' },
+        { icon: 'fa-shopping-cart', nombre: 'Ventas', uso: 'Registra ventas buscando por nombre o código de barras, escáner de cámara, pago en Bs/dólares/dividido, ventas a CRÉDITO, ticket con imagen y modo Kiosco. Incluye cierre de caja (arqueo) y anulación de ventas.' },
+        { icon: 'fa-boxes', nombre: 'Inventario', uso: 'Administra tus productos: precios en Bs y USD con conversión automática, stock mínimo y alertas, ajustes de stock auditados, categorías, escaneo de código de barras, imágenes y selección en lote.' },
+        { icon: 'fa-users', nombre: 'Clientes', uso: 'Cartera de clientes con cédula, teléfono, saldo por cobrar (adeudo), historial de compras y búsqueda inteligente. Botón Cartera CxC para ver deudores y cobrar abonos.' },
+        { icon: 'fa-truck', nombre: 'Proveedores', uso: 'Registra proveedores y tiempos de entrega. El módulo Entregas controla mercancía recibida con calendario de vencimientos; al recibir, sube el stock automáticamente.' },
+        { icon: 'fa-coins', nombre: 'Gastos', uso: 'Registra los gastos del negocio y clasifícalos por categoría (incluye NÓMINA) para controlar tus costos.' },
+        { icon: 'fa-user-tie', nombre: 'Empleados', uso: 'Gestiona tu personal y NÓMINA: cédula, cargo, salario en Bs, día de pago. Botón "Pagar" genera el gasto y marca el salario como pagado.' },
+        { icon: 'fa-chart-line', nombre: 'Reportes', uso: 'Estadísticas: ventas por forma de pago, resumen del período (ganancia cobrada vs crédito), cartera por cobrar, nómina, entregas, gráficos diarios y documento/Excel imprimible.' },
         { icon: 'fa-calculator', nombre: 'Calculadora', uso: 'Convertidor USD ⇄ Bs integrado. Calcula precios, conversiones y prepagos al instante.' },
-        { icon: 'fa-palette', nombre: 'Config', uso: 'Tema y colores, empresa, tasa de cambio, impresión, copia de seguridad, PIN, sync entre dispositivos y dual persistencia.' }
+        { icon: 'fa-palette', nombre: 'Config', uso: 'Tema y colores, empresa, fuente de la tasa de dólar (3 disponibles), alertas de stock, impresión, copia de seguridad (JSON/CSV con tickets y caja), PIN, sync y dual persistencia.' }
     ];
 
     function inyectarBotonAyudaModulo() {
@@ -4719,6 +4857,12 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
             <div class="guia-item"><i class="fas fa-lock"></i><div><strong>3 modos de candado</strong><small>Visible (prueba 30 días), Silencioso (sin aviso), Libre (sin candado). Configurable por variante.</small></div></div>
             <div class="guia-item"><i class="fas fa-tv"></i><div><strong>Modo Kiosco</strong><small>Pantalla simplificada para punto de venta rápido. Mantén presionado "Ventas" 4 segundos para activarlo o desactivarlo (candado rojo). Incluye calculadora integrada.</small></div></div>
             <div class="guia-item"><i class="fas fa-calculator"></i><div><strong>Calculadora USD ⇄ Bs</strong><small>Convertidor integrado en el home y en el kiosco. Formato de miles venezolano: 1.234.567,89</small></div></div>
+            <div class="guia-item"><i class="fas fa-money-bill-wave"></i><div><strong>Tipo de cambio en vivo</strong><small>3 fuentes disponibles (BCV, AlCambio BCV, USDT) con selector; la regidora se muestra en el home y las otras 2 en la barra de fondo del teléfono (Android). Conversión automática Bs ⇄ USD.</small></div></div>
+            <div class="guia-item"><i class="fas fa-hand-holding-usd"></i><div><strong>Crédito y Cartera CxC</strong><small>Vende a crédito por cliente y cobra abonos. La Cartera muestra deudores y cobrado; los abonos del día se suman al arqueo de caja.</small></div></div>
+            <div class="guia-item"><i class="fas fa-cash-register"></i><div><strong>Cierre de caja</strong><small>Abre caja con fondo, cuadra ventas y abonos por método de pago y guarda el arqueo con diferencias.</small></div></div>
+            <div class="guia-item"><i class="fas fa-user-tie"></i><div><strong>Nómina de empleados</strong><small>Salarios, día de pago y botón "Pagar" que registra el gasto y marca el mes como pagado.</small></div></div>
+            <div class="guia-item"><i class="fas fa-truck"></i><div><strong>Entregas de proveedores</strong><small>Control de mercancía recibida con vencimientos; al recibir la entrega el stock sube solo.</small></div></div>
+            <div class="guia-item"><i class="fas fa-boxes"></i><div><strong>Stock mínimo y alertas</strong><small>Configura un mínimo por producto; la app avisa (y suena) cuando baja. Ajustes de stock manuales auditados.</small></div></div>
             ${esNativa ? `<div class="guia-item"><i class="fas fa-folder-open"></i><div><strong>Carpeta de archivos</strong><small>Guarda tickets, respaldos y datos en la carpeta que elijas en tu dispositivo.</small></div></div>` : ''}
         `;
         const fondo = document.createElement('div');
@@ -4729,7 +4873,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
                 <div class="guia-version">${APP_NOMBRE} · ${APP_TAGLINE} · ${versionTxt}</div>
                 <div class="guia-fila"><span>Nombre</span><span>${APP_NOMBRE}</span></div>
                 <div class="guia-fila"><span>Versión</span><span>${APP_VERSION}</span></div>
-                <div class="guia-fila"><span>Tipo de cambio</span><span>${D.config.mostrarDolar ? 'Tasa BCV (Bs/USD)' : 'Desactivado'}</span></div>
+                <div class="guia-fila"><span>Tipo de cambio</span><span>${D.config.mostrarDolar ? '3 fuentes en vivo (BCV · AlCambio BCV · USDT)' : 'Desactivado'}</span></div>
                 <div class="guia-fila"><span>Empresa</span><span>${D.config.empresa?.nombre || '—'}</span></div>
                 <div class="guia-seccion">
                     <h4>Características principales</h4>
@@ -4749,51 +4893,56 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
     }
 
     const GUIA_HOME = [
-        { sel: null, titulo: 'Bienvenido a JAM POS', texto: 'Tu tienda profesional: gestiona ventas, inventario, clientes y más. Tus datos se sincronizan entre dispositivos automáticamente.' },
+        { sel: null, titulo: 'Bienvenido a JAM POS LIBRE', texto: 'Tu tienda profesional: ventas, inventario, clientes (CxC), proveedores (entregas), gastos, nómina y cierre de caja. Tus datos se sincronizan entre dispositivos automáticamente.' },
         { sel: '#searchGlobalInput', titulo: 'Búsqueda rápida', texto: 'Escribe aquí para buscar productos, clientes y proveedores desde cualquier parte. La búsqueda inteligente filtra por nombre, código o cédula.' },
-        { sel: '.card-bcv', titulo: 'Tipo de cambio', texto: 'Muestra la tasa oficial del dólar (BCV). Toca el icono para usar el convertidor USD ⇄ Bs con formato venezolano (1.234.567,89).' },
-        { sel: '.home-grid', titulo: 'Tus módulos', texto: 'Cada botón abre un módulo: Ventas, Inventario, Clientes, Proveedores, Gastos, Empleados, Reportes, Calculadora y Configuración.' },
+        { sel: '.card-bcv', titulo: 'Tipo de cambio', texto: 'Muestra la tasa regidora del dólar en vivo (BCV, AlCambio BCV o USDT, según elijas). Toca el icono para usar el convertidor USD ⇄ Bs con formato venezolano (1.234.567,89).' },
+        { sel: '.home-grid', titulo: 'Tus módulos', texto: 'Cada botón abre un módulo: Ventas, Inventario, Clientes (con Cartera CxC), Proveedores (con Entregas), Gastos, Empleados (Nómina), Reportes, Calculadora y Configuración.' },
         { sel: '.led-converter', titulo: 'Calculadora USD ⇄ Bs', texto: 'Convertidor rápido integrado. Toca para calcular conversiones al instante sin salir del home.' },
-        { sel: null, titulo: 'Modo Kiosco', texto: 'Mantén presionado el botón "Ventas" 5 segundos para activar el modo Kiosco: pantalla simplificada para punto de venta rápido con calculadora integrada.' },
-        { sel: '.btn-ayuda-home', titulo: 'Guía de la app', texto: 'Este botón abre la guía completa con todas las características, módulos y cómo usar cada uno.' },
+        { sel: null, titulo: 'Modo Kiosco', texto: 'Mantén presionado el botón "Ventas" 4 segundos para activar el modo Kiosco: pantalla simplificada para punto de venta rápido con calculadora integrada.' },
+        { sel: '.btn-ayuda-home', titulo: 'Guía de la app', texto: 'Este botón abre la guía completa con todas las características, módulos y cómo usar cada uno. Desde aquí también puedes repetir el recorrido interactivo.' },
         { sel: null, titulo: '¡Listo!', texto: 'Ya conoces lo esencial. Explora cada módulo cuando quieras, y vuelve a la guía cuando lo necesites.' }
     ];
     const GUIA_VENTAS = [
-        { sel: null, titulo: 'Ventas — Modo completo', texto: 'Esta es la pantalla principal de ventas. Aquí registras cada venta con cliente, productos, pago y ticket.' },
+        { sel: null, titulo: 'Ventas — Modo completo', texto: 'Esta es la pantalla principal de ventas. Aquí registras cada venta con cliente, productos, pago, ticket y, si aplica, crédito o arqueo de caja.' },
         { sel: '#clienteInput', titulo: '1. El cliente', texto: 'Escribe el nombre o la cédula del cliente y toca la sugerencia. Usa "+" para crear uno nuevo al instante. La búsqueda inteligente encuentra por nombre, cédula o teléfono.' },
-        { sel: '#buscarProducto', titulo: '2. Buscar productos', texto: 'Escribe el nombre o código de barras. Toca un resultado para agregarlo al carrito. Con Enter y un código se agrega directo.' },
+        { sel: '#buscarProducto', titulo: '2. Buscar productos', texto: 'Escribe el nombre o código de barras. Toca un resultado para agregarlo al carrito (un toque = 1 unidad; un doble toque rápido no suma de más). Con Enter y un código se agrega directo.' },
         { sel: '#btnScanVentas', titulo: '3. Escáner con cámara', texto: 'Toca la cámara para escanear un código de barras y agregar el producto automáticamente.' },
-        { sel: '#carritoLista', titulo: '4. Carrito', texto: 'Aquí ves lo agregado: cambia cantidades, quita productos y mira el subtotal, IVA y total en tiempo real con precios en Bs y USD.' },
-        { sel: '#tipoPago', titulo: '5. Tipo de pago', texto: 'Elige cómo paga: efectivo Bs, dólares, tarjeta, transferencia, pago móvil o pago dividido (varios métodos en una venta).' },
-        { sel: '#finalizarVenta', titulo: '6. Finalizar venta', texto: 'Al finalizar se genera el TICKET: imagen, impresión y reenvío. Con efectivo en Bs puedes calcular el cambio.' },
+        { sel: '#carritoLista', titulo: '4. Carrito', texto: 'Aquí ves lo agregado: cambia cantidades con los botones +/−, quita productos y mira el subtotal, IVA y total en tiempo real con precios en Bs y USD. El stock valida cada unidad.' },
+        { sel: '#tipoPago', titulo: '5. Tipo de pago', texto: 'Elige cómo paga: efectivo Bs, dólares, tarjeta, transferencia, pago móvil, pago dividido (varios métodos en una venta) o 💳 CRÉDITO (requiere cliente; suma a la Cartera CxC y puedes cobrar abonos después).' },
+        { sel: '#finalizarVenta', titulo: '6. Finalizar venta', texto: 'Genera el TICKET: imagen, impresión y reenvío por WhatsApp. Con efectivo calcula el cambio. El ticket guarda la tasa del día y las ventas a crédito marcan "CRÉDITO".' },
+        { sel: null, titulo: '7. Anular una venta', texto: 'En el ticket toca "Anular": devuelve el stock, revierte el crédito del cliente y la venta sale de los reportes y del arqueo.' },
+        { sel: null, titulo: '8. Cierre de caja (💵)', texto: 'El botón "💵 Caja" abre el arqueo del día: apertura con fondo, ventas y abonos cobrados por cada método de pago (efectivo, pago móvil, transferencia, tarjeta) para cuadrar el efectivo y guardar el cierre.' },
+        { sel: null, titulo: '9. Crédito y abonos', texto: 'Después de una venta a crédito, el cliente aparece con adeudo en Clientes/Cartera. Toca "💵 Abono" para cobrar parcial o totalmente; el abono del día se suma al arqueo de caja.' },
         { sel: null, titulo: 'Modo Kiosco', texto: 'Para acceso rápido: mantén presionado "Ventas" 4 segundos. El kiosco muestra solo lo esencial con calculadora integrada y candado de seguridad (mantén presionado el candado 4 segundos para salir).' },
         { sel: null, titulo: '¡Listo!', texto: 'Con eso dominas Ventas. Haz tu primera venta cuando quieras; el ticket te da imagen e impresión.' }
     ];
     const GUIA_INVENTARIO = [
         { sel: '#searchInv', titulo: '1. Buscar en inventario', texto: 'Escribe el nombre o código de barras para filtrar al instante. Con Enter y un código se agrega o busca directo.' },
         { sel: '#btnScanInv', titulo: '2. Escáner', texto: 'Toca la cámara para escanear un código de barras y encontrar el producto al instante.' },
-        { sel: '#nuevoProducto', titulo: '3. Nuevo producto', texto: 'Formulario completo: nombre, código, categoría, proveedor, stock, imágenes y precios de compra y venta.' },
+        { sel: '#nuevoProducto', titulo: '3. Nuevo producto', texto: 'Formulario completo: nombre, código, categoría, TIPO, proveedor, stock, imágenes y precios de compra y venta en Bs y USD.' },
         { sel: null, titulo: '4. Conversión automática', texto: 'En el formulario, los precios se convierten SOLOS: escribe en Bs y se rellena USD (y viceversa). Compra y venta se convierten por separado.' },
-        { sel: '.product-card', titulo: '5. Tus productos', texto: 'Cada tarjeta muestra precios en Bs y USD, stock y categoría. Toca ✏️ Editar, 📋 Copiar o 🗑️ Eliminar.' },
+        { sel: '.product-card', titulo: '5. Tus productos', texto: 'Cada tarjeta muestra precios en Bs y USD, stock y categoría. Toca ✏️ Editar, 📋 Copiar, 🗑️ Eliminar (avisa si tiene stock) o ↔️ Ajustar para corregir unidades con un motivo (quedará auditado).' },
         { sel: '#selectAllCheckbox', titulo: '6. Selección en lote', texto: 'Marca varios productos y pulsa "✏️ Editar selección" para cambiar precios, categoría, proveedor o stock de todos a la vez.' },
-        { sel: null, titulo: '¡Listo!', texto: 'Ya sabes manejar inventario con conversión automática. ¡Agrega tu primer producto!' }
+        { sel: null, titulo: '7. Stock mínimo y alertas', texto: 'En Config → Alertas fijas el stock mínimo general. Cuando un producto baje de esa cantidad, la app avisa y suena. También hay ajustes de stock manuales auditados.' },
+        { sel: null, titulo: '¡Listo!', texto: 'Ya sabes manejar inventario con conversión automática, ajustes y alertas. ¡Agrega tu primer producto!' }
     ];
     const GUIA_REPORTES = [
-        { sel: '.chart-container', titulo: '1. Gráfico diario', texto: 'Toca cualquier barra del gráfico para ver las ventas, ganancia y utilidad de ese día.' },
+        { sel: '.chart-container', titulo: '1. Gráfico diario', texto: 'Toca cualquier barra del gráfico para ver las ventas, la ganancia COBRADA, gastos y utilidad de ese día (las ventas a crédito se informan en la Cartera).' },
         { sel: '#chartVentas', titulo: '2. Gráfico', texto: 'Gráfica de tus ventas en el tiempo para detectar tendencias de un vistazo.' },
         { sel: '#buscarVentas', titulo: '3. Buscar ventas', texto: 'Escribe para filtrar por fecha, artículo, cliente o número de venta. También puedes usar el calendario.' },
         { sel: '#btnCalendarioVentas', titulo: '4. Calendario', texto: 'Abre un calendario para ver las ventas de un día o de un mes específicos.' },
-        { sel: '#listaVentasReporte', titulo: '5. Detalle de venta', texto: 'Toca cualquier venta para ver su ticket completo: cliente, productos, total y forma de pago.' },
-        { sel: null, titulo: '¡Listo!', texto: 'Con Reportes controlas tu negocio: ganancias, gastos, ventas por día y más.' }
+        { sel: '#listaVentasReporte', titulo: '5. Detalle de venta', texto: 'Toca cualquier venta para ver su ticket completo: cliente, productos, total, forma de pago y botón Anular.' },
+        { sel: null, titulo: '6. Resumen y documentos', texto: 'El botón 📋 Resumen y Exportar Excel arman el reporte del período: ventas y ganancia COBRADA (las ventas a crédito se muestran por separado), gastos, nómina, entregas, ventas por forma de pago, cartera por cobrar y tasas. Utilidad = ganancia cobrada − gastos − nómina.' },
+        { sel: null, titulo: '¡Listo!', texto: 'Con Reportes controlas tu negocio: ganancias, gastos, ventas por día, crédito y caja.' }
     ];
     const GUIA_CONFIG = [
-        { sel: null, titulo: 'Configuración', texto: 'Aquí personalizas todo: empresa, tema, tasa, seguridad, backup y sincronización.' },
+        { sel: null, titulo: 'Configuración', texto: 'Aquí personalizas todo: empresa, tema, fuente de la tasa, alertas, seguridad, backup y sincronización.' },
         { sel: '#btnToggleEmpresa', titulo: '1. Datos de la empresa', texto: 'Configura nombre, dirección, teléfono, RIF y logo. Aparece en los tickets impresos.' },
-        { sel: '#btnToggleTasa', titulo: '2. Tasa de cambio', texto: 'Configura la tasa BCV manual o automática. Se usa para conversiones Bs ⇄ USD en toda la app.' },
-        { sel: '#btnToggleOpciones', titulo: '3. Opciones', texto: 'Modo oscuro automático, IVA, prevenir cierre accidental y más ajustes de comportamiento.' },
+        { sel: '#btnToggleTasa', titulo: '2. Tasa de cambio', texto: 'Elige la fuente del dólar: BCV, AlCambio BCV o USDT. La regidora se muestra en el home y las otras 2 en la barra de fondo del teléfono (Android). Conversión automática Bs ⇄ USD en toda la app.' },
+        { sel: '#btnToggleOpciones', titulo: '3. Opciones y alertas', texto: 'Modo oscuro automático, IVA, prevenir cierre accidental, SONIDO de alertas y stock mínimo general para avisar cuando un producto está bajo.' },
         { sel: '#btnToggleSeguridad', titulo: '4. Seguridad (PIN)', texto: 'Protege la app con un PIN de 4 dígitos. Se pide al abrir la app.' },
         { sel: '#btnToggleColores', titulo: '5. Temas de color', texto: 'Elige el color de acento de la app entre una paleta de colores predefinidos.' },
-        { sel: '#btnToggleBackup', titulo: '6. Copia de seguridad', texto: 'Dual persistencia: tus datos se guardan en IDB + archivos JSON. Exporta/importa JSON, CSV y restaura desde respaldo automático.' },
+        { sel: '#btnToggleBackup', titulo: '6. Copia de seguridad', texto: 'Dual persistencia: tus datos se guardan en IDB + archivos JSON. Exporta/importa JSON y CSV — incluyen TODOS los registros, tickets, cierre de caja, historial y tasas — y restaura desde el respaldo automático.' },
         { sel: null, titulo: '¡Listo!', texto: 'Con Config personalizas la app a tu negocio. Los datos se sincronizan y respaldan automáticamente.' }
     ];
     const GUIA_MODULOS = {
