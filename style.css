@@ -51,11 +51,16 @@
         .btn-back-bloqueado{background:#dc2626!important;color:#fff!important;cursor:not-allowed!important}
         .module-title{font-size:1.5rem;font-weight:800;color:var(--accent);cursor:pointer;padding:4px 8px;border-radius:16px;transition:all 0.2s}
         .module-title-bloqueado{text-decoration:underline wavy #dc2626;text-underline-offset:8px;background:rgba(220,38,38,0.1);border-radius:30px}
-        .btn-cabezal-sub{display:inline-flex;align-items:center;gap:6px;font-size:1rem;font-weight:800;color:var(--accent);cursor:pointer;padding:6px 16px;border-radius:40px;background:transparent;border:2px solid var(--accent);line-height:1.4;transition:all .2s;white-space:nowrap}
-        .btn-cabezal-sub:hover{background:var(--accent);color:#fff}
-        .btn-cabezal-sub:active{transform:scale(.96)}
-        body.light-mode .btn-cabezal-sub{background:rgba(30,41,59,.05)}
-        body.light-mode .btn-cabezal-sub:hover{background:var(--accent);color:#fff}
+        .btn-cabezal-sub{display:inline-flex;align-items:center;font-size:1.5rem;font-weight:800;color:#111;cursor:pointer;padding:4px 0;background:transparent;border:none;line-height:1.4;transition:color .15s;white-space:nowrap}
+        .btn-cabezal-sub:hover{color:var(--accent)}
+        .btn-cabezal-sub:active{color:var(--accent);transform:scale(.96)}
+        body.dark-mode .btn-cabezal-sub{color:#e0e0e0}
+        .module-crumb{display:inline-flex;align-items:center;font-size:1.5rem;font-weight:800;color:#111;cursor:pointer;padding:4px 0;background:transparent;border:none;line-height:1.4;transition:color .15s;white-space:nowrap}
+        .module-crumb:hover{color:var(--accent)}
+        body.dark-mode .module-crumb{color:#e0e0e0}
+        .module-crumb-sep{font-size:1.5rem;font-weight:800;color:#9ca3af;margin:0 .3em;line-height:1.4;user-select:none}
+        .module-header .module-title{padding:4px 0}
+        .module-header .btn-ayuda-modulo{margin-left:.3em}
         .product-card,.client-card{border-radius:20px;padding:14px;margin-bottom:12px;border:2px solid var(--accent);word-break:break-word}
         input,select,textarea{border-radius:20px;padding:10px 14px;width:100%;outline:none}
         .modal-form{position:fixed;inset:0;background:rgba(0,0,0,.5);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:1000;padding:16px}
@@ -233,6 +238,7 @@ body.has-sidebar .tasas-extras{max-width:450px;margin-left:auto;margin-right:aut
             body.has-sidebar .btn-redondeado{padding:8px 20px!important}
             body.has-sidebar #listaProductos,body.has-sidebar #listaCrud,body.has-sidebar .scroll-area,body.has-sidebar .ventas-cart-scroll{max-width:100%;margin:0 auto}
             body.has-sidebar .module-title{font-size:1.3rem}
+            body.has-sidebar .btn-cabezal-sub, body.has-sidebar .module-crumb, body.has-sidebar .module-crumb-sep{font-size:1.3rem}
             body.has-sidebar .modal-form-content{max-width:500px}
         }
         

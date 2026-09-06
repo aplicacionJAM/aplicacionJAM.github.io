@@ -1259,7 +1259,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
             ? `<div id="btnKioscoCandado" class="kiosco-candado" title="Pantalla única activada: mantén presionado el candado 4 segundos para salir"><i class="fas fa-lock"></i></div>`
             : `<div id="btnVolverModule" class="btn-back ${bloqueado?'btn-back-bloqueado':''}" onclick="${bloqueado?'':'backToHome()'}">${bloqueado?'<i class="fas fa-lock"></i> Bloqueado':'<i class="fas fa-arrow-left"></i> Volver'}</div>`;
         const html = `
-            <div class="page-header-fixed"><div class="module-header"><div class="flex items-center gap-2" style="min-width:0"><h2 id="tituloModule" class="module-title ${bloqueado?'module-title-bloqueado':''} ${kioscoVentas?'titulo-kiosco':''}" style="color:${accent}">Ventas${calcIcon}</h2>${kioscoVentas ? '' : `<button id="btnIrCaja" class="btn-cabezal-sub" type="button" title="Cierre de caja del día">💵 Caja</button>`}</div>${btnHeader}</div></div>
+            <div class="page-header-fixed"><div class="module-header"><div class="flex items-center" style="min-width:0"><h2 id="tituloModule" class="module-title ${bloqueado?'module-title-bloqueado':''} ${kioscoVentas?'titulo-kiosco':''}" style="color:${accent}">Ventas${calcIcon}</h2>${kioscoVentas ? '' : `<span class="module-crumb-sep">/</span><button id="btnIrCaja" class="btn-cabezal-sub" type="button" title="Cierre de caja del día">Caja</button>`}</div>${btnHeader}</div></div>
             <div class="page-container ventas-layout">
                 <div class="ventas-top">
                     <div class="cliente-search-wrap">
@@ -1945,7 +1945,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
     };
     
     // ==================== CIERRE DE CAJA ====================
-    // Página sub-módulo (botón "💵 Caja" en el encabezado de Ventas). Permite
+    // Página sub-módulo (opción "Caja" en el encabezado de Ventas: Ventas / Caja). Permite
     // apertura con fondo inicial, arqueo por método de pago (efectivo/dólares/
     // tarjeta/transferencia/pago móvil) y cierre de turno. Persiste en
     // localStorage 'jam_pos_caja' (sobrevive reinicios).
@@ -1974,7 +1974,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         const ventas = await getAll('ventas');
         const caja = cargarCaja();
         document.getElementById('appRoot').innerHTML = `
-            <div class="page-header-fixed"><div class="module-header"><h2 id="tituloModule" class="module-title ${bloqueado?'module-title-bloqueado':''}" style="color:${accent}" onmousedown="iniciarBloqueo(this,'Caja')" onmouseup="cancelarBloqueo()" onmouseleave="cancelarBloqueo()">💵 Cierre de Caja</h2><div id="btnVolverModule" class="btn-back ${bloqueado?'btn-back-bloqueado':''}" onclick="${bloqueado?'':'backToHome()'}">${bloqueado?'<i class="fas fa-lock"></i> Bloqueado':'<i class="fas fa-arrow-left"></i> Volver'}</div></div></div>
+            <div class="page-header-fixed"><div class="module-header"><div class="flex items-center" style="min-width:0"><span class="module-crumb" onclick="navigateTo('ventas')" title="Ir a Ventas">Ventas</span><span class="module-crumb-sep">/</span><h2 id="tituloModule" class="module-title ${bloqueado?'module-title-bloqueado':''}" style="color:${accent}" onmousedown="iniciarBloqueo(this,'Caja')" onmouseup="cancelarBloqueo()" onmouseleave="cancelarBloqueo()">Cierre</h2></div><div id="btnVolverModule" class="btn-back ${bloqueado?'btn-back-bloqueado':''}" onclick="${bloqueado?'':'backToHome()'}">${bloqueado?'<i class="fas fa-lock"></i> Bloqueado':'<i class="fas fa-arrow-left"></i> Volver'}</div></div></div>
             <div class="page-container">
                 ${!caja.abierta ? `
                 <div class="config-section" style="margin-bottom:16px">
@@ -2078,6 +2078,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
             mostrarNotificacion('🔒 Caja cerrada correctamente', 'success');
             renderCaja();
         };
+        inyectarBotonAyudaModulo();
     }
     window.imprimirTicketDirecto = (ventaId) => {
         const venta = D.ventas.find(v => v.id === ventaId);
@@ -2933,7 +2934,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
     async function renderCrud(store, titulo, campos){
         let bloqueado = volverBloqueado, accent = D.config.theme;
         let items = await getAll(store); D[store] = items;
-        document.getElementById('appRoot').innerHTML = `<div class="page-header-fixed"><div class="module-header"><div class="flex items-center gap-2" style="min-width:0"><h2 id="tituloModule" class="module-title ${bloqueado?'module-title-bloqueado':''}" style="color:${accent}" onmousedown="iniciarBloqueo(this,'${titulo}')" onmouseup="cancelarBloqueo()" onmouseleave="cancelarBloqueo()">${titulo}</h2>${store === 'proveedores' ? `<button id="btnIrEntregas" class="btn-cabezal-sub" type="button" title="Entregas de proveedores">📦 Entregas</button>` : ''}${store === 'clientes' ? `<button id="btnIrCartera" class="btn-cabezal-sub" type="button" title="Cartera por cobrar (créditos de clientes)">💰 Cartera</button>` : ''}</div><div id="btnVolverModule" class="btn-back ${bloqueado?'btn-back-bloqueado':''}" onclick="${bloqueado?'':'backToHome()'}">${bloqueado?'<i class="fas fa-lock"></i> Bloqueado':'<i class="fas fa-arrow-left"></i> Volver'}</div></div></div><div class="page-container"><div class="mb-3 relative"><i class="fas fa-search absolute left-3 top-3 text-gray-400"></i><input type="text" id="searchCrud" placeholder="Buscar..." class="pl-9 pr-3 py-2 border-2 rounded-xl w-full" style="border-color:${accent}"></div><div class="flex gap-2 mb-4 items-center"><button id="agregarBtn" class="btn-azul-redondeado btn-redondeado py-2 px-4">+ Agregar ${titulo}</button></div><div id="listaCrud" class="scroll-area"></div></div>`;
+        document.getElementById('appRoot').innerHTML = `<div class="page-header-fixed"><div class="module-header"><div class="flex items-center" style="min-width:0"><h2 id="tituloModule" class="module-title ${bloqueado?'module-title-bloqueado':''}" style="color:${accent}" onmousedown="iniciarBloqueo(this,'${titulo}')" onmouseup="cancelarBloqueo()" onmouseleave="cancelarBloqueo()">${titulo}</h2>${store === 'proveedores' ? `<span class="module-crumb-sep">/</span><button id="btnIrEntregas" class="btn-cabezal-sub" type="button" title="Entregas de proveedores">Entregas</button>` : ''}${store === 'clientes' ? `<span class="module-crumb-sep">/</span><button id="btnIrCartera" class="btn-cabezal-sub" type="button" title="Cartera por cobrar (créditos de clientes)">Cartera</button>` : ''}</div><div id="btnVolverModule" class="btn-back ${bloqueado?'btn-back-bloqueado':''}" onclick="${bloqueado?'':'backToHome()'}">${bloqueado?'<i class="fas fa-lock"></i> Bloqueado':'<i class="fas fa-arrow-left"></i> Volver'}</div></div></div><div class="page-container"><div class="mb-3 relative"><i class="fas fa-search absolute left-3 top-3 text-gray-400"></i><input type="text" id="searchCrud" placeholder="Buscar..." class="pl-9 pr-3 py-2 border-2 rounded-xl w-full" style="border-color:${accent}"></div><div class="flex gap-2 mb-4 items-center"><button id="agregarBtn" class="btn-azul-redondeado btn-redondeado py-2 px-4">+ Agregar ${titulo}</button></div><div id="listaCrud" class="scroll-area"></div></div>`;
         if(volverBloqueado) document.getElementById('btnVolverModule').onclick = () => mostrarOverlayBloqueo();
         let search = document.getElementById('searchCrud'), agregar = document.getElementById('agregarBtn');
         const btnEntregas = document.getElementById('btnIrEntregas');
@@ -3023,7 +3024,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         currentSub = 'entregas';
         let bloqueado = volverBloqueado, accent = D.config.theme;
         D.entregas = await getAll('entregas');
-        document.getElementById('appRoot').innerHTML = `<div class="page-header-fixed"><div class="module-header"><h2 id="tituloModule" class="module-title ${bloqueado?'module-title-bloqueado':''}" style="color:${accent}" onmousedown="iniciarBloqueo(this,'Entregas')" onmouseup="cancelarBloqueo()" onmouseleave="cancelarBloqueo()">📦 Entregas de Proveedores</h2><div id="btnVolverModule" class="btn-back ${bloqueado?'btn-back-bloqueado':''}" onclick="${bloqueado?'':'backToHome()'}">${bloqueado?'<i class="fas fa-lock"></i> Bloqueado':'<i class="fas fa-arrow-left"></i> Volver'}</div></div></div><div class="page-container">
+        document.getElementById('appRoot').innerHTML = `<div class="page-header-fixed"><div class="module-header"><div class="flex items-center" style="min-width:0"><span class="module-crumb" onclick="navigateTo('proveedores')" title="Ir a Proveedores">Proveedores</span><span class="module-crumb-sep">/</span><h2 id="tituloModule" class="module-title ${bloqueado?'module-title-bloqueado':''}" style="color:${accent}" onmousedown="iniciarBloqueo(this,'Entregas')" onmouseup="cancelarBloqueo()" onmouseleave="cancelarBloqueo()">Entregas</h2></div><div id="btnVolverModule" class="btn-back ${bloqueado?'btn-back-bloqueado':''}" onclick="${bloqueado?'':'backToHome()'}">${bloqueado?'<i class="fas fa-lock"></i> Bloqueado':'<i class="fas fa-arrow-left"></i> Volver'}</div></div></div><div class="page-container">
             <div class="flex gap-2 mb-4 items-center"><button id="btnNuevaEntrega" class="btn-azul-redondeado btn-redondeado py-2 px-4">+ Nueva entrega</button><button id="btnCalendarioEntregas" class="btn-redondeado py-2 px-4" style="border:1.5px solid ${accent};color:${accent}">📅 Calendario</button></div>
             <div class="config-section" style="margin-bottom:16px"><div class="config-section-title" style="font-size:.75rem;font-weight:700;opacity:.6;margin-bottom:8px">Estado de entregas</div><div id="resumenEntregas"></div></div>
             <h3 class="font-bold mb-2">Registro de entregas</h3>
@@ -3045,6 +3046,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
                 <div class="card-bcv" style="padding:10px;text-align:center"><div class="font-black text-lg" style="color:#10b981">${hoyMismo.length}</div><div class="text-xs opacity-70">Hoy</div></div>
             </div>`;
         renderListaEntregas('');
+        inyectarBotonAyudaModulo();
     }
     function estadoEntregaBadge(e){
         const st = e.estado || 'pendiente';
@@ -3703,7 +3705,7 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
         const utilNeta = totGan - totGastos - nominaUso;
         const totGanCreditoRes = ventasPer.filter(v => v.credito && !v.anulada).reduce((a,v)=>a+(v.gananciaTotal||0),0);
         document.getElementById('appRoot').innerHTML = `
-            <div class="page-header-fixed"><div class="module-header"><h2 id="tituloModule" class="module-title ${bloqueado?'module-title-bloqueado':''}" style="color:${accent}" onmousedown="iniciarBloqueo(this,'Resumen')" onmouseup="cancelarBloqueo()" onmouseleave="cancelarBloqueo()">📋 Resumen</h2><div id="btnVolverModule" class="btn-back ${bloqueado?'btn-back-bloqueado':''}" onclick="${bloqueado?'':'backToHome()'}">${bloqueado?'<i class="fas fa-lock"></i> Bloqueado':'<i class="fas fa-arrow-left"></i> Volver'}</div></div></div>
+            <div class="page-header-fixed"><div class="module-header"><div class="flex items-center" style="min-width:0"><span class="module-crumb" onclick="navigateTo('reportes')" title="Ir a Reportes">Reportes</span><span class="module-crumb-sep">/</span><h2 id="tituloModule" class="module-title ${bloqueado?'module-title-bloqueado':''}" style="color:${accent}" onmousedown="iniciarBloqueo(this,'Resumen')" onmouseup="cancelarBloqueo()" onmouseleave="cancelarBloqueo()">Resumen</h2></div><div id="btnVolverModule" class="btn-back ${bloqueado?'btn-back-bloqueado':''}" onclick="${bloqueado?'':'backToHome()'}">${bloqueado?'<i class="fas fa-lock"></i> Bloqueado':'<i class="fas fa-arrow-left"></i> Volver'}</div></div></div>
             <div class="page-container">
                 <div class="config-section" style="margin-bottom:16px">
                     <div class="config-section-title" style="font-size:.75rem;font-weight:700;opacity:.6;margin-bottom:8px">📋 Resumen del período</div>
@@ -3730,6 +3732,7 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
         ['hoy','semana','mes','anio'].forEach(p => { const b = document.getElementById('perBtn_'+p); if(b) b.onclick = () => { _periodoReporte = p; mostrarResumen(); }; });
         document.getElementById('btnDocExcel').onclick = () => generarReporteDocumento(_periodoReporte, 'excel');
         document.getElementById('btnDocPrint').onclick = () => generarReporteDocumento(_periodoReporte, 'print');
+        inyectarBotonAyudaModulo();
     }
     async function renderReportes(){
         let ventas = await getAll('ventas');
@@ -3748,7 +3751,7 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
             return `<div class="flex justify-between items-center" style="padding:5px 0;border-bottom:1px solid rgba(128,128,128,.1)"><span class="text-xs" style="opacity:.6">${fmtTasaSemanaEtiqueta(h)}</span><span class="text-xs font-bold" style="color:${accent}">${flecha} ${fmtDolar(h.tasa)} Bs</span></div>`;
         }).join('') : '<div class="text-xs" style="opacity:.5;text-align:center;padding:8px">Sin datos de tasa esta semana</div>';
         document.getElementById('appRoot').innerHTML = `
-            <div class="page-header-fixed"><div class="module-header"><div class="flex items-center gap-2" style="min-width:0"><h2 id="tituloModule" class="module-title ${bloqueado?'module-title-bloqueado':''}" style="color:${accent}" onmousedown="iniciarBloqueo(this,'Reportes')" onmouseup="cancelarBloqueo()" onmouseleave="cancelarBloqueo()">Reportes</h2><button id="btnIrResumen" class="btn-cabezal-sub" type="button" title="Resumen del período">📋 Resumen</button></div><div id="btnVolverModule" class="btn-back ${bloqueado?'btn-back-bloqueado':''}" onclick="${bloqueado?'':'backToHome()'}">${bloqueado?'<i class="fas fa-lock"></i> Bloqueado':'<i class="fas fa-arrow-left"></i> Volver'}</div></div></div>
+            <div class="page-header-fixed"><div class="module-header"><div class="flex items-center" style="min-width:0"><h2 id="tituloModule" class="module-title ${bloqueado?'module-title-bloqueado':''}" style="color:${accent}" onmousedown="iniciarBloqueo(this,'Reportes')" onmouseup="cancelarBloqueo()" onmouseleave="cancelarBloqueo()">Reportes</h2><span class="module-crumb-sep">/</span><button id="btnIrResumen" class="btn-cabezal-sub" type="button" title="Resumen del período">Resumen</button></div><div id="btnVolverModule" class="btn-back ${bloqueado?'btn-back-bloqueado':''}" onclick="${bloqueado?'':'backToHome()'}">${bloqueado?'<i class="fas fa-lock"></i> Bloqueado':'<i class="fas fa-arrow-left"></i> Volver'}</div></div></div>
             <div class="page-container">
                 <div class="chart-hint" style="text-align:center;font-size:.75rem;opacity:.5;margin-bottom:6px">Toca una barra para ver los indicadores del día</div>
                 <div class="chart-container"><canvas id="chartVentas"></canvas></div>
@@ -3945,7 +3948,7 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
         const totalCxC = conDeuda.reduce((a,c) => a + (parseFloat(c.adeudo) || 0), 0);
         const totalAbonos = todos.reduce((a,c) => a + (c.abonos || []).reduce((x,ab) => x + (ab.monto || 0), 0), 0);
         document.getElementById('appRoot').innerHTML = `
-            <div class="page-header-fixed"><div class="module-header"><h2 id="tituloModule" class="module-title ${bloqueado?'module-title-bloqueado':''}" style="color:${accent}" onmousedown="iniciarBloqueo(this,'Cartera')" onmouseup="cancelarBloqueo()" onmouseleave="cancelarBloqueo()">💰 Cartera (CxC)</h2><div id="btnVolverModule" class="btn-back ${bloqueado?'btn-back-bloqueado':''}" onclick="${bloqueado?'':'backToHome()'}">${bloqueado?'<i class="fas fa-lock"></i> Bloqueado':'<i class="fas fa-arrow-left"></i> Volver'}</div></div></div>
+            <div class="page-header-fixed"><div class="module-header"><div class="flex items-center" style="min-width:0"><span class="module-crumb" onclick="navigateTo('clientes')" title="Ir a Clientes">Clientes</span><span class="module-crumb-sep">/</span><h2 id="tituloModule" class="module-title ${bloqueado?'module-title-bloqueado':''}" style="color:${accent}" onmousedown="iniciarBloqueo(this,'Cartera')" onmouseup="cancelarBloqueo()" onmouseleave="cancelarBloqueo()">Cartera</h2></div><div id="btnVolverModule" class="btn-back ${bloqueado?'btn-back-bloqueado':''}" onclick="${bloqueado?'':'backToHome()'}">${bloqueado?'<i class="fas fa-lock"></i> Bloqueado':'<i class="fas fa-arrow-left"></i> Volver'}</div></div></div>
             <div class="page-container">
                 <div class="config-section" style="margin-bottom:16px">
                     <div class="config-section-title" style="font-size:.75rem;font-weight:700;opacity:.6;margin-bottom:8px">📊 Resumen de cartera</div>
@@ -3971,6 +3974,7 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
         const inpC = document.getElementById('searchCartera');
         if(inpC) inpC.oninput = e => renderListaCartera(e.target.value.toLowerCase());
         renderListaCartera('');
+        inyectarBotonAyudaModulo();
     }
     function renderListaCartera(norm){
         const todos = D.clientes || [];
@@ -4838,7 +4842,9 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
                 titulo.parentNode.insertBefore(grupo, titulo);
             }
             grupo.appendChild(titulo);
-            grupo.appendChild(btn);
+            const filaMigas = header.querySelector('.flex.items-center');
+            if(filaMigas) filaMigas.appendChild(btn);
+            else grupo.appendChild(btn);
         } else {
             header.insertBefore(btn, header.firstChild);
         }
@@ -4911,7 +4917,7 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
         { sel: '#tipoPago', titulo: '5. Tipo de pago', texto: 'Elige cómo paga: efectivo Bs, dólares, tarjeta, transferencia, pago móvil, pago dividido (varios métodos en una venta) o 💳 CRÉDITO (requiere cliente; suma a la Cartera CxC y puedes cobrar abonos después).' },
         { sel: '#finalizarVenta', titulo: '6. Finalizar venta', texto: 'Genera el TICKET: imagen, impresión y reenvío por WhatsApp. Con efectivo calcula el cambio. El ticket guarda la tasa del día y las ventas a crédito marcan "CRÉDITO".' },
         { sel: null, titulo: '7. Anular una venta', texto: 'En el ticket toca "Anular": devuelve el stock, revierte el crédito del cliente y la venta sale de los reportes y del arqueo.' },
-        { sel: null, titulo: '8. Cierre de caja (💵)', texto: 'El botón "💵 Caja" abre el arqueo del día: apertura con fondo, ventas y abonos cobrados por cada método de pago (efectivo, pago móvil, transferencia, tarjeta) para cuadrar el efectivo y guardar el cierre.' },
+        { sel: null, titulo: '8. Cierre de caja', texto: 'En el encabezado "Ventas / Caja" toca "Caja" para abrir el arqueo del día: apertura con fondo, ventas y abonos cobrados por cada método de pago (efectivo, pago móvil, transferencia, tarjeta) para cuadrar el efectivo y guardar el cierre.' },
         { sel: null, titulo: '9. Crédito y abonos', texto: 'Después de una venta a crédito, el cliente aparece con adeudo en Clientes/Cartera. Toca "💵 Abono" para cobrar parcial o totalmente; el abono del día se suma al arqueo de caja.' },
         { sel: null, titulo: 'Modo Kiosco', texto: 'Para acceso rápido: mantén presionado "Ventas" 4 segundos. El kiosco muestra solo lo esencial con calculadora integrada y candado de seguridad (mantén presionado el candado 4 segundos para salir).' },
         { sel: null, titulo: '¡Listo!', texto: 'Con eso dominas Ventas. Haz tu primera venta cuando quieras; el ticket te da imagen e impresión.' }
@@ -4932,7 +4938,7 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
         { sel: '#buscarVentas', titulo: '3. Buscar ventas', texto: 'Escribe para filtrar por fecha, artículo, cliente o número de venta. También puedes usar el calendario.' },
         { sel: '#btnCalendarioVentas', titulo: '4. Calendario', texto: 'Abre un calendario para ver las ventas de un día o de un mes específicos.' },
         { sel: '#listaVentasReporte', titulo: '5. Detalle de venta', texto: 'Toca cualquier venta para ver su ticket completo: cliente, productos, total, forma de pago y botón Anular.' },
-        { sel: null, titulo: '6. Resumen y documentos', texto: 'El botón 📋 Resumen y Exportar Excel arman el reporte del período: ventas y ganancia COBRADA (las ventas a crédito se muestran por separado), gastos, nómina, entregas, ventas por forma de pago, cartera por cobrar y tasas. Utilidad = ganancia cobrada − gastos − nómina.' },
+        { sel: null, titulo: '6. Resumen y documentos', texto: 'La opción "Resumen" (Reportes / Resumen) y Exportar Excel arman el reporte del período: ventas y ganancia COBRADA (las ventas a crédito se muestran por separado), gastos, nómina, entregas, ventas por forma de pago, cartera por cobrar y tasas. Utilidad = ganancia cobrada − gastos − nómina.' },
         { sel: null, titulo: '¡Listo!', texto: 'Con Reportes controlas tu negocio: ganancias, gastos, ventas por día, crédito y caja.' }
     ];
     const GUIA_CONFIG = [
