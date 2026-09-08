@@ -99,6 +99,8 @@
         .color-circle{width:40px;height:40px;border-radius:50%;cursor:pointer;box-shadow:0 2px 5px rgba(0,0,0,.2)}
         .ticket-line{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed #ddd}
         .scroll-area{overflow-y:auto;max-height:none}
+        .logo-central{display:flex;justify-content:center;margin-bottom:10px}
+        .logo-central img{max-width:120px;max-height:120px;width:120px;height:120px}
 
         /* ===== MÓDULOS CON TARJETAS: búsqueda + toolbar fijos, solo lista con scroll ===== */
         #appRoot:has(#listaProductos),

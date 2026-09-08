@@ -2474,6 +2474,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         const homeGridHtml = enDesktop ? `<div class="home-grid sidebar-hidden">` : `<div class="home-grid">`;
         document.getElementById('appRoot').innerHTML = `
             <div class="home-container" style="padding-top:16px">
+                <div class="logo-central" title="JAM POS"><img src="logo.svg" alt="JAM POS" width="128" height="128" loading="lazy"></div>
                 <div class="mb-4">
                     <div class="relative">
                         <i class="fas fa-search absolute left-4 top-3.5 text-gray-400"></i>

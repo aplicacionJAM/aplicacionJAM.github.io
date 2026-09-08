@@ -1,9 +1,10 @@
-const CACHE_NAME = "jampos-web-cache-v9-ultimate";
+const CACHE_NAME = "jampos-web-cache-v10-ultimate";
 const STATIC_ASSETS = [
   "./",
   "./index.html",
   "./offline.html",
   "./manifest.json",
+  "./logo.svg",
   "./icon.svg",
   "./icon-192.svg",
   "./icon-192.png",
