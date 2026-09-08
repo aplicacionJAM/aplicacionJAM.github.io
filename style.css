@@ -50,15 +50,16 @@
         .main-module-btn i{font-size:1.3rem}
         .card-bcv{border-radius:24px;padding:12px;text-align:center;margin-bottom:20px;border:2px solid var(--accent);position:relative}
         .led-converter{position:absolute;top:10px;right:12px;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;background:var(--accent);color:white}
-        .btn-back{border-radius:8px;padding:4px 12px;font-size:.8rem;font-weight:600;display:flex;align-items:center;gap:6px;cursor:pointer;background:rgba(0,0,0,.1)}
+        .btn-back{border-radius:8px;padding:4px 12px;font-size:.8rem;font-weight:600;display:inline-flex;align-items:center;gap:6px;cursor:pointer;background:rgba(0,0,0,.1);line-height:1;vertical-align:middle}
+        .btn-back i{display:inline-flex;align-items:center;line-height:1}
         .btn-back-bloqueado{background:#dc2626!important;color:#fff!important;cursor:not-allowed!important}
         .module-title{font-size:1.5rem;font-weight:800;color:var(--accent);cursor:pointer;padding:4px 8px;border-radius:16px;transition:all 0.2s}
         .module-title-bloqueado{text-decoration:underline wavy #dc2626;text-underline-offset:8px;background:rgba(220,38,38,0.1);border-radius:30px}
-        .btn-cabezal-sub{display:inline-flex;align-items:center;font-size:1.5rem;font-weight:800;color:#111;cursor:pointer;padding:4px 0;background:transparent;border:none;line-height:1.4;transition:color .15s;white-space:nowrap}
+        .btn-cabezal-sub{display:inline-flex;align-items:center;font-size:1.5rem;font-weight:800;color:#9ca3af;cursor:pointer;padding:4px 0;background:transparent;border:none;line-height:1.4;transition:color .15s;white-space:nowrap}
         .btn-cabezal-sub:hover{color:var(--accent)}
         .btn-cabezal-sub:active{color:var(--accent);transform:scale(.96)}
         body.dark-mode .btn-cabezal-sub{color:#e0e0e0}
-        .module-crumb{display:inline-flex;align-items:center;font-size:1.5rem;font-weight:800;color:#111;cursor:pointer;padding:4px 0;background:transparent;border:none;line-height:1.4;transition:color .15s;white-space:nowrap}
+        .module-crumb{display:inline-flex;align-items:center;font-size:1.5rem;font-weight:800;color:#9ca3af;cursor:pointer;padding:4px 0;background:transparent;border:none;line-height:1.4;transition:color .15s;white-space:nowrap}
         .module-crumb:hover{color:var(--accent)}
         body.dark-mode .module-crumb{color:#e0e0e0}
         .module-crumb-sep{font-size:1.5rem;font-weight:800;color:#9ca3af;margin:0 .3em;line-height:1.4;user-select:none}
@@ -98,6 +99,42 @@
         .color-circle{width:40px;height:40px;border-radius:50%;cursor:pointer;box-shadow:0 2px 5px rgba(0,0,0,.2)}
         .ticket-line{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed #ddd}
         .scroll-area{overflow-y:auto;max-height:none}
+
+        /* ===== MÓDULOS CON TARJETAS: búsqueda + toolbar fijos, solo lista con scroll ===== */
+        #appRoot:has(#listaProductos),
+        #appRoot:has(#listaCrud),
+        #appRoot:has(#listaCartera),
+        #appRoot:has(#listaEntregas){
+            display:flex;flex-direction:column;height:100dvh;overflow:hidden;align-items:stretch
+        }
+        #appRoot:has(#listaProductos) .page-header-fixed,
+        #appRoot:has(#listaCrud) .page-header-fixed,
+        #appRoot:has(#listaCartera) .page-header-fixed,
+        #appRoot:has(#listaEntregas) .page-header-fixed{flex-shrink:0;width:100%}
+        #appRoot:has(#listaProductos) .page-container,
+        #appRoot:has(#listaCrud) .page-container,
+        #appRoot:has(#listaCartera) .page-container,
+        #appRoot:has(#listaEntregas) .page-container{
+            flex:1;display:flex;flex-direction:column;min-height:0;padding-bottom:0
+        }
+        #appRoot:has(#listaProductos) #listaProductos,
+        #appRoot:has(#listaCrud) #listaCrud,
+        #appRoot:has(#listaCartera) #listaCartera,
+        #appRoot:has(#listaEntregas) #listaEntregas{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;-ms-overflow-style:none;margin-left:0;margin-right:0;align-self:stretch;width:auto;max-width:100%}
+        #appRoot:has(#listaProductos) #listaProductos::-webkit-scrollbar,
+        #appRoot:has(#listaCrud) #listaCrud::-webkit-scrollbar,
+        #appRoot:has(#listaCartera) #listaCartera::-webkit-scrollbar,
+        #appRoot:has(#listaEntregas) #listaEntregas::-webkit-scrollbar{display:none;width:0;height:0}
+        #appRoot:has(#listaProductos) .page-container>.mb-3,
+        #appRoot:has(#listaCrud) .page-container>.mb-3,
+        #appRoot:has(#listaCartera) .page-container>.mb-3{flex-shrink:0;margin-bottom:4px}
+        #appRoot:has(#listaProductos) .batch-toolbar{flex-shrink:0;margin-bottom:4px}
+        #appRoot:has(#listaCrud) .page-container>.flex,
+        #appRoot:has(#listaCartera) .page-container>.flex,
+        #appRoot:has(#listaEntregas) .page-container>.flex,
+        #appRoot:has(#listaCartera) .page-container>.config-section,
+        #appRoot:has(#listaEntregas) .page-container>.config-section,
+        #appRoot:has(#listaEntregas) .page-container>h3{flex-shrink:0}
         .config-section{border:2px solid var(--accent);border-radius:20px;padding:12px;margin-bottom:20px}
         .config-inner{padding:0 8px}
 .fuente-titulo{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%}

@@ -1,5 +1,5 @@
 ﻿// ==================== UTILIDADES ====================
-    const escapeHtml = s => s ? s.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])) : '';
+    const escapeHtml = s => s != null ? String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])) : '';
     const fmtPrecio = v => { let num = Number(v); if(isNaN(num)) num = 0; let p = num.toFixed(2).split('.'); p[0] = p[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.'); return p.join(','); };
     const fmtDolar = v => Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const parseBs = v => {
@@ -3628,7 +3628,7 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
             const filasGastos = gastosPer.length ? gastosPer.slice().reverse().map(g => `<tr><td>${escapeHtml(fmtFechaDisplay(g.fecha)||'')}</td><td>${escapeHtml(g.concepto||'')}</td><td>${escapeHtml(g.categoria||'')}</td><td style="text-align:right">${fmtPrecio(g.montoBs||0)}</td></tr>`).join('') : '<tr><td colspan="4" style="text-align:center;opacity:.6">Sin gastos en el período</td></tr>';
             const filasNomina = empleados.filter(e => (parseFloat(e.salarioBs)||0) > 0).length ? empleados.filter(e => (parseFloat(e.salarioBs)||0) > 0).map(e => { const pag = e.fechaPagoTs || (e.fechaPago ? tsFechaISO(e.fechaPago) : 0); const pm = pag && new Date(pag).getFullYear() === new Date().getFullYear() && new Date(pag).getMonth() === new Date().getMonth(); return `<tr><td>${escapeHtml(e.nombre)}</td><td>${escapeHtml(e.cargo||'')}</td><td>${e.diaPago ? 'Día ' + escapeHtml(e.diaPago) : '—'}</td><td style="text-align:right">${fmtPrecio(e.salarioBs)}</td><td style="text-align:center">${pm ? '✅ Pagado' : '⏳ Pendiente'}</td></tr>`; }).join('') : '<tr><td colspan="5" style="text-align:center;opacity:.6">Sin empleados con salario registrado</td></tr>';
             const filasEntregas = entregas.length ? entregas.slice().sort((a,b)=>String(a.fecha).localeCompare(String(b.fecha))).map(e => `<tr><td>${escapeHtml(fmtFechaDisplay(e.fecha)||'')}</td><td>${escapeHtml(e.hora||'')}</td><td>${escapeHtml(e.proveedor||'')}</td><td>${escapeHtml(e.producto||'')}</td><td style="text-align:right">${parseInt(e.cantidad)||0}</td><td style="text-align:right">${e.lapsoDias||0}</td><td>${escapeHtml(fmtFechaDisplay(e.fechaVencimiento)||'')}</td><td style="text-align:center">${e.estado==='recibido'?'Recibida':e.estado==='salida'?'Salida':'Pendiente'}</td><td>${escapeHtml(e.notas||'')}</td></tr>`).join('') : '<tr><td colspan="9" style="text-align:center;opacity:.6">Sin entregas registradas</td></tr>';
-            const filasTasa = histTasa.filter(h => enR(new Date(h.fecha).getTime())).map(h => `<tr><td>${escapeHtml(h.fecha)}</td><td>${escapeHtml(h.hora||'')}</td><td style="text-align:right">${escapeHtml(h.tasa)}</td></tr>`).join('') || '<tr><td colspan="3" style="text-align:center;opacity:.6">Sin historial</td></tr>';
+            const filasTasa = histTasa.filter(h => h && h.fecha && !isNaN(new Date(h.fecha).getTime())).filter(h => enR(new Date(h.fecha).getTime())).map(h => `<tr><td>${escapeHtml(h.fecha)}</td><td>${escapeHtml(h.hora||'')}</td><td style="text-align:right">${escapeHtml(h.tasa)}</td></tr>`).join('') || '<tr><td colspan="3" style="text-align:center;opacity:.6">Sin historial</td></tr>';
             const porForma = {};
             ventasPer.forEach(v => {
                 if(v.detallePagos && Array.isArray(v.detallePagos) && v.detallePagos.length){ v.detallePagos.forEach(p => { const k = p.metodo || v.tipoPago || 'efectivo_bs'; porForma[k] = (porForma[k]||0) + (parseFloat(p.monto)||0); }); }
@@ -3638,40 +3638,59 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
             const filasCartera = conDeudaCxc.length ? conDeudaCxc.map(c => `<tr><td>${escapeHtml(c.nombre||'')}</td><td>${escapeHtml(c.cedula||'')}</td><td>${escapeHtml(c.telefono||'')}</td><td style="text-align:right">${fmtPrecio(c.adeudo)}</td></tr>`).join('') : '<tr><td colspan="4" style="text-align:center;opacity:.6">Sin deudas pendientes 💚</td></tr>';
             const colorNet = utilNeta >= 0 ? '#10b981' : '#ef4444';
             const fechaGen = new Date().toLocaleString('es-ES');
-            const html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Reporte ' + labelPeriodo(per) + ' - ' + empresa + '</title><style>' +
-                '@page { size: letter; margin: 12mm; }' +
-                'body{font-family:Segoe UI,Arial,sans-serif;color:#111;margin:0;padding:12px;font-size:12px}' +
-                '.rep-header{text-align:center;border-bottom:3px solid #3b82f6;padding-bottom:8px;margin-bottom:10px}' +
-                '.rep-header h1{margin:0;font-size:22px;color:#3b82f6}' +
-                '.rep-header .sub{font-size:11px;opacity:.8}' +
-                'h2.rep-sec{font-size:14px;color:#3b82f6;border-left:4px solid #3b82f6;padding-left:6px;margin:14px 0 6px}' +
-                'table{width:100%;border-collapse:collapse;margin-bottom:6px}' +
-                'th{background:#3b82f6;color:#fff;padding:4px 6px;font-size:11px;text-align:left}' +
-                'td{border:1px solid #cbd5e1;padding:4px 6px;font-size:10.5px;vertical-align:top}' +
-                'tr:nth-child(even) td{background:#f8fafc}' +
-                '.tot-box{display:inline-block;border:1px solid #cbd5e1;border-radius:8px;padding:6px 10px;margin:3px;text-align:center;background:#f1f5f9}' +
-                '.tot-box .v{font-size:15px;font-weight:800}' +
-                '.tot-box .l{font-size:10px;opacity:.7}' +
-                '.rep-foot{text-align:center;font-size:10px;opacity:.6;margin-top:14px;border-top:1px solid #cbd5e1;padding-top:6px}' +
-                '@media print{ body{print-color-adjust:exact;-webkit-print-color-adjust:exact} }' +
-                '</style></head><body>' +
-                '<div class="rep-header"><h1>' + escapeHtml(empresa) + '</h1><div class="sub">' + (empDir ? escapeHtml(empDir) + ' · ' : '') + (empTel ? escapeHtml(empTel) + ' · ' : '') + 'REPORTE ' + labelPeriodo(per).toUpperCase() + '</div><div class="sub">Período: ' + rp.ini + ' → ' + rp.fin + ' · Generado: ' + escapeHtml(fechaGen) + ' · Tasa: 1 USD = ' + fmtDolar(tasaHoy) + ' Bs</div></div>' +
-                '<div class="tot-box"><div class="l">Ventas</div><div class="v">' + fmtPrecio(totVentas) + '</div></div>' +
-                '<div class="tot-box"><div class="l">Ganancia cobrada</div><div class="v" style="color:#10b981">' + fmtPrecio(totGan) + '</div></div>' +
-                '<div class="tot-box"><div class="l">Gastos</div><div class="v" style="color:#ef4444">' + fmtPrecio(totGastos) + '</div></div>' +
-                '<div class="tot-box"><div class="l">' + nominaLbl + '</div><div class="v" style="color:#f59e0b">' + (nominaUso > 0 ? fmtPrecio(nominaUso) : '—') + '</div></div>' +
-                '<div class="tot-box"><div class="l">Utilidad neta</div><div class="v" style="color:' + colorNet + '">' + fmtPrecio(utilNeta) + '</div></div>' +
-                '<div class="tot-box"><div class="l">Por cobrar (CxC)</div><div class="v" style="color:#ef4444">' + fmtPrecio(totalCxc) + '</div></div>' +
-                '<div class="tot-box"><div class="l">Ventas a crédito (período)</div><div class="v" style="color:#f59e0b">' + fmtPrecio(ventasPer.filter(v => v.credito && !v.anulada).reduce((a,v) => a + (parseFloat(v.total) || 0), 0)) + '</div></div>' +
-                '<div class="tot-box"><div class="l">Ganancia a crédito (período)</div><div class="v" style="color:#f59e0b">' + fmtPrecio(totGanCredito) + '</div></div>' +
-                '<h2 class="rep-sec">Ventas del período (' + ventasPer.length + ')</h2><table><thead><tr><th>Ticket</th><th>Fecha</th><th>Hora</th><th>Cliente</th><th>Artículos</th><th>Total Bs</th><th>Tasa</th><th>Ganancia</th><th>Forma de pago</th></tr></thead><tbody>' + filasVentas + '</tbody></table>' +
-                '<h2 class="rep-sec">Ventas por forma de pago</h2><table><thead><tr><th>Forma</th><th>Total Bs</th><th>% del período</th></tr></thead><tbody>' + filasFormas + '</tbody></table>' +
-                '<h2 class="rep-sec">Gastos del período</h2><table><thead><tr><th>Fecha</th><th>Concepto</th><th>Categoría</th><th>Monto Bs</th></tr></thead><tbody>' + filasGastos + '</tbody></table>' +
-                '<h2 class="rep-sec">Nómina de empleados</h2><table><thead><tr><th>Empleado</th><th>Cargo</th><th>Día de pago</th><th>Salario Bs</th><th>Estado mes actual</th></tr></thead><tbody>' + filasNomina + '</tbody></table>' +
-                '<h2 class="rep-sec">Entregas de proveedores</h2><table><thead><tr><th>Fecha</th><th>Hora</th><th>Proveedor</th><th>Producto</th><th>Cant.</th><th>Lapso (días)</th><th>Vence</th><th>Estado</th><th>Notas</th></tr></thead><tbody>' + filasEntregas + '</tbody></table>' +
-                '<h2 class="rep-sec">Cartera por cobrar (' + conDeudaCxc.length + ') · Total: ' + fmtPrecio(totalCxc) + ' Bs</h2><table><thead><tr><th>Cliente</th><th>Cédula</th><th>Teléfono</th><th>Saldo Bs</th></tr></thead><tbody>' + filasCartera + '</tbody></table>' +
-                '<h2 class="rep-sec">Historial de tasas del período</h2><table><thead><tr><th>Fecha</th><th>Hora</th><th>Tasa Bs</th></tr></thead><tbody>' + filasTasa + '</tbody></table>' +
-                '<div class="rep-foot">Documento generado automáticamente por JAM POS · ' + escapeHtml(fechaGen) + '</div>' +
+            const css = `
+                @page { size: letter landscape; margin: 10mm; }
+                body{font-family:Calibri,Arial,sans-serif;color:#222;margin:0;padding:16px;font-size:11px}
+                *{box-sizing:border-box}
+                h1{margin:0;font-size:20px;color:#1a56db}
+                h2{font-size:13px;color:#1a56db;border-left:4px solid #1a56db;padding-left:8px;margin:18px 0 6px}
+                .hdr{text-align:center;border-bottom:2px solid #1a56db;padding-bottom:8px;margin-bottom:12px}
+                .hdr .sub{font-size:10px;color:#555}
+                table{width:100%;border-collapse:collapse;margin-bottom:10px}
+                th{background:#1a56db;color:#fff;padding:5px 8px;font-size:10px;text-align:left;white-space:nowrap}
+                td{border:1px solid #d1d5db;padding:4px 8px;font-size:10px;vertical-align:middle}
+                tr:nth-child(even) td{background:#f3f4f6}
+                .tot{display:inline-block;border:1px solid #d1d5db;border-radius:6px;padding:6px 12px;margin:3px;text-align:center;min-width:120px;background:#f9fafb}
+                .tot .v{font-size:16px;font-weight:800}
+                .tot .l{font-size:9px;color:#6b7280;text-transform:uppercase}
+                .foot{text-align:center;font-size:9px;color:#999;margin-top:16px;border-top:1px solid #d1d5db;padding-top:6px}
+                .tot-row{text-align:center;margin-bottom:12px}
+                td.r{text-align:right} td.c{text-align:center}
+                @media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}
+            `;
+            const resRows = [
+                ['Ventas del período', fmtPrecio(totVentas) + ' Bs', '#1a56db'],
+                ['Ganancia cobrada', fmtPrecio(totGan) + ' Bs', '#10b981'],
+                ['Gastos', fmtPrecio(totGastos) + ' Bs', '#ef4444'],
+                [nominaLbl, nominaUso > 0 ? fmtPrecio(nominaUso) + ' Bs' : '—', '#f59e0b'],
+                ['Utilidad neta', fmtPrecio(utilNeta) + ' Bs', colorNet],
+                ['Por cobrar (CxC)', fmtPrecio(totalCxc) + ' Bs', '#ef4444'],
+                ['Ventas a crédito', fmtPrecio(ventasPer.filter(v => v.credito && !v.anulada).reduce((a,v) => a + (parseFloat(v.total) || 0), 0)) + ' Bs', '#f59e0b'],
+                ['Ganancia a crédito', fmtPrecio(totGanCredito) + ' Bs', '#f59e0b']
+            ];
+            const resTbl = '<table style="width:auto;margin:0 auto;border-collapse:separate;border-spacing:4px"><tr>' +
+                resRows.map(r => '<td style="border:none;padding:4px 10px;text-align:center;background:#f9fafb;border-radius:6px;min-width:110px"><div style="font-size:9px;color:#6b7280;text-transform:uppercase">' + r[0] + '</div><div style="font-size:15px;font-weight:800;color:' + r[2] + '">' + r[1] + '</div></td>').join('') +
+                '</tr></table>';
+            const html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Reporte ' + labelPeriodo(per) + ' - ' + escapeHtml(empresa) + '</title><style>' + css + '</style></head><body>' +
+                '<div class="hdr"><h1>' + escapeHtml(empresa) + '</h1>' +
+                '<div class="sub">' + (empDir ? escapeHtml(empDir) + ' · ' : '') + (empTel ? escapeHtml(empTel) + ' · ' : '') + 'REPORTE ' + labelPeriodo(per).toUpperCase() + '</div>' +
+                '<div class="sub">Período: ' + rp.ini + ' a ' + rp.fin + ' · Generado: ' + escapeHtml(fechaGen) + ' · Tasa: 1 USD = ' + fmtDolar(tasaHoy) + ' Bs</div></div>' +
+                resTbl +
+                '<h2>Ventas del período (' + ventasPer.length + ')</h2>' +
+                '<table><thead><tr><th>Ticket</th><th>Fecha</th><th>Hora</th><th>Cliente</th><th>Artículos</th><th class="r">Total Bs</th><th class="r">Tasa</th><th class="r">Ganancia</th><th>Forma de pago</th></tr></thead><tbody>' + filasVentas + '</tbody></table>' +
+                '<h2>Ventas por forma de pago</h2>' +
+                '<table><thead><tr><th>Forma</th><th class="r">Total Bs</th><th class="r">% del período</th></tr></thead><tbody>' + filasFormas + '</tbody></table>' +
+                '<h2>Gastos del período</h2>' +
+                '<table><thead><tr><th>Fecha</th><th>Concepto</th><th>Categoría</th><th class="r">Monto Bs</th></tr></thead><tbody>' + filasGastos + '</tbody></table>' +
+                '<h2>Nómina de empleados</h2>' +
+                '<table><thead><tr><th>Empleado</th><th>Cargo</th><th>Día de pago</th><th class="r">Salario Bs</th><th class="c">Estado</th></tr></thead><tbody>' + filasNomina + '</tbody></table>' +
+                '<h2>Entregas de proveedores</h2>' +
+                '<table><thead><tr><th>Fecha</th><th>Hora</th><th>Proveedor</th><th>Producto</th><th class="r">Cant.</th><th class="r">Lapso</th><th>Vence</th><th class="c">Estado</th><th>Notas</th></tr></thead><tbody>' + filasEntregas + '</tbody></table>' +
+                '<h2>Cartera por cobrar (' + conDeudaCxc.length + ') · Total: ' + fmtPrecio(totalCxc) + ' Bs</h2>' +
+                '<table><thead><tr><th>Cliente</th><th>Cédula</th><th>Teléfono</th><th class="r">Saldo Bs</th></tr></thead><tbody>' + filasCartera + '</tbody></table>' +
+                '<h2>Historial de tasas del período</h2>' +
+                '<table><thead><tr><th>Fecha</th><th>Hora</th><th class="r">Tasa Bs</th></tr></thead><tbody>' + filasTasa + '</tbody></table>' +
+                '<div class="foot">Documento generado automáticamente por JAM POS · ' + escapeHtml(fechaGen) + '</div>' +
                 '</body></html>';
             if(modo === 'excel'){
                 const blob = new Blob(['\uFEFF' + html], { type: 'application/vnd.ms-excel;charset=utf-8' });
@@ -3739,17 +3758,24 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
         D.gastos = await getAll('gastos'); D.empleados = await getAll('empleados'); D.entregas = await getAll('entregas');
         let bloqueado = volverBloqueado, accent = D.config.theme;
         let histTasa = cargarHistorialTasa();
-        let histSemana = histTasa.slice(-7).reverse();
-        let tasaHtml = histSemana.length > 0 ? histSemana.map(h => {
-            let prev = histTasa.filter(x => x.fecha < h.fecha).slice(-1)[0];
+        let dias = [];
+        for(let i=6; i>=0; i--){
+            let d = new Date(); d.setDate(d.getDate()-i);
+            let fechaStr = msToDateStr(d.getTime());
+            let registro = histTasa.filter(h => h.fecha === fechaStr).slice(-1)[0];
+            dias.push(registro || { fecha: fechaStr, hora: '', tasa: null });
+        }
+        let tasaHtml = dias.map((h, idx) => {
+            let prev = idx > 0 ? dias[idx-1] : null;
             let flecha = '';
-            if(prev){
+            if(prev && prev.tasa !== null && h.tasa !== null){
                 let diff = h.tasa - prev.tasa;
                 if(diff > 0.001) flecha = '<span style="color:#ef4444">▲</span>';
                 else if(diff < -0.001) flecha = '<span style="color:#10b981">▼</span>';
             }
-            return `<div class="flex justify-between items-center" style="padding:5px 0;border-bottom:1px solid rgba(128,128,128,.1)"><span class="text-xs" style="opacity:.6">${fmtTasaSemanaEtiqueta(h)}</span><span class="text-xs font-bold" style="color:${accent}">${flecha} ${fmtDolar(h.tasa)} Bs</span></div>`;
-        }).join('') : '<div class="text-xs" style="opacity:.5;text-align:center;padding:8px">Sin datos de tasa esta semana</div>';
+            let valor = h.tasa !== null ? `${flecha} ${fmtDolar(h.tasa)} Bs` : '<span style="opacity:.4">—</span>';
+            return `<div class="flex justify-between items-center" style="padding:5px 0;border-bottom:1px solid rgba(128,128,128,.1)"><span class="text-xs" style="opacity:.6">${fmtTasaSemanaEtiqueta(h)}</span><span class="text-xs font-bold" style="color:${accent}">${valor}</span></div>`;
+        }).join('');
         document.getElementById('appRoot').innerHTML = `
             <div class="page-header-fixed"><div class="module-header"><div class="flex items-center" style="min-width:0"><h2 id="tituloModule" class="module-title ${bloqueado?'module-title-bloqueado':''}" style="color:${accent}" onmousedown="iniciarBloqueo(this,'Reportes')" onmouseup="cancelarBloqueo()" onmouseleave="cancelarBloqueo()">Reportes</h2><span class="module-crumb-sep">/</span><button id="btnIrResumen" class="btn-cabezal-sub" type="button" title="Resumen del período">Resumen</button></div><div id="btnVolverModule" class="btn-back ${bloqueado?'btn-back-bloqueado':''}" onclick="${bloqueado?'':'backToHome()'}">${bloqueado?'<i class="fas fa-lock"></i> Bloqueado':'<i class="fas fa-arrow-left"></i> Volver'}</div></div></div>
             <div class="page-container">
