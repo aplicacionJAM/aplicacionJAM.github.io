@@ -3599,6 +3599,179 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         }
         return { nominaUso, nominaLbl };
     }
+    let _xlsxCrcTbl = null;
+    function xlsxCrc32(bin){
+        if(!_xlsxCrcTbl){
+            _xlsxCrcTbl = [];
+            for(let n=0;n<256;n++){
+                let c = n;
+                for(let k=0;k<8;k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+                _xlsxCrcTbl.push(c >>> 0);
+            }
+        }
+        let crc = 0xFFFFFFFF;
+        for(let i=0;i<bin.length;i++) crc = (_xlsxCrcTbl[(crc ^ bin[i]) & 0xFF] ^ (crc >>> 8)) >>> 0;
+        return (crc ^ 0xFFFFFFFF) >>> 0;
+    }
+    function xlsxStr(s){
+        return String(s).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g,'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+    function xlsxCol(n){ let s=''; n++; while(n>0){ const m = (n-1) % 26; s = String.fromCharCode(65+m) + s; n = Math.floor((n-1)/26); } return s; }
+    function xlsxZip(files){
+        const enc = new TextEncoder();
+        const parts = [], centrals = [];
+        let offset = 0;
+        const now = new Date();
+        const dosTime = (now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1);
+        const dosDate = ((now.getFullYear()-1980) << 9) | ((now.getMonth()+1) << 5) | now.getDate();
+        for(const f of files){
+            const nbU8 = enc.encode(f.nombre);
+            const crc = xlsxCrc32(f.data);
+            const lh = new DataView(new ArrayBuffer(30 + nbU8.length));
+            lh.setUint32(0, 0x04034b50, true);
+            lh.setUint16(4, 20, true);
+            lh.setUint16(6, 0x0800, true);
+            lh.setUint16(8, 0, true);
+            lh.setUint16(10, dosTime, true);
+            lh.setUint16(12, dosDate, true);
+            lh.setUint32(14, crc, true);
+            lh.setUint32(18, f.data.length, true);
+            lh.setUint32(22, f.data.length, true);
+            lh.setUint16(26, nbU8.length, true);
+            lh.setUint16(28, 0, true);
+            nbU8.forEach((b,i) => lh.setUint8(30+i, b));
+            const lhArr = new Uint8Array(lh.buffer);
+            parts.push(lhArr, f.data);
+            const ch = new DataView(new ArrayBuffer(46 + nbU8.length));
+            ch.setUint32(0, 0x02014b50, true);
+            ch.setUint16(4, 20, true);
+            ch.setUint16(6, 20, true);
+            ch.setUint16(8, 0x0800, true);
+            ch.setUint16(10, 0, true);
+            ch.setUint16(12, dosTime, true);
+            ch.setUint16(14, dosDate, true);
+            ch.setUint32(16, crc, true);
+            ch.setUint32(20, f.data.length, true);
+            ch.setUint32(24, f.data.length, true);
+            ch.setUint16(28, nbU8.length, true);
+            ch.setUint16(30, 0, true);
+            ch.setUint16(32, 0, true);
+            ch.setUint16(34, 0, true);
+            ch.setUint16(36, 0, true);
+            ch.setUint32(38, 0, true);
+            ch.setUint32(42, offset, true);
+            nbU8.forEach((b,i) => ch.setUint8(46+i, b));
+            centrals.push(new Uint8Array(ch.buffer));
+            offset += lhArr.length + f.data.length;
+        }
+        const cdLen = centrals.reduce((a,c) => a + c.length, 0);
+        const eocd = new DataView(new ArrayBuffer(22));
+        eocd.setUint32(0, 0x06054b50, true);
+        eocd.setUint16(4, 0, true);
+        eocd.setUint16(6, 0, true);
+        eocd.setUint16(8, files.length, true);
+        eocd.setUint16(10, files.length, true);
+        eocd.setUint32(12, cdLen, true);
+        eocd.setUint32(16, offset, true);
+        eocd.setUint16(20, 0, true);
+        const out = new Uint8Array(offset + cdLen + 22);
+        let p = 0;
+        for(const x of parts){ out.set(x, p); p += x.length; }
+        for(const c of centrals){ out.set(c, p); p += c.length; }
+        out.set(new Uint8Array(eocd.buffer), p);
+        return out;
+    }
+    function xlsxHoja(nombre, filas){
+        const body = [];
+        let maxC = 0, widths = {};
+        for(let r=1;r<filas.length;r++){
+            const fila = filas[r] || [];
+            if(fila.length > maxC) maxC = fila.length;
+            let cells = '';
+            for(let c=0;c<fila.length;c++){
+                const v = fila[c];
+                if(v === null || v === undefined) continue;
+                const ref = xlsxCol(c) + (r+1);
+                if(typeof v === 'number' && isFinite(v)){
+                    cells += '<c r="'+ref+'" s="1"><v>'+v+'</v></c>';
+                    if(!widths[c] || widths[c] < 12) widths[c] = 12;
+                } else {
+                    const t = xlsxStr(v);
+                    cells += '<c r="'+ref+'" t="inlineStr"><is><t>'+t+'</t></is></c>';
+                    const l = String(v).length;
+                    widths[c] = Math.max(widths[c] || 10, l > 40 ? 40 : l + 2);
+                }
+            }
+            body.push('<row r="'+(r+1)+'">'+cells+'</row>');
+        }
+        let hdr = '';
+        const hf = filas[0] || [];
+        for(let c=0;c<hf.length;c++){
+            const v = hf[c];
+            if(v === null || v === undefined) continue;
+            hdr += '<c r="'+xlsxCol(c)+'1" t="inlineStr" s="2"><is><t>'+xlsxStr(v)+'</t></is></c>';
+        }
+        if(hf.length > maxC) maxC = hf.length;
+        let cols = '';
+        if(maxC > 0){
+            cols = '<cols>';
+            for(let i=0;i<maxC;i++){ const w = widths[i] || 12; cols += '<col min="'+(i+1)+'" max="'+(i+1)+'" width="'+w+'" customWidth="1"/>'; }
+            cols += '</cols>';
+        }
+        return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+            '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0"/></sheetViews>' +
+            '<sheetFormatPr defaultRowHeight="15"/>' + cols + '<sheetData><row r="1">'+hdr+'</row>' + body.join('') + '</sheetData></worksheet>';
+    }
+    function construirXlsx(hojas){
+        const enc = s => new TextEncoder().encode(s);
+        const files = [];
+        let types = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>';
+        let wbRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">';
+        let wb = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>';
+        hojas.forEach((h, i) => {
+            const n = 'sheet' + (i+1);
+            types += '<Override PartName="/xl/worksheets/'+n+'.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>';
+            wbRels += '<Relationship Id="rId'+i+'" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/'+n+'.xml"/>';
+            wb += '<sheet name="'+xlsxStr(h.nombre)+'" sheetId="'+(i+1)+'" r:id="rId'+i+'"/>';
+            files.push({ nombre: 'xl/worksheets/'+n+'.xml', data: enc(xlsxHoja(h.nombre, h.filas)) });
+        });
+        types += '</Types>';
+        wbRels += '<Relationship Id="rIdS" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>';
+        wb += '</sheets></workbook>';
+        files.unshift(
+            { nombre: '[Content_Types].xml', data: enc(types) },
+            { nombre: '_rels/.rels', data: enc('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>') },
+            { nombre: 'xl/workbook.xml', data: enc(wb) },
+            { nombre: 'xl/_rels/workbook.xml.rels', data: enc(wbRels) },
+            { nombre: 'xl/styles.xml', data: enc('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="1"><numFmt numFmtId="164" formatCode="#,##0.00"/></numFmts><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFDDEBF7"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="0" fontId="1" fillId="1" borderId="0" xfId="0" applyFont="1" applyFill="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>')}
+        );
+        return xlsxZip(files);
+    }
+    function bytesToBase64Xlsx(bytes){
+        let bin = '';
+        for(let i=0;i<bytes.length;i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i+0x8000));
+        return btoa(bin);
+    }
+    async function descargarXlsx(nombre, hojas){
+        const bytes = construirXlsx(hojas);
+        if (esAppNativa()) {
+            asegurarCarpetaNativa(async () => {
+                try {
+                    const res = await puenteResultado(AndroidBridge.guardarArchivo(nombre, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', bytesToBase64Xlsx(bytes)));
+                    if (res && res.startsWith('ok')) mostrarNotificacion('✅ Excel guardado en ' + (carpetaNativa ? carpetaNativa.nombre : 'carpeta') + '/JAMPOS/' + nombre, 'success');
+                    else mostrarNotificacion('❌ No se pudo guardar el Excel: ' + (res || 'error desconocido'), 'error');
+                } catch (e) { mostrarNotificacion('❌ Error al guardar el Excel: ' + e.message, 'error'); }
+            });
+            return;
+        }
+        const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = nombre;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 4000);
+        mostrarNotificacion('✅ Reporte Excel generado', 'success');
+    }
     async function generarReporteDocumento(per, modo){
         try {
             const ventas = await getAll('ventas');
@@ -3693,13 +3866,73 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
                 '<div class="foot">Documento generado automáticamente por JAM POS · ' + escapeHtml(fechaGen) + '</div>' +
                 '</body></html>';
             if(modo === 'excel'){
-                const blob = new Blob(['\uFEFF' + html], { type: 'application/vnd.ms-excel;charset=utf-8' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url; a.download = `JAM_POS_Reporte_${per}_${msToDateStr(Date.now())}.xls`;
-                document.body.appendChild(a); a.click(); a.remove();
-                setTimeout(() => URL.revokeObjectURL(url), 4000);
-                mostrarNotificacion('Reporte Excel generado', 'success');
+                const nombre = `JAM_POS_Reporte_${per}_${msToDateStr(Date.now())}.xlsx`;
+                const formasLabel = { 'efectivo_bs':'EFECTIVO Bs','pago_movil':'PAGO MÓVIL','transferencia':'TRANSFERENCIA','tarjeta_debito':'TARJETA DÉBITO','dolares':'DÓLARES','pago_dividido':'PAGO DIVIDIDO','credito':'CRÉDITO' };
+                const ventasCreditoTot = ventasPer.filter(v => v.credito && !v.anulada).reduce((a,v) => a + (parseFloat(v.total)||0), 0);
+                let filasNominaX = empleados.filter(e => (parseFloat(e.salarioBs)||0) > 0).map(e => {
+                    const pag = e.fechaPagoTs || (e.fechaPago ? tsFechaISO(e.fechaPago) : 0);
+                    const pm = pag && new Date(pag).getFullYear() === new Date().getFullYear() && new Date(pag).getMonth() === new Date().getMonth();
+                    return [e.nombre || '', e.cargo || '', e.diaPago ? 'Día ' + e.diaPago : '', parseFloat(e.salarioBs)||0, pm ? 'Pagado' : 'Pendiente'];
+                });
+                if(!filasNominaX.length) filasNominaX = [['Sin empleados con salario registrado']];
+                const hojas = [
+                    { nombre: 'Resumen', filas: [
+                        ['Concepto', 'Valor (Bs)'],
+                        ['Empresa', empresa],
+                        ['Reporte', labelPeriodo(per)],
+                        ['Período', rp.ini + ' a ' + rp.fin],
+                        ['Generado', fechaGen],
+                        ['Tasa USD del día', tasaHoy || 0],
+                        ['Ventas del período', totVentas],
+                        ['Ganancia cobrada', totGan],
+                        ['Gastos', totGastos],
+                        [nominaLbl, nominaUso],
+                        ['Utilidad neta', utilNeta],
+                        ['Por cobrar (CxC)', totalCxc],
+                        ['Ventas a crédito', ventasCreditoTot],
+                        ['Ganancia a crédito', totGanCredito]
+                    ]},
+                    { nombre: 'Ventas', filas: [
+                        ['Ticket', 'Fecha', 'Hora', 'Cliente', 'Artículos', 'Total (Bs)', 'Tasa', 'Ganancia (Bs)', 'Forma de pago']
+                    ].concat(ventasPer.length ? ventasPer.slice().reverse().map(v => [
+                        v.id, fmtFechaDisplay(v.fecha) || '', v.hora || '', v.cliente || 'General',
+                        (v.items||[]).map(i => i.nombre + (i.cantidad > 1 ? ' x' + i.cantidad : '')).join(', '),
+                        v.total || 0, v.dolarRate || 0, v.gananciaTotal || 0, formasLabel[v.tipoPago] || v.tipoPago || ''
+                    ]) : [['Sin ventas en el período']])},
+                    { nombre: 'Ventas por forma', filas: [
+                        ['Forma', 'Total (Bs)', '% del período']
+                    ].concat(Object.keys(porForma).length ? Object.keys(porForma).map(k => [
+                        formasLabel[k] || k, porForma[k] || 0, totVentas > 0 ? +((porForma[k] / totVentas * 100).toFixed(2)) : 0
+                    ]) : [['Sin ventas en el período']])},
+                    { nombre: 'Gastos', filas: [
+                        ['Fecha', 'Concepto', 'Categoría', 'Monto (Bs)']
+                    ].concat(gastosPer.length ? gastosPer.slice().reverse().map(g => [
+                        fmtFechaDisplay(g.fecha) || '', g.concepto || '', g.categoria || '', g.montoBs || 0
+                    ]) : [['Sin gastos en el período']])},
+                    { nombre: 'Nómina', filas: [
+                        ['Empleado', 'Cargo', 'Día de pago', 'Salario (Bs)', 'Estado']
+                    ].concat(filasNominaX)},
+                    { nombre: 'Entregas', filas: [
+                        ['Fecha', 'Hora', 'Proveedor', 'Producto', 'Cantidad', 'Lapso (días)', 'Vence', 'Estado', 'Notas']
+                    ].concat(entregas.length ? entregas.slice().sort((a,b) => String(a.fecha).localeCompare(String(b.fecha))).map(e => [
+                        fmtFechaDisplay(e.fecha) || '', e.hora || '', e.proveedor || '', e.producto || '',
+                        parseInt(e.cantidad)||0, e.lapsoDias||0, fmtFechaDisplay(e.fechaVencimiento) || '',
+                        e.estado === 'recibido' ? 'Recibida' : e.estado === 'salida' ? 'Salida' : 'Pendiente', e.notas || ''
+                    ]) : [['Sin entregas registradas']])},
+                    { nombre: 'Cartera por cobrar', filas: [
+                        ['Cliente', 'Cédula', 'Teléfono', 'Saldo (Bs)']
+                    ].concat(conDeudaCxc.length ? conDeudaCxc.map(c => [
+                        c.nombre || '', c.cedula || '', c.telefono || '', c.adeudo || 0
+                    ]) : [['Sin deudas pendientes']])},
+                    { nombre: 'Historial de tasas', filas: [
+                        ['Fecha', 'Hora', 'Tasa (Bs)']
+                    ].concat(histTasa.filter(h => h && h.fecha && !isNaN(new Date(h.fecha).getTime())).filter(h => enR(new Date(h.fecha).getTime())).map(h => [
+                        h.fecha, h.hora || '', h.tasa
+                    ]).length ? histTasa.filter(h => h && h.fecha && !isNaN(new Date(h.fecha).getTime())).filter(h => enR(new Date(h.fecha).getTime())).map(h => [
+                        h.fecha, h.hora || '', h.tasa
+                    ]) : [['Sin historial']])}
+                ];
+                await descargarXlsx(nombre, hojas);
             } else {
                 const w = window.open('', '_blank');
                 if(!w){ await jamAlert('El navegador bloqueó la ventana. Permite ventanas emergentes o usa Exportar Excel.', 'error'); return; }
@@ -4386,7 +4619,7 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
         let reader = new FileReader();
         reader.onload = async function(e){
             try {
-                let text = e.target.result.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+                let text = e.target.result.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
                 let data = parsearBackupCSV(text);
                 let stores = ['productos','clientes','proveedores','gastos','empleados','ventas','entregas'];
                 let totalItems = stores.reduce((s,store) => s + data[store].length, 0);

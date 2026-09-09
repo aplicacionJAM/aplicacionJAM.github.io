@@ -1,4 +1,4 @@
-const CACHE_NAME = "jampos-web-cache-v10-ultimate";
+const CACHE_NAME = "jampos-web-cache-v11-xlsx";
 const STATIC_ASSETS = [
   "./",
   "./index.html",
