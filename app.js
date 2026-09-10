@@ -307,7 +307,7 @@
         try {
             const contenido = await puenteResultado(AndroidBridge.leerArchivo(DB_BACKUP_FOLDER + '/' + store + '.json'));
             if (!contenido) return null;
-            return JSON.parse(contenido);
+            return JSON.parse(base64ToUtf8(contenido));
         } catch (e) { console.warn('[DUAL] Error leyendo backup ' + store + ':', e); return null; }
     }
 
@@ -464,7 +464,7 @@
                 BACKUP_CONFIG.CARPETA_ROOT + '/' + BACKUP_CONFIG.NOMBRE_BACKUP_GLOBAL
             ));
             if (!contenido) return false;
-            const data = JSON.parse(contenido);
+            const data = JSON.parse(base64ToUtf8(contenido));
             let restaurados = 0;
             for (const store of DATA_STORES) {
                 if (data[store] && data[store].length > 0) {
@@ -585,8 +585,10 @@
     async function deleteItem(store, id) {
         const key = STORAGE_KEYS[store];
         if (DATA_STORES.includes(store)) {
+            const tenia = (D[store] || []).some(x => x && x.id === id);
             D[store] = (D[store] || []).filter(x => x.id !== id);
             try { await saveToIDB(store, D[store]); } catch(e) { console.warn('IDB delete error', e); avisarIDBCaida(e); }
+            if (tenia && window._jamSyncRegistrarBorrado) { try { window._jamSyncRegistrarBorrado(store, id); } catch(e) { console.warn('sync tombstone error', e); } }
         } else {
             const items = loadFromStorage(STORAGE_KEYS[store], []).filter(x => x.id !== id);
             saveToStorage(STORAGE_KEYS[store], items);
@@ -2301,6 +2303,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         else if(m === 'empleados') renderCrud('empleados', 'Empleados', ['cedula','nombre','cargo','salarioBs','diaPago','fechaPago','fechaContrato']);
         else if(m === 'reportes') renderReportes();
         else if(m === 'config') renderConfig();
+        else if(m === 'sync' && window.renderSync) window.renderSync();
         inyectarBotonAyudaModulo();
         iniciarGuiaModuloSiPrimeraVez(m);
         if(esDesktop()) renderSidebar();
@@ -4790,6 +4793,7 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
                 </div></div>
                 <div class="config-section"><button id="btnToggleSeguridad" class="btn-azul-redondeado btn-redondeado w-full mb-2 py-2">🔒 Seguridad (PIN)</button><div id="panelSeguridad" style="display:none;" class="mt-2 config-inner"><div class="mb-2"><label>PIN de acceso (4 dígitos, dejar vacío para deshabilitar)</label><input type="password" id="pinInput" value="${escapeHtml(D.config.pin)}" maxlength="4" pattern="[0-9]*" inputmode="numeric" class="border rounded-xl p-2 w-full text-center text-2xl tracking-widest" placeholder="****"></div><button id="guardarPinBtn" class="btn-azul-redondeado btn-redondeado w-full py-2">🔐 Guardar PIN</button><p class="text-xs text-center mt-2 opacity-60">${D.config.pin ? '✅ PIN activo. Se pedirá al abrir la app.' : 'ℹ️ Sin PIN. Cualquiera puede acceder.'}</p></div></div>
                 <div class="config-section"><button id="btnToggleColores" class="btn-azul-redondeado btn-redondeado w-full mb-2 py-2">🎨 Temas de color</button><div id="panelColores" style="display:none;" class="mt-2 config-inner"><div class="flex flex-wrap justify-center gap-2" id="paletaColores" style="max-width:290px;margin:0 auto"></div></div></div>
+                <div class="config-section"><button id="btnToggleSync" class="btn-azul-redondeado btn-redondeado w-full mb-2 py-2">🔄 Sincronización entre dispositivos</button><div id="panelSync" style="display:none;" class="mt-2 config-inner"><div class="text-xs opacity-70 mb-2">Conecta este equipo con otros (PC o teléfono) y comparte productos, clientes, ventas, proveedores, gastos, empleados, tasa y tickets, sin necesidad de servidores. Mientras dos equipos estén encendidos con Internet, los datos se copian solos.</div><button id="abrirSyncBtn" class="btn-redondeado py-2 px-4 w-full" style="background:#3b82f6;color:#fff">🔗 Abrir Sincronización</button><p class="text-xs text-center mt-2 opacity-60">Crea un círculo o únete escaneando el QR (o escribiendo ID + código)</p></div></div>
                 <div class="config-section"><button id="btnToggleBackup" class="btn-azul-redondeado btn-redondeado w-full mb-2 py-2">💾 Copia de seguridad</button><div id="panelBackup" style="display:none;" class="mt-2 config-inner"><div class="flex flex-col gap-3">${esAppNativa() ? `<div class="rounded-xl p-3" style="background:rgba(14,165,233,0.08);border:1px solid rgba(14,165,233,0.3)"><p class="text-sm font-semibold mb-1">📁 Carpeta de la aplicación</p><p id="carpetaEstado" class="text-xs opacity-70 mb-2">ℹ️ Elija una carpeta para guardar tickets y respaldos (se creará la subcarpeta JAMPOS).</p><button id="elegirCarpetaBtn" class="btn-redondeado py-2 px-4 w-full" style="background:#0ea5e9;color:#fff">📂 Elegir carpeta</button></div>` : `<p class="text-xs text-center opacity-60">💡 En la app Android podrás elegir una carpeta donde guardar los archivos.</p>`}<button id="exportJsonBtn" class="btn-redondeado py-2 px-4" style="background:#3b82f6;color:#fff">📥 Exportar todo (JSON)</button><button id="exportCsvBtn" class="btn-redondeado py-2 px-4" style="background:#10b981;color:#fff">📥 Exportar todo (CSV / Excel)</button><button id="importJsonBtn" class="btn-redondeado py-2 px-4" style="background:#8b5cf6;color:#fff">📤 Importar desde JSON</button><button id="importCsvBtn" class="btn-redondeado py-2 px-4" style="background:#f59e0b;color:#fff">📤 Importar desde CSV / Excel</button>${esAppNativa() ? `<button id="importCarpetaBtn" class="btn-redondeado py-2 px-4" style="background:#14b8a6;color:#fff">📂 Importar desde la carpeta JAMPOS</button><button id="restaurarBackupBtn" class="btn-redondeado py-2 px-4" style="background:#ef4444;color:#fff">🔄 Restaurar desde respaldo automático</button>` : ''}<input type="file" id="importFileInput" accept=".json" style="display:none"><input type="file" id="importCsvFileInput" accept=".csv,.xlsx,.xls,.txt" style="display:none"><p class="text-xs text-center mt-2 opacity-60">Los archivos CSV se abren directamente en Excel</p></div></div></div>
             </div>
         `;
@@ -4803,6 +4807,8 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
         toggle('btnToggleSeguridad', 'panelSeguridad');
         toggle('btnToggleColores', 'panelColores');
         toggle('btnToggleBackup', 'panelBackup');
+        toggle('btnToggleSync', 'panelSync');
+        document.getElementById('abrirSyncBtn').onclick = () => { if(window.renderSync) navigateTo('sync'); };
         
         const modoManualCheck = document.getElementById('modoManualCheck');
         const tasaManualDiv = document.getElementById('tasaManualDiv');
@@ -5064,7 +5070,7 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
         });
     }
 // ==================== GUÍA DE LA APP Y TUTORIAL ====================
-    const APP_VERSION = '0.1';
+    const APP_VERSION = '1.1';
     const APP_NOMBRE = 'JAM POS';
     const APP_TAGLINE = 'Tienda Profesional';
     const MODULOS_GUIA = [
