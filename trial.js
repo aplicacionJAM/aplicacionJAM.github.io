@@ -270,12 +270,21 @@
         document.body.appendChild(fondo);
     }
 
-    // ---------------- Arranque (VERSION LIBRE: sin bloqueo, inerte) ----------------
+    // ---------------- Arranque ----------------
     function iniciar() {
-        return;
+        crearEstilos();
+        verificar().then(function (estado) {
+            if (estado && estado.bloqueada) mostrarBloqueo();
+            else mostrarDiscreto(estado);
+        });
     }
 
     function bloquearInmediato() {
+        // Si el bloqueo ya estaba confirmado en esta sesion, cortar el arranque de la app.
+        var est = estadoActual();
+        if (est && est.bloqueada) return true;
+        var n = estadoNativo();
+        if (n && n.bloqueada) { window.__jamt_estado = { bloqueada: true, tamper: false, diaActual: DIAS, diasRestantes: 0, fechaInicio: n.fechaInicio, diasTotales: DIAS }; mostrarBloqueo(); return true; }
         return false;
     }
 
