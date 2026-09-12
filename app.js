@@ -878,8 +878,10 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
             const d = await r.json();
             const rates = d && d.data && d.data.getCountryConversions && d.data.getCountryConversions.conversionRates;
             if (Array.isArray(rates)) {
-                const usd = rates.find(x => x && x.official === true && x.rateCurrency && x.rateCurrency.code === 'USD');
-                if (usd && usd.baseValue > 0) return parseFloat((+usd.baseValue).toFixed(2));
+                const usd = rates
+                    .filter(x => x && x.official === true && x.rateCurrency && x.rateCurrency.code === 'USD' && x.baseValue > 0)
+                    .reduce((a, b) => (a ? (b.baseValue > a.baseValue ? b : a) : b), null);
+                if (usd) return parseFloat((+usd.baseValue).toFixed(2));
             }
             throw new Error();
         } catch(e) { return null; }
@@ -901,6 +903,10 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
             if (!r.ok) throw new Error();
             const d = await r.json();
             const p = d && d.data && d.data.getBinanceP2PAverages;
+            if (p && p.sellAverage > 0 && p.buyAverage > 0) {
+                const media = (+p.sellAverage + +p.buyAverage) / 2;
+                if (media > 0) return parseFloat(media.toFixed(2));
+            }
             if (p && p.sellAverage > 0) return parseFloat((+p.sellAverage).toFixed(2));
             throw new Error();
         } catch(e) { return null; }
@@ -5070,7 +5076,7 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
         });
     }
 // ==================== GUÍA DE LA APP Y TUTORIAL ====================
-    const APP_VERSION = '1.1';
+    const APP_VERSION = '0.1';
     const APP_NOMBRE = 'JAM POS';
     const APP_TAGLINE = 'Tienda Profesional';
     const MODULOS_GUIA = [
@@ -5082,7 +5088,8 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
         { icon: 'fa-user-tie', nombre: 'Empleados', uso: 'Gestiona tu personal y NÓMINA: cédula, cargo, salario en Bs, día de pago. Botón "Pagar" genera el gasto y marca el salario como pagado.' },
         { icon: 'fa-chart-line', nombre: 'Reportes', uso: 'Estadísticas: ventas por forma de pago, resumen del período (ganancia cobrada vs crédito), cartera por cobrar, nómina, entregas, gráficos diarios y documento/Excel imprimible.' },
         { icon: 'fa-calculator', nombre: 'Calculadora', uso: 'Convertidor USD ⇄ Bs integrado. Calcula precios, conversiones y prepagos al instante.' },
-        { icon: 'fa-palette', nombre: 'Config', uso: 'Tema y colores, empresa, fuente de la tasa de dólar (3 disponibles), alertas de stock, impresión, copia de seguridad (JSON/CSV con tickets y caja), PIN, sync y dual persistencia.' }
+        { icon: 'fa-palette', nombre: 'Config', uso: 'Tema y colores, empresa, fuente de la tasa de dólar (3 disponibles), alertas de stock, impresión, copia de seguridad (JSON/CSV con tickets y caja), PIN, sync y dual persistencia.' },
+        { icon: 'fa-sync-alt', nombre: 'Sincronizar', uso: 'Comparte los datos entre tus equipos sin servidores: Config → Sincronización entre dispositivos. Crea el círculo en la PC (QR + código de 4 letras) y únete desde los demás dispositivos escaneando el QR o escribiendo ID + código. Todo se copia solo mientras coincidan encendidos con internet.' }
     ];
 
     function inyectarBotonAyudaModulo() {
@@ -5134,6 +5141,7 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
             <div class="guia-item"><i class="fas fa-user-tie"></i><div><strong>Nómina de empleados</strong><small>Salarios, día de pago y botón "Pagar" que registra el gasto y marca el mes como pagado.</small></div></div>
             <div class="guia-item"><i class="fas fa-truck"></i><div><strong>Entregas de proveedores</strong><small>Control de mercancía recibida con vencimientos; al recibir la entrega el stock sube solo.</small></div></div>
             <div class="guia-item"><i class="fas fa-boxes"></i><div><strong>Stock mínimo y alertas</strong><small>Configura un mínimo por producto; la app avisa (y suena) cuando baja. Ajustes de stock manuales auditados.</small></div></div>
+            <div class="guia-item"><i class="fas fa-sync-alt"></i><div><strong>Sincronización entre dispositivos</strong><small>PC, celular o tablet comparten productos, ventas, clientes y más automáticamente (P2P, sin servidores, gratis). Config → Sincronización: crea el círculo en la PC y únete por QR o ID + código.</small></div></div>
             ${esNativa ? `<div class="guia-item"><i class="fas fa-folder-open"></i><div><strong>Carpeta de archivos</strong><small>Guarda tickets, respaldos y datos en la carpeta que elijas en tu dispositivo.</small></div></div>` : ''}
         `;
         const fondo = document.createElement('div');
@@ -5167,7 +5175,7 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
         { sel: null, titulo: 'Bienvenido a JAM POS LIBRE', texto: 'Tu tienda profesional: ventas, inventario, clientes (CxC), proveedores (entregas), gastos, nómina y cierre de caja. Tus datos se sincronizan entre dispositivos automáticamente.' },
         { sel: '#searchGlobalInput', titulo: 'Búsqueda rápida', texto: 'Escribe aquí para buscar productos, clientes y proveedores desde cualquier parte. La búsqueda inteligente filtra por nombre, código o cédula.' },
         { sel: '.card-bcv', titulo: 'Tipo de cambio', texto: 'Muestra la tasa regidora del dólar en vivo (BCV, AlCambio BCV o USDT, según elijas). Toca el icono para usar el convertidor USD ⇄ Bs con formato venezolano (1.234.567,89).' },
-        { sel: '.home-grid', titulo: 'Tus módulos', texto: 'Cada botón abre un módulo: Ventas, Inventario, Clientes (con Cartera CxC), Proveedores (con Entregas), Gastos, Empleados (Nómina), Reportes, Calculadora y Configuración.' },
+        { sel: '.home-grid', titulo: 'Tus módulos', texto: 'Cada botón abre un módulo: Ventas, Inventario, Clientes (con Cartera CxC), Proveedores (con Entregas), Gastos, Empleados (Nómina), Reportes, Calculadora y Configuración. Dentro de Configuración también está la Sincronización entre dispositivos.' },
         { sel: '.led-converter', titulo: 'Calculadora USD ⇄ Bs', texto: 'Convertidor rápido integrado. Toca para calcular conversiones al instante sin salir del home.' },
         { sel: null, titulo: 'Modo Kiosco', texto: 'Mantén presionado el botón "Ventas" 4 segundos para activar el modo Kiosco: pantalla simplificada para punto de venta rápido con calculadora integrada.' },
         { sel: '.btn-ayuda-home', titulo: 'Guía de la app', texto: 'Este botón abre la guía completa con todas las características, módulos y cómo usar cada uno. Desde aquí también puedes repetir el recorrido interactivo.' },
@@ -5214,13 +5222,23 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
         { sel: '#btnToggleSeguridad', titulo: '4. Seguridad (PIN)', texto: 'Protege la app con un PIN de 4 dígitos. Se pide al abrir la app.' },
         { sel: '#btnToggleColores', titulo: '5. Temas de color', texto: 'Elige el color de acento de la app entre una paleta de colores predefinidos.' },
         { sel: '#btnToggleBackup', titulo: '6. Copia de seguridad', texto: 'Dual persistencia: tus datos se guardan en IDB + archivos JSON. Exporta/importa JSON y CSV — incluyen TODOS los registros, tickets, cierre de caja, historial y tasas — y restaura desde el respaldo automático.' },
+        { sel: '#btnToggleSync', titulo: '7. Sincronización entre dispositivos', texto: 'Abre el panel y toca "Abrir Sincronización". En la PC crea el círculo (aparecen QR, ID y código de 4 letras); en los demás equipos únete escaneando el QR o escribiendo ID + código. Los datos se comparten solos mientras ambos estén encendidos con internet.' },
         { sel: null, titulo: '¡Listo!', texto: 'Con Config personalizas la app a tu negocio. Los datos se sincronizan y respaldan automáticamente.' }
+    ];
+    const GUIA_SYNC = [
+        { sel: '.module-header', titulo: 'Sincronización', texto: 'Conecta todos tus equipos (PC, celulares y tabletas) para que compartan los mismos datos sin servidores ni cuentas: productos, clientes, proveedores, gastos, empleados, ventas, tasa, tickets y entregas.' },
+        { sel: null, titulo: '1. Crea el círculo', texto: 'En el equipo principal (la PC que pasa más tiempo encendida) toca "Crear círculo (primer equipo)".' },
+        { sel: '#syncQRContainer', titulo: '2. QR + ID + código', texto: 'Aparece el QR con su código de 4 letras y el ID del círculo. Escanea ese QR desde el teléfono para unirte. Para entrar a mano, el otro equipo necesita el ID (botón "Copiar ID") y el código de 4 letras.' },
+        { sel: null, titulo: '3. Únete desde los demás', texto: 'En cada otro equipo ve a Configuración → Sincronización entre dispositivos → Abrir Sincronización y toca "Unirme escaneando QR" o "Escribir ID del círculo".' },
+        { sel: null, titulo: '4. Se sincroniza solo', texto: 'Mientras ambos equipos estén encendidos y con internet, se conectan automáticamente y se intercambian los cambios. Si editas el mismo dato en dos equipos, gana el último en hacerlo. Los borrados también se propagan.' },
+        { sel: null, titulo: '¡Listo!', texto: 'Guarda una foto del QR para futuras instalaciones. Para desvincular un equipo usa "Olvidar círculo".' }
     ];
     const GUIA_MODULOS = {
         ventas: { clave: 'jam_guia_ventas_visto', pasos: GUIA_VENTAS },
         inventario: { clave: 'jam_guia_inventario_visto', pasos: GUIA_INVENTARIO },
         reportes: { clave: 'jam_guia_reportes_visto', pasos: GUIA_REPORTES },
-        config: { clave: 'jam_guia_config_visto', pasos: GUIA_CONFIG }
+        config: { clave: 'jam_guia_config_visto', pasos: GUIA_CONFIG },
+        sync: { clave: 'jam_guia_sync_visto', pasos: GUIA_SYNC }
     };
 
     function iniciarTutorial(pasos, claveVisto) {

@@ -96,6 +96,11 @@
     };
   }
 
+  function idActualCirculo() {
+    if (circle) return circle.hubPeerId || (peerActivo ? peerActivo.id : null) || null;
+    return null;
+  }
+
   function paresVistos() {
     var out = [];
     sesiones.forEach(function (s) {
@@ -127,10 +132,17 @@
   function escucharComoHub() {
     if (peerActivo) detenerPeer();
     var opts = { debug: 0 };
-    peerActivo = window.SYNC_HUB_ID ? new Peer(String(window.SYNC_HUB_ID), opts) : new Peer(opts);
+    var idFijo = null;
+    if (circle && circle.hubPeerId) idFijo = String(circle.hubPeerId);
+    else if (window.SYNC_HUB_ID) idFijo = String(window.SYNC_HUB_ID);
+    peerActivo = idFijo ? new Peer(idFijo, opts) : new Peer(opts);
     peerActivo.on('open', function (id) {
-      addLog('Círculo activo (Hub). ID: ' + id + ' | Código: ' + circle.codigo);
-      if (window.SYNC_TEST) window.SYNC_TEST('hub-open', id, circle.codigo);
+      if (circle) {
+        circle.hubPeerId = id;
+        grabar(K_CIRCLE, circle);
+      }
+      addLog('Círculo activo (Hub). ID: ' + id + ' | Código: ' + (circle ? circle.codigo : ''));
+      if (window.SYNC_TEST) window.SYNC_TEST('hub-open', id, circle ? circle.codigo : '');
       if (window.renderSync) window.renderSync();
     });
     peerActivo.on('connection', function (conn) {
@@ -542,6 +554,7 @@
 
   CamaraQR.prototype.abrir = function (canvas, video, cb) {
     var self = this;
+    self.intentos = 0;
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       addLog('Cámara no disponible en este dispositivo (use el modo manual)', 'error');
       cb(null);
@@ -555,6 +568,7 @@
         var ctx = canvas.getContext('2d');
         var tick = function () {
           if (self.fin) return;
+          self.intentos = (self.intentos || 0) + 1;
           if (video.readyState >= 2 && video.videoWidth) {
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
@@ -565,6 +579,7 @@
               if (out && out.data) { self.fin = true; cb(out.data, self); return; }
             } catch (e) {}
           }
+          if (self.intentos === 50) addLog('Escáner activo: acerca el QR del equipo principal y procura buena luz', 'info');
           setTimeout(tick, 200);
         };
         tick();
@@ -612,7 +627,7 @@
             </div>
             <div class="text-right">
               <p class="text-xs opacity-70">ID de círculo</p>
-              <p class="font-mono text-sm" style="color:${accent}">${tieneCirculo ? esc(est.circle.hubPeerId || 'generando…') : '—'}</p>
+              <p class="font-mono text-sm" style="color:${accent}">${tieneCirculo ? esc(idActualCirculo() || 'generando…') : '—'}</p>
             </div>
           </div>
         </div>
@@ -675,19 +690,31 @@
         el.insertAdjacentHTML('afterbegin', '<div>· ' + esc(msg) + '</div>');
       }
     };
-    if (esHub && typeof qrcode !== 'undefined') {
-      var payload = C.armarQr(est.circle.hubPeerId || 'pendiente', est.circle.codigo, dispositivo.nombre);
-      try {
-        var qr = qrcode(0, 'M');
-        qr.addData(payload);
-        qr.make();
-        var dataUrl = qr.createDataURL(4, 6);
-        var img = document.createElement('img');
-        img.src = dataUrl;
-        img.alt = 'QR';
-        img.style.cssText = 'width:172px;height:172px;image-rendering:pixelated';
-        var cont = document.getElementById('syncQRContainer'); if (cont) cont.prepend(img);
-      } catch (e) { addLog('QR no disponible aquí', 'error'); }
+    if (esHub) {
+      var hubId = idActualCirculo();
+      var qrCont = document.getElementById('syncQRContainer');
+      if (!hubId) {
+        qrCont.insertAdjacentHTML('afterbegin', '<p class="text-xs" style="background:rgba(250,204,21,.12);border:1px dashed #facc15;border-radius:10px;padding:8px">Generando ID de conexión… (espera unos segundos)</p>');
+      } else if (typeof qrcode !== 'undefined') {
+        try {
+          var payload = C.armarQr(hubId, est.circle.codigo, dispositivo.nombre);
+          var qr = qrcode(0, 'M');
+          qr.addData(payload);
+          qr.make();
+          var dataUrl = qr.createDataURL(4, 6);
+          var img = document.createElement('img');
+          img.src = dataUrl;
+          img.alt = 'QR';
+          img.style.cssText = 'width:184px;height:184px;image-rendering:pixelated';
+          qrCont.prepend(img);
+        } catch (e) { addLog('QR no disponible aquí (use el ID para unirse manualmente)', 'error'); }
+      } else {
+        qrCont.insertAdjacentHTML('afterbegin', '<p class="text-xs opacity-70">QR no disponible en esta vista. Usa el ID de abajo en "Escribir ID del círculo".</p>');
+      }
+      if (hubId) {
+        qrCont.insertAdjacentHTML('beforeend', '<p class="text-[10px] opacity-60 mt-2" style="word-break:break-all">ID: <span class="font-mono">' + esc(hubId) + '</span></p>');
+        qrCont.insertAdjacentHTML('beforeend', '<button class="btn" style="font-size:12px;border:1px solid ' + accent + ';color:' + accent + '" onclick="window.SyncUI._copiarId()"><i class="fas fa-copy"></i> Copiar ID</button>');
+      }
     }
   }
 
@@ -699,6 +726,17 @@
 
   window.SyncUI = {
     _unirseDirecto: function (qr, id, code) { unirse(qr, id, code); },
+    _copiarId: function () {
+      var id = idActualCirculo();
+      if (!id) { notificar('El ID aún se está generando', 'info'); return; }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        try {
+          navigator.clipboard.writeText(id).then(function () { notificar('ID copiado al portapapeles', 'success'); }).catch(function () { try { window.prompt('ID del círculo', id); } catch (e) {} });
+        } catch (e) {}
+      } else {
+        try { window.prompt('ID del círculo (cópiame)', id); } catch (e) {}
+      }
+    },
     crear: function () { crearCirculo(); },
     unirse: function () {
       var puedeCamara = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
