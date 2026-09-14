@@ -1,1 +1,13 @@
 
+{
+  "version": "1.1.2",
+  "nombre": "JAM POS v1.1 By @felinuxs",
+  "titulo": "Actualizacion para Android (APK)",
+  "fecha": "2026-09-14",
+  "archivo": "JAMPOS-1.1-estable-final.apk",
+  "notas": [
+    "Correcciones de seguridad y estabilidad.",
+    "Cambia el archivo .apk de esta carpeta por la nueva version.",
+    "La app detectara esta carpeta llena (update.json) y avisara al iniciar."
+  ]
+}
