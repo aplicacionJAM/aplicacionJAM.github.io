@@ -970,7 +970,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
                 if (ant.ALCB && cur.ALCB && Math.abs(cur.ALCB - ant.ALCB) > 0.001) cambios.push('Al Cambio BCV');
                 if (ant.USDT && cur.USDT && Math.abs(cur.USDT - ant.USDT) > 0.001) cambios.push('Al Cambio USDT');
                 if (cambios.length > 0) {
-                    emitirNotificacionWeb('Tasa actualizada', 'Cambio en: ' + cambios.join(', '));
+                    emitirNotificacionWeb('Tasa actualizada', 'Cambio en: ' + cambios.join(', ') + ' · JAM POS v1.1 By @felinuxs');
                     reproducirSonidoCambio();
                 }
             }
@@ -4715,7 +4715,7 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
         let diff = Math.abs(tasaNueva - tasaAnterior);
         if(diff > 0.5){
             mostrarNotificacion(`💱 La tasa USD cambió: ${fmtDolar(tasaAnterior)} → ${fmtDolar(tasaNueva)} Bs`, 'info');
-            mostrarNotificacionNativa('Tasa USD actualizada', `${fmtDolar(tasaAnterior)} → ${fmtDolar(tasaNueva)} Bs`, 'tasa');
+            mostrarNotificacionNativa('Tasa USD actualizada', `${fmtDolar(tasaAnterior)} → ${fmtDolar(tasaNueva)} Bs · JAM POS v1.1 By @felinuxs`, 'tasa');
             if(D.config.sonidoAlertas) reproducirSonidoAlerta();
         }
     }
