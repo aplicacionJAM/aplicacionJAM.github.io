@@ -1,14 +1,13 @@
 {
-  "version": "1.1.1",
+  "version": "1.1.2",
   "nombre": "JAM POS v1.1 By @felinuxs",
-  "titulo": "Versión 1.1.1",
-  "fecha": "2026-09-13",
+  "titulo": "Versión 1.1.2",
+  "fecha": "2026-09-14",
   "bloqueo": "Si te quedas con la versión actual podrías perder acceso a las nuevas funciones, correcciones y mejoras publicadas.",
   "notas": [
-    "Corregido: letras del menú «Tipo de pago» y cajón de subtotal/total se veían deformadas y grandes (fuente Font Awesome acotada con unicode-range).",
-    "Mejora: botón «Inicio» de la barra lateral ahora usa el color del tema elegido.",
-    "Mejora: título de la ventana y marca de la app ahora dicen «JAM POS v1.1 By @felinuxs».",
-    "Mejora: barra de estado superior de la PWA ahora se tiñe según el tema (blanco/negro).",
+    "Mejora: sistema de actualización inteligente — solo avisa cuando hay una versión MÁNOR publicada. Si ya instalaste la última, no volverá a mostrar popups ni notificaciones de actualización.",
+    "Mejora: popup de actualización guarda la versión instalada localmente para no repetir la descarga de la misma.",
+    "Corregido: barra de menú en inglés (File/Edit/View) eliminada en las ventanas EXE y DEB (solo queda la barra de título).",
     "Nueva versión publicada: instálala para recibir las últimas mejoras y correcciones."
   ]
 }

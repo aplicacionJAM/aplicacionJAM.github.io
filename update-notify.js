@@ -16,7 +16,7 @@
     if (window.jamUpdaterLoaded) return;
     window.jamUpdaterLoaded = true;
 
-    var APP_VERSION = '1.1.1';                   // version DE ESTA instalacion (editar al publicar)
+    var APP_VERSION = '1.1.2';                   // version DE ESTA instalacion (editar al publicar)
     var BASE_URL = 'https://aplicacionjam.github.io/'; // raiz publicada (GitHub Pages)
     var PLATAFORMA = detectarPlataforma();       // 'web' | 'apk' | 'exe' | 'deb'
     var UPDATE_URL = PLATAFORMA === 'web'
@@ -73,6 +73,30 @@
 
     var overlay = null;
     var __avisadoSesion = {}; // evita re-avisar la misma version varias veces en UNA sesion
+
+    // ===== MARCADOR LOCAL: version ya descargada/instalada en ESTE equipo =====
+    // Previene popups repetidos: una vez que el usuario instala (o acepta
+    // descargar) una version, esta app recuerda ese numero y NO vuelve a avisar
+    // mientras el servidor no publique una version MAYOR a la ya instalada.
+    var CLAVE_INSTALADA = 'jampos_ultima_instalada';
+
+    function leerInstalada() {
+        try {
+            var v = localStorage.getItem(CLAVE_INSTALADA);
+            if (v) return String(v);
+        } catch (e) {}
+        return '';
+    }
+    function guardarInstalada(v) {
+        try { localStorage.setItem(CLAVE_INSTALADA, String(v)); } catch (e) {}
+    }
+    // Version instalada efectiva = el numero mayor entre el marcador local y el
+    // APP_VERSION embebido (el marcador manda si es mas nuevo).
+    function versionInstalada() {
+        var m = leerInstalada();
+        if (!m) return APP_VERSION;
+        return esMayor(m, APP_VERSION) ? APP_VERSION : m;
+    }
 
     function cerrarPopup() {
         if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
@@ -157,9 +181,10 @@
 
     function quedarse() {
         cerrarPopup();
-        // Regla que PREVALECE: NO se guarda silencio. En el proximo inicio de la
-        // aplicacion se le volvera a recordar la actualizacion obligatoria.
-        toast('Debes actualizar al iniciar la aplicaci\u00f3n. Te lo recordaremos en el pr\u00f3ximo inicio.');
+        // Se queda con la version actual por ahora: el marcador local NO se
+        // sobreescribe, asi seguimos avisando SOLO cuando haya una version
+        // mayor a la publicada. Sin nuevas versiones publicadas => sin popup.
+        toast('De momento te quedas con esta versi\u00f3n. Te avisamos si aparece una m\u00e1s nueva.');
     }
 
     var recargando = false;
@@ -184,6 +209,9 @@
 
     function actualizarAhora() {
         cerrarPopup();
+        // El usuario acepto la actualizacion: registrar la version como
+        // "ya instalada/aceptada" para no volver a preguntar por ella.
+        try { if (ultimosDatos && ultimosDatos.version) guardarInstalada(String(ultimosDatos.version)); } catch (e) {}
         if (PLATAFORMA !== 'web') {
             // NATIVA (apk/exe/deb): abre la descarga del instalador de su carpeta.
             var url = urlDescargaNativa();
@@ -237,10 +265,20 @@
                 .then(function (r) { if (!r.ok) throw new Error('http'); return r.json(); })
                 .then(function (datos) {
                     if (!datos || !datos.version) return;
-                    // Regla que PREVALECE: avisa en CADA inicio mientras la version
-                    // publicada del servidor sea distinta a la instalada localmente.
-                    var distinta = normalizar(datos.version).join('.') !== normalizar(APP_VERSION).join('.');
-                    if (!distinta) return;
+                    // Popup INTELIGENTE: solo avisa si la version publicada es
+                    // MAYOR que la que este equipo ya tiene (marcador local o
+                    // APP_VERSION embebido). Si la publicada NO es mayor, es que
+                    // ya esta instalada/actualizada: silencio total, sin popup.
+                    var p = normalizar(datos.version).join('.');
+                    var t = normalizar(versionInstalada()).join('.');
+                    if (p === t) {
+                        // Version publicada == version instalada: registrar el
+                        // marcador (por si APP_VERSION quedo desactualizado) y
+                        // no avisar.
+                        guardarInstalada(String(datos.version));
+                        return;
+                    }
+                    if (!esMayor(versionInstalada(), datos.version)) return;
                     var v = String(datos.version);
                     if (__avisadoSesion[v]) return;
                     __avisadoSesion[v] = true;
