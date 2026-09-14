@@ -1,4 +1,4 @@
-const CACHE_NAME = "jampos-web-cache-v11-a2";
+const CACHE_NAME = "jampos-web-cache-v11-a3";
 const STATIC_ASSETS = [
   "./",
   "./index.html",
@@ -26,6 +26,7 @@ const STATIC_ASSETS = [
   "./web-bridge.js",
   "./trial.js",
   "./update-notify.js",
+  "./promo-notify.js",
   "./update.json",
   "./app.js"
 ];
@@ -64,6 +65,7 @@ self.addEventListener("message", function(event) {
       icon: "./icon-192.png",
       badge: "./icon-192.png",
       tag: data.tag || "jampos",
+      image: data.image || "",
       vibrate: [200, 100, 200],
       requireInteraction: true
     });
@@ -110,6 +112,13 @@ self.addEventListener("fetch", (event) => {
   // versiones nuevas aunque el resto de la app funcione offline.
   if (url.pathname.indexOf("/update.json") !== -1) {
     event.respondWith(fetch(req).catch(function() { return caches.match("./update.json"); }));
+    return;
+  }
+
+  // La carpeta Promocion SIEMPRE va a red (nunca a cache) para que las
+  // promociones del servidor se lean siempre actualizadas.
+  if (url.pathname.indexOf("/Promocion/") !== -1) {
+    event.respondWith(fetch(req).catch(function() { return caches.match(req).then(function(c) { return c || Response.error(); }); }));
     return;
   }
 

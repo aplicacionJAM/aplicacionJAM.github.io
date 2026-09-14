@@ -124,14 +124,15 @@
     const TOKENS_FA = { '💵':'fa-money-bill-wave', '💰':'fa-sack-dollar', '💳':'fa-credit-card', '🏦':'fa-building-columns', '📱':'fa-mobile-screen-button', '🔀':'fa-shuffle', '📷':'fa-camera', '📦':'fa-boxes-stacked', '🗑':'fa-trash', '🗑️':'fa-trash', '✅':'fa-circle-check', '❌':'fa-circle-xmark', '⚠️':'fa-triangle-exclamation', 'ℹ️':'fa-circle-info', '❓':'fa-circle-question', '💾':'fa-floppy-disk', '📁':'fa-folder', '📂':'fa-folder-open', '☁️':'fa-cloud', '🚚':'fa-truck', '🛒':'fa-cart-shopping', '🛍️':'fa-bag-shopping', '🔒':'fa-lock', '🔓':'fa-lock-open', '🕘':'fa-clock', '🟢':'fa-circle', '🟡':'fa-circle', '🔴':'fa-circle', '📊':'fa-chart-column', '🧮':'fa-calculator', '🏷️':'fa-tag', '👤':'fa-user', '👥':'fa-users', '💚':'fa-heart', '🏢':'fa-building', '🌐':'fa-globe', '🪙':'fa-coins', '📘':'fa-book', '📆':'fa-calendar-days', '📅':'fa-calendar-days', '📈':'fa-chart-line', '🧾':'fa-receipt', '💸':'fa-money-bill-wave', '📜':'fa-scroll', '✏️':'fa-pen', '📞':'fa-phone', '📋':'fa-clipboard', '🔔':'fa-bell', '🔖':'fa-tag', '🔗':'fa-link', '📌':'fa-thumbtack', '📍':'fa-location-dot', '🌟':'fa-star', '🎨':'fa-palette', '🌓':'fa-circle-half-stroke', '🌙':'fa-moon', '🧑‍💼':'fa-user-tie', '⚙️':'fa-gear', '🪪':'fa-id-card', '📲':'fa-mobile-screen', '🔄':'fa-rotate', '💱':'fa-money-bill-transfer', '💡':'fa-lightbulb', '🔐':'fa-lock', '💼':'fa-briefcase', '✉️':'fa-envelope', '🙏':'fa-hands-praying', '🔊':'fa-volume-high', '🗓️':'fa-calendar-days', '💲':'fa-dollar-sign', '📤':'fa-upload', '📥':'fa-download', '↔️':'fa-right-left', '⏱️':'fa-stopwatch', }; const COLOR_FA = { '🟢':'#22c55e', '🟡':'#eab308', '🔴':'#ef4444', }; function nodosIconosFA(texto, contenedor) { if (texto == null) return; let s = String(texto); const claves = Object.keys(TOKENS_FA).sort((a,b) => b.length - a.length); while (s.length) { let idx = -1, tok = ''; claves.forEach(k => { const i = s.indexOf(k); if (i !== -1 && (idx === -1 || i < idx)) { idx = i; tok = k; } }); if (idx === -1) { contenedor.appendChild(document.createTextNode(s)); return; } if (idx > 0) contenedor.appendChild(document.createTextNode(s.slice(0, idx))); const ic = document.createElement('i'); ic.className = 'fas ' + TOKENS_FA[tok]; if (COLOR_FA[tok]) ic.style.color = COLOR_FA[tok]; contenedor.appendChild(ic); s = s.slice(idx + tok.length); } }
     function mostrarNotificacion(mensaje, tipo = 'info') { const notif = document.createElement('div'); notif.className = 'notificacion-flotante'; notif.style.backgroundColor = tipo === 'success' ? '#10b981' : (tipo === 'error' ? '#ef4444' : '#3b82f6'); notif.style.color = 'white'; const iconos = { success: 'fa-circle-check', error: 'fa-circle-xmark', info: 'fa-circle-info' }; const ic = document.createElement('i'); ic.className = 'fas ' + (iconos[tipo] || 'fa-circle-info'); notif.appendChild(ic); const txt = document.createElement('span'); nodosIconosFA(String(mensaje || '').replace(/^\s*(✅|❌|⚠️|ℹ️|❓)\s*/u, ''), txt); notif.appendChild(txt); document.body.appendChild(notif); setTimeout(() => notif.remove(), 3000); }
     async function puenteResultado(v){ return (v && typeof v.then === 'function') ? await v : v; }
-    function mostrarNotificacionNativa(titulo, cuerpo, tag) {
+    function mostrarNotificacionNativa(titulo, cuerpo, tag, opciones) {
         if (!('Notification' in window) || !('serviceWorker' in navigator)) return;
+        const mensaje = () => { return { type: 'showNotification', title: titulo, body: cuerpo, tag: tag || 'jampos', image: opciones && opciones.image ? String(opciones.image) : undefined, icon: './icon-192.png', badge: './icon-192.png' }; };
         if (Notification.permission === 'granted') {
-            navigator.serviceWorker.ready.then(function(reg) { if(reg.active) reg.active.postMessage({ type: 'showNotification', title: titulo, body: cuerpo, tag: tag || 'jampos' }); });
+            navigator.serviceWorker.ready.then(function(reg) { if(reg.active) reg.active.postMessage(mensaje()); });
         } else if (Notification.permission !== 'denied') {
             Notification.requestPermission().then(function(perm) {
                 if (perm === 'granted') {
-                    navigator.serviceWorker.ready.then(function(reg) { if(reg.active) reg.active.postMessage({ type: 'showNotification', title: titulo, body: cuerpo, tag: tag || 'jampos' }); });
+                    navigator.serviceWorker.ready.then(function(reg) { if(reg.active) reg.active.postMessage(mensaje()); });
                 }
             });
         }
@@ -209,6 +210,127 @@
         return jamDialogo({ titulo: 'Ingreso de datos', mensaje, tipo: 'info', input: { valor, placeholder }, botones: [{ texto: 'Cancelar', valor: null }, { texto: 'Aceptar', valor: '__ok__', destacado: true }] });
     }
     window.alert = (m) => jamAlert(String(m));
+    
+    // ==================== RECORTADOR DE LOGO (1:1, canvas) ====================
+    function abrirRecortadorLogo(dataUrl, onListo) {
+        const MAX = 340;
+        const img = new Image();
+        img.onload = () => {
+            const natW = img.naturalWidth, natH = img.naturalHeight;
+            const escala = Math.min(MAX / natW, MAX / natH, 1);
+            const vw = Math.max(60, Math.round(natW * escala));
+            const vh = Math.max(60, Math.round(natH * escala));
+            let sel = { x: 0, y: 0, s: Math.min(vw, vh) };
+            sel.x = Math.round((vw - sel.s) / 2);
+            sel.y = Math.round((vh - sel.s) / 2);
+            const overlay = document.createElement('div');
+            overlay.className = 'recorte-overlay';
+            const caja = document.createElement('div');
+            caja.className = 'recorte-caja';
+            const titulo = document.createElement('div');
+            titulo.className = 'recorte-titulo';
+            titulo.innerHTML = '<span style="font-size:16px">✂️</span> Recortar logo (cuadrado)';
+            const vista = document.createElement('div');
+            vista.className = 'recorte-vista';
+            const canvas = document.createElement('canvas');
+            canvas.width = vw; canvas.height = vh;
+            const ctx = canvas.getContext('2d');
+            function pintar() {
+                ctx.clearRect(0, 0, vw, vh);
+                ctx.drawImage(img, 0, 0, vw, vh);
+                const s = sel.s;
+                ctx.fillStyle = 'rgba(0,0,0,.55)';
+                ctx.fillRect(0, 0, vw, sel.y);
+                ctx.fillRect(0, sel.y + s, vw, vh - sel.y - s);
+                ctx.fillRect(0, sel.y, sel.x, s);
+                ctx.fillRect(sel.x + s, sel.y, vw - sel.x - s, s);
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(sel.x + 1, sel.y + 1, s - 2, s - 2);
+                ctx.strokeStyle = '#3b82f6';
+                ctx.lineWidth = 2.5;
+                ctx.strokeRect(sel.x, sel.y, s, s);
+                const m = 6;
+                [[sel.x, sel.y], [sel.x + s, sel.y], [sel.x, sel.y + s], [sel.x + s, sel.y + s]].forEach(p => {
+                    ctx.fillStyle = '#3b82f6';
+                    ctx.beginPath();
+                    ctx.arc(p[0], p[1], m + 2, 0, 7);
+                    ctx.fill();
+                    ctx.strokeStyle = '#ffffff';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.arc(p[0], p[1], m + 2, 0, 7);
+                    ctx.stroke();
+                });
+            }
+            function clamp() {
+                const maxLado = Math.min(vw, vh);
+                sel.s = Math.max(30, Math.min(maxLado, sel.s));
+                sel.x = Math.max(0, Math.min(vw - sel.s, sel.x));
+                sel.y = Math.max(0, Math.min(vh - sel.s, sel.y));
+            }
+            function esc(p) {
+                const r = canvas.getBoundingClientRect();
+                return { x: (p.clientX - r.left) * (vw / r.width), y: (p.clientY - r.top) * (vh / r.height) };
+            }
+            let arrastrando = null, iniX = 0, iniY = 0, iniSel = null;
+            canvas.addEventListener('pointerdown', e => {
+                e.preventDefault();
+                const p = esc(e);
+                const dentro = p.x >= sel.x && p.x <= sel.x + sel.s && p.y >= sel.y && p.y <= sel.y + sel.s;
+                if (!dentro) return;
+                arrastrando = 'mover';
+                iniX = p.x; iniY = p.y; iniSel = { ...sel };
+                canvas.setPointerCapture(e.pointerId);
+            });
+            canvas.addEventListener('pointermove', e => {
+                if (!arrastrando) return;
+                e.preventDefault();
+                const p = esc(e);
+                const dx = p.x - iniX, dy = p.y - iniY;
+                sel.x = iniSel.x + dx;
+                sel.y = iniSel.y + dy;
+                clamp(); pintar();
+            });
+            const fin = () => { if (arrastrando) { arrastrando = null; try { canvas.releasePointerCapture(canvas.pointerId); } catch (e) {} } };
+            canvas.addEventListener('pointerup', fin);
+            canvas.addEventListener('pointercancel', fin);
+            vista.appendChild(canvas);
+            const pie = document.createElement('div');
+            pie.className = 'recorte-pie';
+            pie.innerHTML = '<span>Arrastra para mover · usa las esquinas para ajustar el tamaño</span>';
+            const acciones = document.createElement('div');
+            acciones.className = 'recorte-acciones';
+            const btnCancelar = document.createElement('button');
+            btnCancelar.className = 'recorte-boton recorte-boton-cancelar';
+            btnCancelar.textContent = 'Cancelar';
+            btnCancelar.onclick = () => overlay.remove();
+            const btnRecortar = document.createElement('button');
+            btnRecortar.className = 'recorte-boton recorte-boton-ok';
+            btnRecortar.textContent = 'Recortar y usar';
+            btnRecortar.onclick = () => {
+                const salida = document.createElement('canvas');
+                salida.width = 512; salida.height = 512;
+                const sctx = salida.getContext('2d');
+                const fx = natW / vw, fy = natH / vh;
+                const sx = sel.x * fx, sy = sel.y * fy, sw = sel.s * fx, sh = sel.s * fy;
+                sctx.drawImage(img, sx, sy, sw, sh, 0, 0, 512, 512);
+                try { sctx.globalCompositeOperation = 'destination-over'; sctx.fillStyle = '#ffffff'; sctx.fillRect(0, 0, 512, 512); } catch (e) {}
+                overlay.remove();
+                onListo(salida.toDataURL('image/png'));
+            };
+            acciones.appendChild(btnCancelar);
+            acciones.appendChild(btnRecortar);
+            caja.appendChild(titulo);
+            caja.appendChild(vista);
+            caja.appendChild(pie);
+            caja.appendChild(acciones);
+            overlay.appendChild(caja);
+            document.body.appendChild(overlay);
+            pintar();
+        };
+        img.src = dataUrl;
+    }
     
     // ==================== FUNCIÓN PARA TINTAR BARRA DE NAVEGACIÓN INFERIOR (ANDROID) ====================
     function setNavigationBarColor(color) {
@@ -4733,7 +4855,7 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
         let html = `
             <div class="page-header-fixed"><div class="module-header"><h2 id="tituloModule" class="module-title ${bloqueado?'module-title-bloqueado':''}" style="color:${accent}" onmousedown="iniciarBloqueo(this,'Configuración')" onmouseup="cancelarBloqueo()" onmouseleave="cancelarBloqueo()">Configuración</h2><div id="btnVolverModule" class="btn-back ${bloqueado?'btn-back-bloqueado':''}" onclick="${bloqueado?'':'backToHome()'}">${bloqueado?'<i class="fas fa-lock"></i> Bloqueado':'<i class="fas fa-arrow-left"></i> Volver'}</div></div></div>
             <div class="page-container">
-                <div class="config-section"><button id="btnToggleEmpresa" class="btn-azul-redondeado btn-redondeado w-full mb-2 py-2"><i class="fas fa-building"></i> Datos de la Empresa</button><div id="panelEmpresa" style="display:none;" class="mt-2 config-inner"><div class="mb-2"><label>Nombre de la tienda</label><input type="text" id="empresaNombre" value="${escapeHtml(D.config.empresa.nombre)}" class="border rounded-xl p-2 w-full"></div><div class="mb-2"><label>Dirección</label><input type="text" id="empresaDireccion" value="${escapeHtml(D.config.empresa.direccion)}" class="border rounded-xl p-2 w-full"></div><div class="mb-2"><label>Teléfono</label><input type="text" id="empresaTelefono" value="${escapeHtml(D.config.empresa.telefono)}" class="border rounded-xl p-2 w-full"></div><div class="mb-2"><label>RIF</label><input type="text" id="empresaRif" value="${escapeHtml(D.config.empresa.rif)}" class="border rounded-xl p-2 w-full"></div><div class="mb-2"><label>Logo (URL o emoji)</label><input type="text" id="empresaLogo" value="${escapeHtml(D.config.empresa.logo)}" placeholder="<i class="fas fa-bag-shopping"></i> o URL de imagen" class="border rounded-xl p-2 w-full"></div><button id="guardarEmpresa" class="btn-azul-redondeado btn-redondeado w-full mt-2 py-2"><i class="fas fa-floppy-disk"></i> Guardar datos empresa</button></div></div>
+                <div class="config-section"><button id="btnToggleEmpresa" class="btn-azul-redondeado btn-redondeado w-full mb-2 py-2"><i class="fas fa-building"></i> Datos de la Empresa</button><div id="panelEmpresa" style="display:none;" class="mt-2 config-inner"><div class="mb-2"><label>Nombre de la tienda</label><input type="text" id="empresaNombre" value="${escapeHtml(D.config.empresa.nombre)}" class="border rounded-xl p-2 w-full"></div><div class="mb-2"><label>Dirección</label><input type="text" id="empresaDireccion" value="${escapeHtml(D.config.empresa.direccion)}" class="border rounded-xl p-2 w-full"></div><div class="mb-2"><label>Teléfono</label><input type="text" id="empresaTelefono" value="${escapeHtml(D.config.empresa.telefono)}" class="border rounded-xl p-2 w-full"></div><div class="mb-2"><label>RIF</label><input type="text" id="empresaRif" value="${escapeHtml(D.config.empresa.rif)}" class="border rounded-xl p-2 w-full"></div><div class="mb-2"><label>Logo (URL, emoji o imagen)</label><input type="text" id="empresaLogo" value="${escapeHtml(D.config.empresa.logo)}" placeholder="URL de imagen o emoji" class="border rounded-xl p-2 w-full"><button id="btnLogoDispositivo" type="button" class="btn-redondeado w-full mt-2 py-2" style="background:#0ea5e9;color:#fff"><i class="fas fa-folder-open"></i> Elegir imagen del dispositivo (PNG · JPG · GIF · WEBP)</button><input type="file" id="logoArchivoInput" accept="image/png,image/jpeg,image/gif,image/webp" style="display:none"></div><button id="guardarEmpresa" class="btn-azul-redondeado btn-redondeado w-full mt-2 py-2"><i class="fas fa-floppy-disk"></i> Guardar datos empresa</button></div></div>
                 <div class="config-section"><button id="btnToggleTasa" class="btn-azul-redondeado btn-redondeado w-full mb-2 py-2"><i class="fas fa-sack-dollar"></i> Tasa de Cambio (${fuenteRegidoraClave() === 'ALCB-USDT' ? 'USDT/BS' : 'USD/BS'})</button><div id="panelTasa" style="display:none;" class="mt-2 config-inner">
                     <div class="mb-3">
                         <div class="panel-tasa p-3 rounded-lg mb-3">
@@ -4943,6 +5065,27 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
             mostrarNotificacion('✓ Datos de empresa guardados', 'success');
             document.getElementById('panelEmpresa').style.display = 'none'; 
         };
+        
+        const btnLogoDispositivo = document.getElementById('btnLogoDispositivo');
+        const logoArchivoInput = document.getElementById('logoArchivoInput');
+        if (btnLogoDispositivo && logoArchivoInput) {
+            btnLogoDispositivo.onclick = () => logoArchivoInput.click();
+            logoArchivoInput.onchange = (e) => {
+                const f = e.target.files && e.target.files[0];
+                if (!f) return;
+                const ext = (f.name.split('.').pop() || '').toLowerCase();
+                if (['png','jpg','jpeg','gif','webp'].indexOf(ext) === -1) { mostrarNotificacion('Formato no soportado: usa PNG, JPG, GIF o WEBP.', 'error'); return; }
+                const lector = new FileReader();
+                lector.onload = () => {
+                    abrirRecortadorLogo(lector.result, (dataUrl) => {
+                        document.getElementById('empresaLogo').value = dataUrl;
+                        mostrarNotificacion('✓ Logo recortado. Pulsa Guardar datos empresa.', 'success');
+                    });
+                };
+                lector.readAsDataURL(f);
+                logoArchivoInput.value = '';
+            };
+        }
         
         let paleta = document.getElementById('paletaColores');
         colores.forEach(c => { let circle = document.createElement('div'); circle.className = 'color-circle'; circle.style.backgroundColor = c; circle.onclick = async () => { D.config.theme = c; await saveConfig(); renderConfig(); }; paleta.appendChild(circle); });
