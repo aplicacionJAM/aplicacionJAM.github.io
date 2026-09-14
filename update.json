@@ -1,13 +1,12 @@
 {
-  "version": "1.1.2",
+  "version": "1.1a",
   "nombre": "JAM POS v1.1 By @felinuxs",
-  "titulo": "Versión 1.1.2",
+  "titulo": "Parche 1.1a",
   "fecha": "2026-09-14",
   "bloqueo": "Si te quedas con la versión actual podrías perder acceso a las nuevas funciones, correcciones y mejoras publicadas.",
   "notas": [
-    "Mejora: sistema de actualización inteligente — solo avisa cuando hay una versión MÁNOR publicada. Si ya instalaste la última, no volverá a mostrar popups ni notificaciones de actualización.",
-    "Mejora: popup de actualización guarda la versión instalada localmente para no repetir la descarga de la misma.",
-    "Corregido: barra de menú en inglés (File/Edit/View) eliminada en las ventanas EXE y DEB (solo queda la barra de título).",
-    "Nueva versión publicada: instálala para recibir las últimas mejoras y correcciones."
+    "Publicación por presencia de archivo: solo hay aviso si existe un instalable (.apk/.exe/.deb) o un .txt en la carpeta de la plataforma.",
+    "Carpeta de la plataforma vacía = sin notificación ni aviso.",
+    "Correcciones de seguridad y estabilidad."
   ]
 }

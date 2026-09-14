@@ -1,29 +1,44 @@
 // =========== AVISO DE NUEVAS VERSIONES (WEB/PWA/APK/EXE/DEB) ===========
-// Mecanismo fiable y estable para TODAS las plataformas:
-//   - La web/PWA revisa "update.json" RELATIVO (su propio directorio).
-//   - Las nativas (apk/exe/deb) revisan una CARPETA por plataforma en el
-//     servidor: https://aplicacionjam.github.io/<apk|exe|deb>/update.json
-//   - Si esa carpeta "esta llena" (update.json responde 200) hay version
-//     nueva publicada; si responde 404 (carpeta vacia) no hay nada y la app
-//     arranca normal en silencio.
-//   - Si hay version distinta a la instalada, popup con novedades + 2 botones:
-//     en web recarga la app; en nativas abre la descarga del instalador.
-//   - Regla que PREVALECE: se recuerda en CADA inicio mientras la version
-//     publicada siga siendo distinta (no hay silencio de 7 dias).
-//   - Funciona offline / sin servidor del libro: cualquier fallo de red o
-//     404 se ignora en silencio. No interfiere con el candado ni con la UI.
+// Mecanismo SIMPLE por PRESENCIA DE ARCHIVO (sin editar versiones a mano):
+//   - La app lista la carpeta de su plataforma en el servidor:
+//       web/PWA -> carpeta RAIZ (lista completa);  apk -> 'apk';  exe -> 'exe';  deb -> 'deb'
+//   - Si en esa carpeta hay un archivo INSTALABLE (.apk/.exe/.deb) -> hay parche
+//     publicado: popup con opcion de descargar e instalar.
+//   - Opcionalmente un archivo .txt en la carpeta define el titulo y las notas:
+//       - el NOMBRE del .txt (sin .txt)  -> titulo/encabezado del parche.
+//       - el CONTENIDO del .txt          -> lista de mejoras/notas del parche.
+//   - Carpeta de la plataforma VACIA (sin instalable y sin .txt) -> SILENCIO total:
+//     la app arranca normal, sin popup ni notificaciones.
+//   - Solo hay un .txt (sin instalable) -> notificacion informativa (sin descarga).
+//   - Regla de marcador: se recuerda que la version de ESTE archivo ya se instalo
+//     (por nombre + tamano); no vuelve a avisar mientras siga publicado el mismo
+//     archivo. Si se publica otro (otro nombre o el mismo nombre con contenido
+//     distinto) -> avisa de nuevo.
+//   - Funciona offline / sin servidor del libro: cualquier fallo de red o 404 se
+//     ignora en silencio. No interfiere con el candado ni con la UI.
 (function () {
     if (window.jamUpdaterLoaded) return;
     window.jamUpdaterLoaded = true;
 
-    var APP_VERSION = '1.1.2';                   // version DE ESTA instalacion (editar al publicar)
+    // Version INTERNA fija de esta app (no cambia hasta que madure). Compatible siempre.
+    var APP_VERSION = '1.1';
+    // Nombre del archivo instalable CON EL QUE SE ENTREGO esta build. Sirve de
+    // referencia: mientras la carpeta tenga exactamente ese archivo, es la misma
+    // version ya instalada (silencio). Un archivo distinto = un parche pendiente.
+    var APP_ARCHIVO = {
+        web: '',
+        apk: 'JAMPOS-1.1-estable-final.apk',
+        exe: 'JAM POS 1.1 estable final.exe',
+        deb: 'JAM POS 1.1 estable final (Linux).deb'
+    };
+    var EXTENSION_INSTALABLE = { web: '', apk: '.apk', exe: '.exe', deb: '.deb' };
+
     var BASE_URL = 'https://aplicacionjam.github.io/'; // raiz publicada (GitHub Pages)
-    var PLATAFORMA = detectarPlataforma();       // 'web' | 'apk' | 'exe' | 'deb'
-    var UPDATE_URL = PLATAFORMA === 'web'
-        ? 'update.json'                          // web/PWA: su propio directorio
-        : BASE_URL + PLATAFORMA + '/update.json';// nativas: carpeta por plataforma
-    var CHECK_INICIAL_MS = 4000;                 // espera tras cargar la app
-    var CHECK_INTERVALO_MS = 6 * 60 * 60 * 1000; // cada 6 horas
+    var PLATAFORMA = detectarPlataforma();             // 'web' | 'apk' | 'exe' | 'deb'
+    var CARPETA = PLATAFORMA === 'web' ? '' : PLATAFORMA + '/';
+    var UPDATE_URL = 'update.json';                    // respaldo (solo si no se puede listar)
+    var CHECK_INICIAL_MS = 4000;                       // espera tras cargar la app
+    var CHECK_INTERVALO_MS = 6 * 60 * 60 * 1000;       // cada 6 horas
 
     // Deteccion automatica de la plataforma. Prioridad:
     //   1) window.plataformaApp si el shell nativo lo inyecta (apk/exe/deb/web).
@@ -43,19 +58,6 @@
         } catch (e) { return 'web'; }
     }
 
-    function normalizar(v) {
-        return String(v == null ? '' : v).replace(/^v/i, '').split('.').map(function (n) { return parseInt(n, 10) || 0; });
-    }
-    function esMayor(a, b) {
-        var A = normalizar(a), B = normalizar(b), n = Math.max(A.length, B.length), i;
-        for (i = 0; i < n; i++) {
-            var x = A[i] || 0, y = B[i] || 0;
-            if (y > x) return true;
-            if (y < x) return false;
-        }
-        return false;
-    }
-
     function escapeHtml(s) {
         return String(s).replace(/[&<>"']/g, function (m) {
             return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m];
@@ -72,12 +74,11 @@
     }
 
     var overlay = null;
-    var __avisadoSesion = {}; // evita re-avisar la misma version varias veces en UNA sesion
+    var __avisadoSesion = {}; // evita re-avisar el mismo archivo varias veces en UNA sesion
 
     // ===== MARCADOR LOCAL: version ya descargada/instalada en ESTE equipo =====
-    // Previene popups repetidos: una vez que el usuario instala (o acepta
-    // descargar) una version, esta app recuerda ese numero y NO vuelve a avisar
-    // mientras el servidor no publique una version MAYOR a la ya instalada.
+    // Guarda "nombre:size" del archivo instalable que este equipo ya acepto/instalo.
+    // Mientras siga publicado ese mismo archivo (mismo nombre y tamano) no se avisa.
     var CLAVE_INSTALADA = 'jampos_ultima_instalada';
 
     function leerInstalada() {
@@ -90,12 +91,13 @@
     function guardarInstalada(v) {
         try { localStorage.setItem(CLAVE_INSTALADA, String(v)); } catch (e) {}
     }
-    // Version instalada efectiva = el numero mayor entre el marcador local y el
-    // APP_VERSION embebido (el marcador manda si es mas nuevo).
-    function versionInstalada() {
-        var m = leerInstalada();
-        if (!m) return APP_VERSION;
-        return esMayor(m, APP_VERSION) ? APP_VERSION : m;
+    // Marcador moderno = "nombre:size". Marcadores de versiones anteriores son
+    // numeros (ej. '1.1a'): se tratan como "no registrado con la regla nueva".
+    function esFirmaModerna(m) {
+        return /^.+:\d+$/i.test(String(m || ''));
+    }
+    function firmaDe(item) {
+        return item ? String(item.name) + ':' + (item.size || 0) : '';
     }
 
     function cerrarPopup() {
@@ -143,48 +145,133 @@
         document.head.appendChild(s);
     }
 
+    // Lista los archivos de la carpeta de la plataforma como {name, size}.
+    // En github.io se obtiene la carpeta REAL con la API de GitHub; si falla
+    // (local, offline, otro host) cae al update.json de respaldo.
+    function listarCarpeta() {
+        var hs = location.hostname || '';
+        if (hs.indexOf('.github.io') !== -1) {
+            var repo = hs.replace('.github.io', '');
+            return fetch('https://api.github.com/repos/' + repo + '/' + repo + '.github.io/contents/' + CARPETA)
+                .then(function (r) {
+                    if (!r.ok) throw new Error('api');
+                    return r.json();
+                })
+                .then(function (arr) {
+                    if (!Array.isArray(arr)) throw new Error('no-array');
+                    return arr.map(function (x) { return { name: x.name, size: x.size || 0 }; });
+                })
+                .catch(function () {
+                    return leerUpdateJson().then(function (u) {
+                        return u && u.archivo ? [{ name: u.archivo, size: 0 }] : [];
+                    });
+                });
+        }
+        return leerUpdateJson().then(function (u) {
+            return u && u.archivo ? [{ name: u.archivo, size: 0 }] : [];
+        });
+    }
+
+    function leerUpdateJson() {
+        return fetch(UPDATE_URL + '?v=' + Date.now(), { cache: 'no-store' })
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .catch(function () { return null; });
+    }
+
+    // Contenido del archivo .txt (notas del parche). Si falla, notas vacias.
+    function leerNotas(nombre) {
+        if (!nombre) return Promise.resolve([]);
+        return fetch(BASE_URL + CARPETA + nombre, { cache: 'no-store' })
+            .then(function (r) { return r.ok ? r.text() : ''; })
+            .then(function (txt) {
+                return String(txt).split('\n').map(function (l) { return l.replace(/\r$/, '').trim(); })
+                    .filter(function (l) { return l.length > 0; });
+            })
+            .catch(function () { return []; });
+    }
+
+    // Archivo instalable en una lista (item {name,size} o null). Prioriza el
+    // propio APP_ARCHIVO de la plataforma si esta; si no, el primer instalable.
+    function hallarInstalable(lista) {
+        var ext = EXTENSION_INSTALABLE[PLATAFORMA];
+        if (!ext) return null;
+        for (var i = 0; i < lista.length; i++) {
+            if (String(lista[i].name).toLowerCase() === String(APP_ARCHIVO[PLATAFORMA]).toLowerCase()) return lista[i];
+        }
+        for (var j = 0; j < lista.length; j++) {
+            var n = String(lista[j].name);
+            var ln = n.toLowerCase();
+            if (ln.indexOf(ext) === ln.length - ext.length) return lista[j];
+        }
+        return null;
+    }
+
+    // Archivo .txt informativo en la lista (item o null). Prioriza el que coincida
+    // con el nombre del instalable (ej: "JAM POS-txt.txt" junto a "JAM POS.apk").
+    function hallarTxt(lista) {
+        var inst = hallarInstalable(lista);
+        var base = inst ? String(inst.name).replace(/\.[^.]+$/, '').toLowerCase() : null;
+        var elegido = null;
+        for (var i = 0; i < lista.length; i++) {
+            var n = String(lista[i].name);
+            if (/\.txt$/i.test(n) && n.toLowerCase() !== 'update.json') {
+                if (base && n.toLowerCase().indexOf(base) !== -1) return lista[i];
+                if (!elegido) elegido = lista[i];
+            }
+        }
+        return elegido;
+    }
+
+    function tituloDeTxt(nombre) {
+        if (!nombre) return 'JAM POS Parche';
+        var n = String(nombre).replace(/\.txt$/i, '').replace(/[_-]+/g, ' ').trim();
+        return n ? n : 'JAM POS Parche';
+    }
+
     function mostrarPopup(datos) {
         if (overlay) cerrarPopup();
         if (appBloqueada()) return;
         crearEstilos();
         overlay = document.createElement('div');
         overlay.className = 'jamupd-fondo';
-        var esNativa = PLATAFORMA !== 'web';
+        var tieneDescarga = !!datos.descarga;
         var notasHtml = (datos.notas && datos.notas.length)
             ? '<ul class="jamupd-notas">' + datos.notas.map(function (n) { return '<li><b>&#10003;</b><span>' + escapeHtml(String(n)) + '</span></li>'; }).join('') + '</ul>'
             : '';
-        var textoAceptar = esNativa
-            ? '&#10515;&nbsp; Descargar y actualizar'
-            : '&#8635;&nbsp; Aceptar y actualizar ahora';
-        var avisoPlataforma = esNativa
-            ? 'Hay una nueva versi&oacute;n de la aplicaci&oacute;n. Desc&aacute;rgala e inst&aacute;lala para disfrutar de las mejoras.'
-            : '<b>Regla de actualizaci&oacute;n:</b> debes actualizar al iniciar la aplicaci&oacute;n. Si no lo haces ahora, se te recordar&aacute; en cada inicio.';
+        var botones =
+            (tieneDescarga ? '<button class="jamupd-btn jamupd-btn-actualizar" id="jamupdSi">&#10515;&nbsp; Descargar e instalar</button>' : '<button class="jamupd-btn jamupd-btn-actualizar" id="jamupdSi">&#10003;&nbsp; Entendido</button>') +
+            (tieneDescarga ? '<button class="jamupd-btn jamupd-btn-quedarme" id="jamupdNo">No aceptar por ahora</button>' : '');
         overlay.innerHTML =
             '<div class="jamupd-caja">' +
-            '<div class="jamupd-badge">&#9650;&nbsp;Actualizaci&oacute;n disponible</div>' +
+            '<div class="jamupd-badge">&#9650;&nbsp;' + (tieneDescarga ? 'Actualizaci&oacute;n disponible' : 'Novedad de JAM POS') + '</div>' +
             '<h2>JAM POS v1.1 By @felinuxs</h2>' +
-            '<p class="jamupd-sub">Nueva versi&oacute;n <b>' + escapeHtml(String(datos.version)) + '</b>' + (datos.fecha ? ' &middot; Publicada el ' + escapeHtml(String(datos.fecha)) : '') + '</p>' +
-            (datos.titulo ? '<p class="jamupd-sub" style="opacity:.85;margin-top:-6px"><b>' + escapeHtml(String(datos.titulo)) + '</b></p>' : '') +
+            '<p class="jamupd-sub">' + escapeHtml(String(datos.titulo)) + '</p>' +
             notasHtml +
-            '<div class="jamupd-aviso">&#9888;&nbsp;' + avisoPlataforma + '</div>' +
-            '<button class="jamupd-btn jamupd-btn-actualizar" id="jamupdSi">' + textoAceptar + '</button>' +
-            '<button class="jamupd-btn jamupd-btn-quedarme" id="jamupdNo">No aceptar por ahora</button>' +
+            (tieneDescarga ? '<div class="jamupd-aviso">&#9888;&nbsp;Hay un nuevo parche de la aplicaci&oacute;n. Desc&aacute;rgala e inst&aacute;lala para disfrutar de las mejoras.</div>' : '') +
+            botones +
             '</div>';
         document.body.appendChild(overlay);
-        overlay.dataset.version = String(datos.version);
         ultimosDatos = datos;
-        overlay.querySelector('#jamupdSi').onclick = actualizarAhora;
-        overlay.querySelector('#jamupdNo').onclick = quedarse;
+        var elSi = overlay.querySelector('#jamupdSi');
+        var elNo = overlay.querySelector('#jamupdNo');
+        if (elSi) elSi.onclick = tieneDescarga ? actualizarAhora : avisoEntendido;
+        if (elNo) elNo.onclick = quedarse;
     }
 
-    var ultimosDatos = null; // update.json de la ultima version detectada
+    var ultimosDatos = null;
+
+    // Boton "Entendido" de un aviso sin descarga: marca visto una sola vez.
+    function avisoEntendido() {
+        cerrarPopup();
+        var claveTxt = ultimosDatos && ultimosDatos.claveVisto ? ultimosDatos.claveVisto : '';
+        try { if (claveTxt) localStorage.setItem('jampos_aviso_' + claveTxt, '1'); } catch (e) {}
+    }
 
     function quedarse() {
         cerrarPopup();
-        // Se queda con la version actual por ahora: el marcador local NO se
-        // sobreescribe, asi seguimos avisando SOLO cuando haya una version
-        // mayor a la publicada. Sin nuevas versiones publicadas => sin popup.
-        toast('De momento te quedas con esta versi\u00f3n. Te avisamos si aparece una m\u00e1s nueva.');
+        // El usuario decidio quedarse: NO registra el archivo, asi que en el
+        // proximo inicio se le vuelve a recordar mientras siga el parche.
+        toast('De momento te quedas con esta versi\u00f3n. Te avisamos en el pr\u00f3ximo inicio.');
     }
 
     var recargando = false;
@@ -196,26 +283,22 @@
         setTimeout(function () { window.location.reload(); }, 4000);
     }
 
-    // URL de descarga del instalador para nativas (apk/exe/deb).
-    function urlDescargaNativa() {
+    function urlDescarga() {
         try {
             var d = ultimosDatos || {};
             if (d.descarga) return String(d.descarga);
-            if (d.url) return String(d.url);
-            if (d.archivo) return BASE_URL + PLATAFORMA + '/' + String(d.archivo);
+            if (d.archivo && PLATAFORMA !== 'web') return BASE_URL + PLATAFORMA + '/' + String(d.archivo);
         } catch (e) {}
         return '';
     }
 
     function actualizarAhora() {
         cerrarPopup();
-        // El usuario acepto la actualizacion: registrar la version como
-        // "ya instalada/aceptada" para no volver a preguntar por ella.
-        try { if (ultimosDatos && ultimosDatos.version) guardarInstalada(String(ultimosDatos.version)); } catch (e) {}
+        // El usuario acepto el parche: registrar este archivo instalable (nombre:size).
+        if (ultimosDatos && ultimosDatos.firma) guardarInstalada(String(ultimosDatos.firma));
         if (PLATAFORMA !== 'web') {
-            // NATIVA (apk/exe/deb): abre la descarga del instalador de su carpeta.
-            var url = urlDescargaNativa();
-            if (!url) { toast('No se encontre el enlace de descarga de la actualizaci\u00f3n.'); return; }
+            var url = urlDescarga();
+            if (!url) { toast('No se encontre el enlace de descarga del parche.'); return; }
             toast('Abriendo descarga de la actualizaci\u00f3n...');
             var puente = window.AndroidBridge;
             try {
@@ -256,36 +339,82 @@
         }
     }
 
+    function aviso_nuevo(archivo, txt, notas) {
+        var claveTxt = txt ? String(txt.name).replace(/\.txt$/i, '') : '';
+        // Aviso informativo (solo .txt) ya visto? una sola vez.
+        if (!archivo && claveTxt) {
+            try { if (localStorage.getItem('jampos_aviso_' + claveTxt)) return; } catch (e) {}
+        }
+        // Si el instalable publicado es EXACTAMENTE el archivo con el que se entrego
+        // esta build, ya lo tenemos instalado: silencio.
+        if (archivo && String(archivo.name).toLowerCase() === String(APP_ARCHIVO[PLATAFORMA] || '').toLowerCase()) return;
+        if (archivo) {
+            var firma = firmaDe(archivo);
+            var marker = leerInstalada();
+            if (marker === firma) return;                 // mismo archivo ya instalado
+            if (esFirmaModerna(marker) && marker !== firma) {
+                __avisadoSesion[firma] = true;
+                return presentar(archivo, txt, notas, firma);
+            }
+            // marker vacio o de versiones anteriores:
+            if (!marker || !esFirmaModerna(marker)) {
+                // No hay registro del archivo: si en la carpeta esta SOLO el mismo
+                // archivo entregado, se anota en silencio (es la version actual).
+                var soloPropio = true;
+                for (var i = 0; i < (window.__jamListaActual || []).length; i++) {
+                    var n = String(window.__jamListaActual[i].name).toLowerCase();
+                    if (n.indexOf(EXTENSION_INSTALABLE[PLATAFORMA]) !== -1 &&
+                        n !== String(APP_ARCHIVO[PLATAFORMA]).toLowerCase()) { soloPropio = false; break; }
+                }
+                if (soloPropio) { guardarInstalada(firma); return; } // ya es la version actual
+                __avisadoSesion[firma] = true;
+                return presentar(archivo, txt, notas, firma);
+            }
+        } else {
+            // Sin instalable pero con .txt: notificacion informativa.
+            if (__avisadoSesion['txt:' + claveTxt]) return;
+            __avisadoSesion['txt:' + claveTxt] = true;
+            if (!claveTxt) return;
+            return presentar(null, txt, notas, null);
+        }
+    }
+
+    function presentar(archivo, txt, notas, firma) {
+        var nombreInst = archivo ? String(archivo.name) : '';
+        var titulo = archivo
+            ? (tituloDeTxt(txt ? txt.name : null) + ' &middot; ' + escapeHtml(nombreInst))
+            : tituloDeTxt(txt ? txt.name : null);
+        mostrarPopup({
+            archivo: nombreInst,
+            firma: firma || '',
+            claveVisto: txt ? String(txt.name).replace(/\.txt$/i, '') : '',
+            titulo: titulo,
+            notas: notas,
+            descarga: archivo && PLATAFORMA !== 'web' ? BASE_URL + PLATAFORMA + '/' + nombreInst : ''
+        });
+    }
+
     function comprobar() {
         if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
         if (appBloqueada()) return;
         if (document.readyState === 'loading') { setTimeout(comprobar, CHECK_INICIAL_MS); return; }
-        try {
-            fetch(UPDATE_URL + '?v=' + Date.now(), { cache: 'no-store' })
-                .then(function (r) { if (!r.ok) throw new Error('http'); return r.json(); })
-                .then(function (datos) {
-                    if (!datos || !datos.version) return;
-                    // Popup INTELIGENTE: solo avisa si la version publicada es
-                    // MAYOR que la que este equipo ya tiene (marcador local o
-                    // APP_VERSION embebido). Si la publicada NO es mayor, es que
-                    // ya esta instalada/actualizada: silencio total, sin popup.
-                    var p = normalizar(datos.version).join('.');
-                    var t = normalizar(versionInstalada()).join('.');
-                    if (p === t) {
-                        // Version publicada == version instalada: registrar el
-                        // marcador (por si APP_VERSION quedo desactualizado) y
-                        // no avisar.
-                        guardarInstalada(String(datos.version));
-                        return;
-                    }
-                    if (!esMayor(versionInstalada(), datos.version)) return;
-                    var v = String(datos.version);
-                    if (__avisadoSesion[v]) return;
-                    __avisadoSesion[v] = true;
-                    mostrarPopup(datos);
-                })
-                .catch(function () {});
-        } catch (e) {}
+        listarCarpeta()
+            .then(function (lista) {
+                if (!Array.isArray(lista) || lista.length === 0) return; // carpeta vacia: silencio
+                window.__jamListaActual = lista;
+                var archivo = hallarInstalable(lista);
+                var txt = hallarTxt(lista);
+                if (!archivo && !txt) return; // sin instalable ni .txt: silencio
+                var claveTxt = txt ? String(txt.name).replace(/\.txt$/i, '') : '';
+                if (!archivo && claveTxt) {
+                    try { if (localStorage.getItem('jampos_aviso_' + claveTxt)) return; } catch (e) {}
+                }
+                if (__avisadoSesion[archivo ? firmaDe(archivo) : ('txt:' + claveTxt)]) return;
+                return leerNotas(txt ? txt.name : null).then(function (notas) {
+                    aviso_nuevo(archivo, txt, notas);
+                });
+            })
+            .catch(function () {});
     }
 
     function iniciar() {
@@ -302,6 +431,8 @@
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', iniciar);
     else iniciar();
 
-    window.jamCheckUpd = comprobar; // util para depuracion/forzar
-    window.jamEsMayor = esMayor;    // util para pruebas/debug
+    window.jamCheckUpd = comprobar;   // util para depuracion/forzar
+    window.jamListarCarpeta = listarCarpeta;
+    window.jamHallarInstalable = hallarInstalable;
+    window.jamAvisoNuevo = aviso_nuevo;
 })();

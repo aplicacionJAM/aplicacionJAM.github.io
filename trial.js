@@ -234,7 +234,7 @@
         toast.innerHTML =
             '<span class="jamult-icon">&#9200;</span>' +
             '<div class="jamult-cuerpo">' +
-            '<div class="jamult-titulo">JAM POS 1.1 estable final &middot; Versi&oacute;n de prueba &mdash; d&iacute;a ' + textoDia + ' de ' + estado.diasTotales + '</div>' +
+            '<div class="jamult-titulo">JAM POS v1.1 By @felinuxs &middot; Versi&oacute;n de prueba &mdash; d&iacute;a ' + textoDia + ' de ' + estado.diasTotales + '</div>' +
             '<div class="jamult-barra"><div class="jamult-barra-fill" style="width:' + pct + '%"></div></div>' +
             '<div class="jamult-pct">' + (estado.diasRestantes === 1 ? '1 d&iacute;a restante' : (estado.diasRestantes) + ' d&iacute;as restantes') + '</div>' +
             '</div>' +
@@ -260,12 +260,12 @@
             '<div class="jamult-bloqueo-caja">' +
             '<div class="jamult-bloqueo-icono">&#128274;</div>' +
             '<h2>Periodo de prueba finalizado</h2>' +
-            '<p>El periodo de prueba de <b>7 d&iacute;as</b> de JAM POS 1.1 estable final ha terminado.</p>' +
+            '<p>El periodo de prueba de <b>7 d&iacute;as</b> de JAM POS v1.1 By @felinuxs ha terminado.</p>' +
             '<button class="jamult-bloqueo-btn" onclick="' +
             'if(window.AndroidBridge&&typeof AndroidBridge.cerrarApp===\'function\')AndroidBridge.cerrarApp();' +
             'else try{window.close()}catch(e){}' +
             '">Cerrar aplicaci&oacute;n</button>' +
-            '<div class="jamult-bloqueo-marca">JAM POS 1.1 estable final &middot; v1.1</div>' +
+            '<div class="jamult-bloqueo-marca">JAM POS v1.1 By @felinuxs &middot; v1.1</div>' +
             '</div>';
         document.body.appendChild(fondo);
     }
