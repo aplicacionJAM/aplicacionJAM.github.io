@@ -2469,7 +2469,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         sidebar.innerHTML = `<div class="sidebar-brand" style="color:${accent}">JAM</div><div class="sidebar-sep"></div>${MODULOS_SIDEBAR.map(m => {
             const activo = actual === m.id ? 'filter:brightness(1.3);' : '';
             return `<button class="sidebar-item" style="${activo}color:${accent}" onclick="navigateTo('${m.id}')" title="${m.label}"><i class="fas ${m.icon}" style="color:${accent}"></i><span>${m.label}</span></button>`;
-        }).join('')}<div class="sidebar-sep" style="margin-top:auto"></div><button class="sidebar-item" onclick="backToHome()" title="Inicio" style="margin-top:auto"><i class="fas fa-home" style="color:${accent}"></i><span>Inicio</span></button>`;
+        }).join('')}<div class="sidebar-sep" style="margin-top:auto"></div><button class="sidebar-item" onclick="backToHome()" title="Inicio" style="margin-top:auto;color:${accent}"><i class="fas fa-home" style="color:${accent}"></i><span>Inicio</span></button>`;
     }
     
     // ==================== PANTALLA PRINCIPAL ====================
