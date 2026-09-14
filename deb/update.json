@@ -1,1 +1,12 @@
-
+{
+  "version": "1.1.2",
+  "nombre": "JAM POS v1.1 By @felinuxs",
+  "titulo": "Actualizacion para Linux (DEB)",
+  "fecha": "2026-09-14",
+  "archivo": "JAM POS 1.1 estable final (Linux).deb",
+  "notas": [
+    "Correcciones de seguridad y estabilidad.",
+    "Cambia el archivo .deb de esta carpeta por la nueva version.",
+    "La app detectara esta carpeta llena (update.json) y avisara al iniciar."
+  ]
+}
