@@ -2504,7 +2504,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
                 ${homeGridHtml}
                     ${MODULOS_SIDEBAR.map(m => `<button onclick="navigateTo('${m.id}')" class="main-module-btn" style="background:${accent};"><i class="fas ${m.icon}"></i><span>${m.label}</span></button>`).join('')}
                 </div>
-                <div class="text-center text-xs mt-4 opacity-60">JAM POS v${APP_VERSION}</div>
+                <div class="text-center text-xs mt-4 opacity-60">JAM POS v${APP_VERSION}<br>By @felinuxs</div>
             </div>
         `;
         actualizarModoLayout();
@@ -4800,6 +4800,7 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
                 <div class="config-section"><button id="btnToggleColores" class="btn-azul-redondeado btn-redondeado w-full mb-2 py-2"><i class="fas fa-palette"></i> Temas de color</button><div id="panelColores" style="display:none;" class="mt-2 config-inner"><div class="flex flex-wrap justify-center gap-2" id="paletaColores" style="max-width:290px;margin:0 auto"></div></div></div>
                 <div class="config-section"><button id="btnToggleSync" class="btn-azul-redondeado btn-redondeado w-full mb-2 py-2"><i class="fas fa-rotate"></i> Sincronización entre dispositivos</button><div id="panelSync" style="display:none;" class="mt-2 config-inner"><div class="text-xs opacity-70 mb-2">Conecta este equipo con otros (PC o teléfono) y comparte productos, clientes, ventas, proveedores, gastos, empleados, tasa y tickets, sin necesidad de servidores. Mientras dos equipos estén encendidos con Internet, los datos se copian solos.</div><button id="abrirSyncBtn" class="btn-redondeado py-2 px-4 w-full" style="background:#3b82f6;color:#fff"><i class="fas fa-link"></i> Abrir Sincronización</button><p class="text-xs text-center mt-2 opacity-60">Crea un círculo o únete escaneando el QR (o escribiendo ID + código)</p></div></div>
                 <div class="config-section"><button id="btnToggleBackup" class="btn-azul-redondeado btn-redondeado w-full mb-2 py-2"><i class="fas fa-floppy-disk"></i> Copia de seguridad</button><div id="panelBackup" style="display:none;" class="mt-2 config-inner"><div class="flex flex-col gap-3">${esAppNativa() ? `<div class="rounded-xl p-3" style="background:rgba(14,165,233,0.08);border:1px solid rgba(14,165,233,0.3)"><p class="text-sm font-semibold mb-1"><i class="fas fa-folder"></i> Carpeta de la aplicación</p><p id="carpetaEstado" class="text-xs opacity-70 mb-2"><i class="fas fa-circle-info"></i> Elija una carpeta para guardar tickets y respaldos (se creará la subcarpeta JAMPOS).</p><button id="elegirCarpetaBtn" class="btn-redondeado py-2 px-4 w-full" style="background:#0ea5e9;color:#fff"><i class="fas fa-folder-open"></i> Elegir carpeta</button></div>` : `<p class="text-xs text-center opacity-60"><i class="fas fa-lightbulb"></i> En la app Android podrás elegir una carpeta donde guardar los archivos.</p>`}<button id="exportJsonBtn" class="btn-redondeado py-2 px-4" style="background:#3b82f6;color:#fff"><i class="fas fa-download"></i> Exportar todo (JSON)</button><button id="exportCsvBtn" class="btn-redondeado py-2 px-4" style="background:#10b981;color:#fff"><i class="fas fa-download"></i> Exportar todo (CSV / Excel)</button><button id="importJsonBtn" class="btn-redondeado py-2 px-4" style="background:#8b5cf6;color:#fff"><i class="fas fa-upload"></i> Importar desde JSON</button><button id="importCsvBtn" class="btn-redondeado py-2 px-4" style="background:#f59e0b;color:#fff"><i class="fas fa-upload"></i> Importar desde CSV / Excel</button>${esAppNativa() ? `<button id="importCarpetaBtn" class="btn-redondeado py-2 px-4" style="background:#14b8a6;color:#fff"><i class="fas fa-folder-open"></i> Importar desde la carpeta JAMPOS</button><button id="restaurarBackupBtn" class="btn-redondeado py-2 px-4" style="background:#ef4444;color:#fff"><i class="fas fa-rotate"></i> Restaurar desde respaldo automático</button>` : ''}<input type="file" id="importFileInput" accept=".json" style="display:none"><input type="file" id="importCsvFileInput" accept=".csv,.xlsx,.xls,.txt" style="display:none"><p class="text-xs text-center mt-2 opacity-60">Los archivos CSV se abren directamente en Excel</p></div></div></div>
+            <div class="text-center text-xs mt-4 opacity-60">By @felinuxs</div>
             </div>
         `;
         document.getElementById('appRoot').innerHTML = html;
@@ -5075,7 +5076,7 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
         });
     }
 // ==================== GUÍA DE LA APP Y TUTORIAL ====================
-    const APP_VERSION = '0.1';
+    const APP_VERSION = '1.1';
     const APP_NOMBRE = 'JAM POS';
     const APP_TAGLINE = 'Tienda Profesional';
     const MODULOS_GUIA = [

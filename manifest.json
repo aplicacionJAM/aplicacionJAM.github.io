@@ -1,6 +1,6 @@
 {
-  "name": "JAM POS 1.1 estable final",
-  "short_name": "JAM POS 1.1",
+  "name": "JAM POS v1.1 By @felinuxs",
+  "short_name": "JAM POS v1.1",
   "description": "Sistema de punto de venta profesional. Gestión de inventario, ventas, clientes y reportes. Funciona sin conexión.",
   "start_url": "./",
   "display": "standalone",
