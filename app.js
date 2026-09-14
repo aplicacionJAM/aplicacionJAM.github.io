@@ -1,4 +1,4 @@
-﻿// ==================== UTILIDADES ====================
+// ==================== UTILIDADES ====================
     const escapeHtml = s => s != null ? String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])) : '';
     const fmtPrecio = v => { let num = Number(v); if(isNaN(num)) num = 0; let p = num.toFixed(2).split('.'); p[0] = p[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.'); return p.join(','); };
     const fmtDolar = v => Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -121,7 +121,8 @@
     const esOscuro = c => { let r=parseInt(c.slice(1,3),16), g=parseInt(c.slice(3,5),16), b=parseInt(c.slice(5,7),16); return(.299*r + .587*g + .114*b) < 128; };
     const normalizeText = s => (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
     const capitalizeWords = s => s.replace(/(^|[^\p{L}\p{N}])(\p{L})/gu, (m, p1, p2) => p1 + p2.toUpperCase());
-    function mostrarNotificacion(mensaje, tipo = 'info') { const notif = document.createElement('div'); notif.className = 'notificacion-flotante'; notif.style.backgroundColor = tipo === 'success' ? '#10b981' : (tipo === 'error' ? '#ef4444' : '#3b82f6'); notif.style.color = 'white'; notif.innerText = mensaje; document.body.appendChild(notif); setTimeout(() => notif.remove(), 3000); }
+    const TOKENS_FA = { '💵':'fa-money-bill-wave', '💰':'fa-sack-dollar', '💳':'fa-credit-card', '🏦':'fa-building-columns', '📱':'fa-mobile-screen-button', '🔀':'fa-shuffle', '📷':'fa-camera', '📦':'fa-boxes-stacked', '🗑':'fa-trash', '🗑️':'fa-trash', '✅':'fa-circle-check', '❌':'fa-circle-xmark', '⚠️':'fa-triangle-exclamation', 'ℹ️':'fa-circle-info', '❓':'fa-circle-question', '💾':'fa-floppy-disk', '📁':'fa-folder', '📂':'fa-folder-open', '☁️':'fa-cloud', '🚚':'fa-truck', '🛒':'fa-cart-shopping', '🛍️':'fa-bag-shopping', '🔒':'fa-lock', '🔓':'fa-lock-open', '🕘':'fa-clock', '🟢':'fa-circle', '🟡':'fa-circle', '🔴':'fa-circle', '📊':'fa-chart-column', '🧮':'fa-calculator', '🏷️':'fa-tag', '👤':'fa-user', '👥':'fa-users', '💚':'fa-heart', '🏢':'fa-building', '🌐':'fa-globe', '🪙':'fa-coins', '📘':'fa-book', '📆':'fa-calendar-days', '📅':'fa-calendar-days', '📈':'fa-chart-line', '🧾':'fa-receipt', '💸':'fa-money-bill-wave', '📜':'fa-scroll', '✏️':'fa-pen', '📞':'fa-phone', '📋':'fa-clipboard', '🔔':'fa-bell', '🔖':'fa-tag', '🔗':'fa-link', '📌':'fa-thumbtack', '📍':'fa-location-dot', '🌟':'fa-star', '🎨':'fa-palette', '🌓':'fa-circle-half-stroke', '🌙':'fa-moon', '🧑‍💼':'fa-user-tie', '⚙️':'fa-gear', '🪪':'fa-id-card', '📲':'fa-mobile-screen', '🔄':'fa-rotate', '💱':'fa-money-bill-transfer', '💡':'fa-lightbulb', '🔐':'fa-lock', '💼':'fa-briefcase', '✉️':'fa-envelope', '🙏':'fa-hands-praying', '🔊':'fa-volume-high', '🗓️':'fa-calendar-days', '💲':'fa-dollar-sign', '📤':'fa-upload', '📥':'fa-download', '↔️':'fa-right-left', '⏱️':'fa-stopwatch', }; const COLOR_FA = { '🟢':'#22c55e', '🟡':'#eab308', '🔴':'#ef4444', }; function nodosIconosFA(texto, contenedor) { if (texto == null) return; let s = String(texto); const claves = Object.keys(TOKENS_FA).sort((a,b) => b.length - a.length); while (s.length) { let idx = -1, tok = ''; claves.forEach(k => { const i = s.indexOf(k); if (i !== -1 && (idx === -1 || i < idx)) { idx = i; tok = k; } }); if (idx === -1) { contenedor.appendChild(document.createTextNode(s)); return; } if (idx > 0) contenedor.appendChild(document.createTextNode(s.slice(0, idx))); const ic = document.createElement('i'); ic.className = 'fas ' + TOKENS_FA[tok]; if (COLOR_FA[tok]) ic.style.color = COLOR_FA[tok]; contenedor.appendChild(ic); s = s.slice(idx + tok.length); } }
+    function mostrarNotificacion(mensaje, tipo = 'info') { const notif = document.createElement('div'); notif.className = 'notificacion-flotante'; notif.style.backgroundColor = tipo === 'success' ? '#10b981' : (tipo === 'error' ? '#ef4444' : '#3b82f6'); notif.style.color = 'white'; const iconos = { success: 'fa-circle-check', error: 'fa-circle-xmark', info: 'fa-circle-info' }; const ic = document.createElement('i'); ic.className = 'fas ' + (iconos[tipo] || 'fa-circle-info'); notif.appendChild(ic); const txt = document.createElement('span'); nodosIconosFA(String(mensaje || '').replace(/^\s*(✅|❌|⚠️|ℹ️|❓)\s*/u, ''), txt); notif.appendChild(txt); document.body.appendChild(notif); setTimeout(() => notif.remove(), 3000); }
     async function puenteResultado(v){ return (v && typeof v.then === 'function') ? await v : v; }
     function mostrarNotificacionNativa(titulo, cuerpo, tag) {
         if (!('Notification' in window) || !('serviceWorker' in navigator)) return;
@@ -142,7 +143,7 @@
             const overlay = document.createElement('div');
             overlay.className = 'modal-form';
             overlay.style.zIndex = '12000';
-            const iconos = { info: 'ℹ️', error: '⚠️', success: '✅', pregunta: '❓' };
+            const iconos = { info: 'fa-circle-info', error: 'fa-triangle-exclamation', success: 'fa-circle-check', pregunta: 'fa-circle-question' };
             const tipo = opciones.tipo || 'info';
             const cerrar = (i) => {
                 let val = i >= 0 ? opciones.botones[i].valor : null;
@@ -159,13 +160,13 @@
             titulo.className = 'dialogo-titulo';
             const icono = document.createElement('span');
             icono.className = 'dialogo-icono';
-            icono.textContent = iconos[tipo];
+            icono.innerHTML = `<i class="fas ${iconos[tipo] || 'fa-circle-info'}"></i>`;
             titulo.appendChild(icono);
             titulo.appendChild(document.createTextNode(opciones.titulo || 'Aviso'));
             dialogo.appendChild(titulo);
             const cuerpo = document.createElement('div');
             cuerpo.className = 'dialogo-cuerpo';
-            cuerpo.textContent = opciones.mensaje;
+            nodosIconosFA(opciones.mensaje, cuerpo);
             dialogo.appendChild(cuerpo);
             let inp = null;
             if (opciones.input) {
@@ -369,12 +370,12 @@
         fondo.className = 'backup-popup-fondo';
         fondo.innerHTML = `
             <div class="backup-popup">
-                <div class="backup-popup-icono">💾</div>
+                <div class="backup-popup-icono"><i class="fas fa-floppy-disk"></i></div>
                 <h3>Tus datos están creciendo</h3>
                 <p>Has realizado <strong>${totalOps} operaciones</strong> importantes. Recomendamos crear un respaldo para proteger tu información.</p>
                 <div class="backup-popup-opciones">
-                    ${esNativa ? `<button class="backup-popup-btn backup-popup-btn-principal" style="background:${accent}" onclick="window._ejecutarBackupLocal()">📁 Guardar en este dispositivo</button>` : `<button class="backup-popup-btn backup-popup-btn-principal" style="background:${accent}" onclick="window._ejecutarBackupDescarga()">📥 Descargar respaldo JSON</button>`}
-                    <button class="backup-popup-btn backup-popup-btn-secundario" onclick="window._ejecutarBackupGoogleDrive()">☁️ Guardar en Google Drive</button>
+                    ${esNativa ? `<button class="backup-popup-btn backup-popup-btn-principal" style="background:${accent}" onclick="window._ejecutarBackupLocal()"><i class="fas fa-folder"></i> Guardar en este dispositivo</button>` : `<button class="backup-popup-btn backup-popup-btn-principal" style="background:${accent}" onclick="window._ejecutarBackupDescarga()"><i class="fas fa-download"></i> Descargar respaldo JSON</button>`}
+                    <button class="backup-popup-btn backup-popup-btn-secundario" onclick="window._ejecutarBackupGoogleDrive()"><i class="fas fa-cloud"></i> Guardar en Google Drive</button>
                     <button class="backup-popup-btn backup-popup-btn-texto" onclick="window._cerrarPopUpBackup()">Recordar después</button>
                 </div>
             </div>`;
@@ -439,12 +440,12 @@
         fondo.className = 'backup-popup-fondo';
         fondo.innerHTML = `
             <div class="backup-popup">
-                <div class="backup-popup-icono">📂</div>
+                <div class="backup-popup-icono"><i class="fas fa-folder-open"></i></div>
                 <h3>Respaldo detectado</h3>
                 <p>Se encontró un respaldo en <strong>/JAM POS/</strong> del <strong>${fechaCorta}</strong> con ${ops || '?'} operaciones. ¿Deseas restaurarlo?</p>
                 <div class="backup-popup-opciones">
-                    <button class="backup-popup-btn backup-popup-btn-principal" style="background:${accent}" onclick="window._confirmarRestaurar(true)">✅ Sí, restaurar</button>
-                    <button class="backup-popup-btn backup-popup-btn-secundario" onclick="window._confirmarRestaurar(false)">❌ No, empezar limpio</button>
+                    <button class="backup-popup-btn backup-popup-btn-principal" style="background:${accent}" onclick="window._confirmarRestaurar(true)"><i class="fas fa-circle-check"></i> Sí, restaurar</button>
+                    <button class="backup-popup-btn backup-popup-btn-secundario" onclick="window._confirmarRestaurar(false)"><i class="fas fa-circle-xmark"></i> No, empezar limpio</button>
                 </div>
             </div>`;
         document.body.appendChild(fondo);
@@ -675,6 +676,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
     const KIOSCO_KEY = 'jam_kiosco_ventas';
     let kioscoVentas = false;
     try { kioscoVentas = localStorage.getItem(KIOSCO_KEY) === '1'; } catch(e) {}
+        
     let carrito = [], tipoPago = 'pago_movil', clienteSeleccionadoId = null, clienteInputText = '', totalVenta = 0;
     let productosSeleccionados = new Set(), selectAllChecked = false;
     let pagosDivididos = [{ metodo: 'efectivo_bs', monto: 0 }];
@@ -1292,17 +1294,17 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
                 <div class="ventas-bottom">
                     <div class="p-3 rounded-xl" style="background:rgba(0,0,0,0.05)"><div class="border-b pb-2 mb-2"><div class="ticket-line"><span>SUBTOTAL</span><span id="subtotal">0,00 Bs</span></div>${D.config.ivaActivo?`<div class="ticket-line"><span>IVA (${D.config.ivaPorcentaje}%)</span><span id="iva">0,00 Bs</span></div>`:''}<div class="ticket-line font-bold"><span>TOTAL</span><span id="total">0,00 Bs</span></div></div>
                     <div class="mb-2"><label class="text-xs">Tipo de pago</label><select id="tipoPago" class="border rounded-xl p-2 w-full">
-                        <option value="efectivo_bs">💵 Efectivo (Bs)</option>
-                        <option value="dolares">💵 Dólares (USD)</option>
-                        <option value="tarjeta_debito">💳 Tarjeta Débito</option>
-                        <option value="transferencia">🏦 Transferencia</option>
-                        <option value="pago_movil">📱 Pago Móvil</option>
-                        <option value="pago_dividido">🔀 Pago dividido</option>
-                        <option value="credito">💳 Crédito (saldo a favor del cliente)</option>
+                    <option value="efectivo_bs">\u{f53a} Efectivo (Bs)</option>
+                    <option value="dolares">\u{f0d6} Dólares (USD)</option>
+                    <option value="tarjeta_debito">\u{f09d} Tarjeta Débito</option>
+                    <option value="transferencia">\u{f19c} Transferencia</option>
+                    <option value="pago_movil">\u{f3cd} Pago Móvil</option>
+                    <option value="pago_dividido">\u{f074} Pago dividido</option>
+                    <option value="credito">\u{f4c0} Crédito (saldo a favor del cliente)</option>
                     </select></div>
                     <div id="cambioContainer" style="display:none"><div class="grid grid-cols-2 gap-2 mb-2"><input type="text" inputmode="decimal" id="montoPagado" placeholder="Monto recibido (Bs)" class="border rounded-xl p-2"><button id="calcularCambio" class="btn-azul-redondeado btn-redondeado py-2">Calcular cambio</button></div><div id="cambioMensaje" class="text-green-600 text-sm mb-2"></div></div>
                     <div id="pagoDivididoContainer" style="display:none"><div id="pagosDivididosLista"></div><button id="agregarPagoDividido" class="btn-add-split mt-1"><i class="fas fa-plus"></i> Agregar método</button><div id="splitTotalStatus" class="split-total-match mt-2"></div></div>
-                    <button id="finalizarVenta" class="btn-finalizar-venta">✅ Finalizar Venta</button>
+                    <button id="finalizarVenta" class="btn-finalizar-venta"><i class="fas fa-circle-check"></i> Finalizar Venta</button>
                 </div>
             </div>
         `;
@@ -1439,7 +1441,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         const descPct = (typeof prod.porcentajeDescuento === 'number' && prod.porcentajeDescuento > 0) ? prod.porcentajeDescuento : 0;
         let modal = document.createElement('div'); modal.className = 'modal-form';
         modal.innerHTML = `<div class="modal-form-content" style="max-width:340px">
-            <h3 class="text-lg font-bold mb-1" style="color:var(--accent,#3b82f6)">💰 Elegir precio de venta</h3>
+            <h3 class="text-lg font-bold mb-1" style="color:var(--accent,#3b82f6)"><i class="fas fa-sack-dollar"></i> Elegir precio de venta</h3>
             <p class="text-xs mb-3 opacity-70">${escapeHtml(prod.nombre)}</p>
             <div class="flex flex-col gap-2">
                 <button id="selNormal" class="btn-redondeado p-3 text-left" style="border:2px solid var(--accent,#3b82f6)">
@@ -1448,7 +1450,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
                     <div class="text-xs opacity-60">USD $${pr.normalUsd}</div>
                 </button>
                 <button id="selOferta" class="btn-redondeado p-3 text-left" style="border:2px solid #10b981">
-                    <div class="font-bold" style="color:#10b981">🏷️ Precio con descuento (-${descPct}%)</div>
+                    <div class="font-bold" style="color:#10b981"><i class="fas fa-tag"></i> Precio con descuento (-${descPct}%)</div>
                     <div class="text-sm">${fmtPrecio(pr.desc.bs)} Bs</div>
                     <div class="text-xs opacity-60">USD $${pr.desc.usd}</div>
                 </button>
@@ -1522,7 +1524,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
     }
     window.abrirEscanerCamara = (inputId, callback) => {
         let modal = document.createElement('div'); modal.className = 'modal-form';
-        modal.innerHTML = `<div class="modal-form-content" style="max-width:500px"><h3 class="text-xl font-bold mb-3">📷 Escanear código de barras</h3><div id="scannerContainer" style="width:100%;border-radius:12px;overflow:hidden;background:#000;max-height:300px"></div><div id="scannerResult" class="text-center mt-2 text-sm font-bold" style="color:var(--accent,#3b82f6)">Esperando código...</div><div class="flex gap-3 mt-3"><button id="btnStopScan" class="btn-redondeado flex-1 py-2 bg-gray-200">Cancelar</button></div></div>`;
+        modal.innerHTML = `<div class="modal-form-content" style="max-width:500px"><h3 class="text-xl font-bold mb-3"><i class="fas fa-camera"></i> Escanear código de barras</h3><div id="scannerContainer" style="width:100%;border-radius:12px;overflow:hidden;background:#000;max-height:300px"></div><div id="scannerResult" class="text-center mt-2 text-sm font-bold" style="color:var(--accent,#3b82f6)">Esperando código...</div><div class="flex gap-3 mt-3"><button id="btnStopScan" class="btn-redondeado flex-1 py-2 bg-gray-200">Cancelar</button></div></div>`;
         document.body.appendChild(modal);
         function limpiarYCerrar() { detenerScanner(escaneo, stream); modal.remove(); }
         let escaneo = null, stream = null;
@@ -1580,7 +1582,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         let modal = document.createElement('div');
         modal.className = 'modal-form';
         modal.innerHTML = `<div class="modal-form-content" style="max-width:300px">
-            <h3 class="text-lg font-bold mb-1" style="color:var(--accent,#3b82f6)">📦 Cantidad</h3>
+            <h3 class="text-lg font-bold mb-1" style="color:var(--accent,#3b82f6)"><i class="fas fa-boxes-stacked"></i> Cantidad</h3>
             <p class="text-sm mb-3 opacity-70">${escapeHtml(it.nombre)}</p>
             <div style="display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:12px">
                 <button id="edQtyMinus" class="btn-redondeado" style="width:48px;height:48px;font-size:24px;display:flex;align-items:center;justify-content:center">−</button>
@@ -1592,7 +1594,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
             </div>
             <p class="text-xs text-center opacity-50 mb-3">Stock disponible: ${stock}</p>
             <div style="display:flex;gap:8px">
-                <button id="edQtyDelete" class="btn-redondeado" style="flex:1;padding:10px;background:#ef4444;color:#fff">🗑 Eliminar</button>
+                <button id="edQtyDelete" class="btn-redondeado" style="flex:1;padding:10px;background:#ef4444;color:#fff"><i class="fas fa-trash"></i> Eliminar</button>
                 <button id="edQtyConfirm" class="btn-redondeado" style="flex:1;padding:10px;background:var(--accent,#3b82f6);color:#fff">✓ Listo</button>
             </div>
         </div>`;
@@ -1659,7 +1661,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         let suma = 0;
         cont.innerHTML = pagosDivididos.map((p,i) => {
             let metodos = ['efectivo_bs','dolares','tarjeta_debito','transferencia','pago_movil'];
-            let etiquetas = {'efectivo_bs':'💵 Efectivo Bs','dolares':'💵 Dólares','tarjeta_debito':'💳 Tarjeta Débito','transferencia':'🏦 Transferencia','pago_movil':'📱 Pago Móvil'};
+            let etiquetas = {'efectivo_bs':'\u{f53a} Efectivo Bs','dolares':'\u{f0d6} Dólares','tarjeta_debito':'\u{f09d} Tarjeta Débito','transferencia':'\u{f19c} Transferencia','pago_movil':'\u{f3cd} Pago Móvil'};
             suma += parseFloat(p.monto) || 0;
             return `<div class="split-payment-row">
                 <select onchange="cambiarMetodoSplit(${i},this.value)">${metodos.map(m => `<option value="${m}" ${m===p.metodo?'selected':''}>${etiquetas[m]}</option>`).join('')}</select>
@@ -1677,7 +1679,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         let diff = totalPagos - totalVenta;
         if(Math.abs(diff) < 0.01) status.className = 'split-total-match ok';
         else status.className = 'split-total-match err';
-        status.innerHTML = `Total asignado: ${fmtPrecio(totalPagos)} Bs ${Math.abs(diff) < 0.01 ? '✅' : `(faltan ${fmtPrecio(Math.abs(diff))} Bs)`}`;
+        status.innerHTML = `Total asignado: ${fmtPrecio(totalPagos)} Bs ${Math.abs(diff) < 0.01 ? '<i class="fas fa-circle-check"></i>' : `(faltan ${fmtPrecio(Math.abs(diff))} Bs)`}`;
     }
     window.cambiarMetodoSplit = (i, v) => { pagosDivididos[i].metodo = v; actualizarSplitStatus(pagosDivididos.reduce((s,p)=>s+(parseFloat(p.monto)||0),0)); };
     window.cambiarMontoSplit = (i, v) => { pagosDivididos[i].monto = (parseInt(String(v||'0').replace(/\D/g,''),10)||0) / 100; actualizarSplitStatus(pagosDivididos.reduce((s,p)=>s+(parseFloat(p.monto)||0),0)); };
@@ -1902,7 +1904,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
             formaPagoHtml = `<div class="ticket-line" style="font-weight:bold"><span>FORMA DE PAGO</span><span>PAGO DIVIDIDO</span></div>${detalleHtml}`;
         }
         const lineaPago = venta.credito ? `<div class="ticket-line"><span>CRÉDITO</span><span>${fmtPrecio(venta.total)} Bs</span></div>` : `<div class="ticket-line"><span>PAGO</span><span>${fmtPrecio(venta.pago)} Bs</span></div>${esPagoEfectivo(venta) ? `<div class="ticket-line"><span>CAMBIO</span><span>${fmtPrecio(venta.cambio)} Bs</span></div>` : ''}`;
-        return `<div class="ticket-virtual" id="ticketParaImprimir">${logoHtml}<div class="header"><h3>${escapeHtml(D.config.empresa.nombre)}</h3>${D.config.empresa.direccion ? `<p>${escapeHtml(D.config.empresa.direccion)}</p>` : ''}${D.config.empresa.telefono ? `<p>📞 ${escapeHtml(D.config.empresa.telefono)}</p>` : ''}${D.config.empresa.rif ? `<p>RIF: ${escapeHtml(D.config.empresa.rif)}</p>` : ''}<p>${textoFechaVenta(venta)}</p>${mostrarTasa && venta.dolarRate ? `<p>Tasa: 1 USD = ${fmtDolar(venta.dolarRate)} Bs</p>` : ''}<p>Ticket: ${venta.id}</p><p>Cliente: ${escapeHtml(venta.cliente)}${venta.clienteId ? (() => { const _cl = D.clientes.find(c => c.id === venta.clienteId); return _cl && _cl.cedula ? ` (${escapeHtml(_cl.cedula)})` : ''; })() : ''}</p></div><div class="items">${itemsHtml}</div><div class="ticket-line"><span>SUBTOTAL</span><span>${fmtPrecio(venta.subtotal)} Bs</span></div>${venta.iva ? `<div class="ticket-line"><span>IVA (${venta.ivaPorcentaje != null ? venta.ivaPorcentaje : D.config.ivaPorcentaje}%)</span><span>${fmtPrecio(venta.iva)} Bs</span></div>` : ''}<div class="ticket-line total"><span>TOTAL</span><span>${fmtPrecio(venta.total)} Bs</span></div>${lineaPago}${formaPagoHtml}<div class="footer"><p style="font-size:9px;opacity:0.6;margin-top:8px">Este documento no constituye factura fiscal</p><p>¡Gracias por su compra!</p><p>${D.config.empresa.nombre}</p></div></div>`;
+        return `<div class="ticket-virtual" id="ticketParaImprimir">${logoHtml}<div class="header"><h3>${escapeHtml(D.config.empresa.nombre)}</h3>${D.config.empresa.direccion ? `<p>${escapeHtml(D.config.empresa.direccion)}</p>` : ''}${D.config.empresa.telefono ? `<p><i class="fas fa-phone"></i> ${escapeHtml(D.config.empresa.telefono)}</p>` : ''}${D.config.empresa.rif ? `<p>RIF: ${escapeHtml(D.config.empresa.rif)}</p>` : ''}<p>${textoFechaVenta(venta)}</p>${mostrarTasa && venta.dolarRate ? `<p>Tasa: 1 USD = ${fmtDolar(venta.dolarRate)} Bs</p>` : ''}<p>Ticket: ${venta.id}</p><p>Cliente: ${escapeHtml(venta.cliente)}${venta.clienteId ? (() => { const _cl = D.clientes.find(c => c.id === venta.clienteId); return _cl && _cl.cedula ? ` (${escapeHtml(_cl.cedula)})` : ''; })() : ''}</p></div><div class="items">${itemsHtml}</div><div class="ticket-line"><span>SUBTOTAL</span><span>${fmtPrecio(venta.subtotal)} Bs</span></div>${venta.iva ? `<div class="ticket-line"><span>IVA (${venta.ivaPorcentaje != null ? venta.ivaPorcentaje : D.config.ivaPorcentaje}%)</span><span>${fmtPrecio(venta.iva)} Bs</span></div>` : ''}<div class="ticket-line total"><span>TOTAL</span><span>${fmtPrecio(venta.total)} Bs</span></div>${lineaPago}${formaPagoHtml}<div class="footer"><p style="font-size:9px;opacity:0.6;margin-top:8px">Este documento no constituye factura fiscal</p><p>¡Gracias por su compra!</p><p>${D.config.empresa.nombre}</p></div></div>`;
     }
     function mostrarTicket(venta, mostrarTasa = false) {
         const modal = document.createElement('div'); modal.className = 'modal-form';
@@ -1959,7 +1961,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
     // localStorage 'jam_pos_caja' (sobrevive reinicios).
     const CAJA_KEY = 'jam_pos_caja';
     const METODOS_CAJA = ['efectivo_bs','dolares','tarjeta_debito','transferencia','pago_movil'];
-    const ETIQUETAS_CAJA = {'efectivo_bs':'💵 Efectivo Bs','dolares':'💵 Dólares (Bs)','tarjeta_debito':'💳 Tarjeta Débito','transferencia':'🏦 Transferencia','pago_movil':'📱 Pago Móvil'};
+    const ETIQUETAS_CAJA = {'efectivo_bs':'<i class="fas fa-money-bill-wave"></i> Efectivo Bs','dolares':'<i class="fas fa-money-bill-wave"></i> Dólares (Bs)','tarjeta_debito':'<i class="fas fa-credit-card"></i> Tarjeta Débito','transferencia':'<i class="fas fa-building-columns"></i> Transferencia','pago_movil':'<i class="fas fa-mobile-screen-button"></i> Pago Móvil'};
     function cargarCaja(){ const d = loadFromStorage(CAJA_KEY, null); if(d && typeof d === 'object') return d; return { abierta: null, cierres: [], ultimoArqueo: null }; }
     function guardarCaja(c){ saveToStorage(CAJA_KEY, c); }
     function ventasEsperadasCaja(ventas){
@@ -1986,30 +1988,30 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
             <div class="page-container">
                 ${!caja.abierta ? `
                 <div class="config-section" style="margin-bottom:16px">
-                    <div class="config-section-title" style="font-size:.75rem;font-weight:700;opacity:.6;margin-bottom:8px">🔓 Apertura de caja</div>
+                    <div class="config-section-title" style="font-size:.75rem;font-weight:700;opacity:.6;margin-bottom:8px"><i class="fas fa-lock-open"></i> Apertura de caja</div>
                     <p class="text-xs opacity-70 mb-2">Registra el fondo inicial en efectivo que queda en caja al iniciar el turno (puede ser 0).</p>
                     <div class="mb-2"><label class="opacity-70">Fondo inicial (Bs)</label><input type="text" id="cajaAperturaBs" inputmode="decimal" value="0" class="border rounded-xl p-2 w-full"></div>
-                    <button id="btnAbrirCaja" class="btn-azul-redondeado btn-redondeado w-full py-2">🔓 Abrir caja</button>
+                    <button id="btnAbrirCaja" class="btn-azul-redondeado btn-redondeado w-full py-2"><i class="fas fa-lock-open"></i> Abrir caja</button>
                 </div>
                 <div class="config-section">
-                    <div class="config-section-title" style="font-size:.75rem;font-weight:700;opacity:.6;margin-bottom:8px">🕘 Historial de cierres</div>
-                    <div id="listaCierres">${caja.cierres.length === 0 ? '<p class="text-xs opacity-60">Sin cierres registrados</p>' : caja.cierres.slice().reverse().map(c => `<div class="client-card" style="padding:8px 10px;margin-bottom:6px"><div class="flex justify-between items-center"><span class="font-bold text-sm">🔒 Cierre ${escapeHtml(c.fecha)} ${escapeHtml(c.hora || '')}</span><span class="text-xs">${fmtPrecio(c.difTotal||0)} Bs</span></div><div class="text-xs mt-1 flex justify-between"><span>Esperado: ${fmtPrecio(c.totalEsperado||0)} Bs</span><span>Contado: ${fmtPrecio(c.totalContado||0)} Bs</span></div></div>`).join('')}</div>
+                    <div class="config-section-title" style="font-size:.75rem;font-weight:700;opacity:.6;margin-bottom:8px"><i class="fas fa-clock"></i> Historial de cierres</div>
+                    <div id="listaCierres">${caja.cierres.length === 0 ? '<p class="text-xs opacity-60">Sin cierres registrados</p>' : caja.cierres.slice().reverse().map(c => `<div class="client-card" style="padding:8px 10px;margin-bottom:6px"><div class="flex justify-between items-center"><span class="font-bold text-sm"><i class="fas fa-lock"></i> Cierre ${escapeHtml(c.fecha)} ${escapeHtml(c.hora || '')}</span><span class="text-xs">${fmtPrecio(c.difTotal||0)} Bs</span></div><div class="text-xs mt-1 flex justify-between"><span>Esperado: ${fmtPrecio(c.totalEsperado||0)} Bs</span><span>Contado: ${fmtPrecio(c.totalContado||0)} Bs</span></div></div>`).join('')}</div>
                 </div>` : `
                 <div class="config-section" style="margin-bottom:16px">
-                    <div class="config-section-title" style="font-size:.75rem;font-weight:700;opacity:.6;margin-bottom:8px">🟢 Caja abierta</div>
+                    <div class="config-section-title" style="font-size:.75rem;font-weight:700;opacity:.6;margin-bottom:8px"><i class="fas fa-circle" style="color:#22c55e"></i> Caja abierta</div>
                     <div class="card-bcv" style="padding:10px"><div class="flex justify-between"><span class="text-xs opacity-70">Abierta desde</span><span class="text-xs font-bold">${escapeHtml(caja.abierta.fecha || '')} ${escapeHtml(caja.abierta.hora || '')}</span></div><div class="flex justify-between mt-1"><span class="text-xs opacity-70">Fondo inicial</span><span class="text-xs font-bold">${fmtPrecio(caja.abierta.aperturaBs||0)} Bs</span></div></div>
                 </div>
                 <div class="config-section" style="margin-bottom:16px">
-                    <div class="config-section-title" style="font-size:.75rem;font-weight:700;opacity:.6;margin-bottom:8px">📊 Ventas de hoy por forma de pago (esperado)</div>
+                    <div class="config-section-title" style="font-size:.75rem;font-weight:700;opacity:.6;margin-bottom:8px"><i class="fas fa-chart-column"></i> Ventas de hoy por forma de pago (esperado)</div>
                     <div id="esperadoCaja"></div>
                 </div>
                 <div class="config-section" style="margin-bottom:16px">
-                    <div class="config-section-title" style="font-size:.75rem;font-weight:700;opacity:.6;margin-bottom:8px">🧮 Arqueo de caja</div>
+                    <div class="config-section-title" style="font-size:.75rem;font-weight:700;opacity:.6;margin-bottom:8px"><i class="fas fa-calculator"></i> Arqueo de caja</div>
                     <p class="text-xs opacity-70 mb-2">Escribe el monto CONTADO en cada método (en Bs). El efectivo debe incluir el fondo inicial.</p>
                     ${METODOS_CAJA.map((m,i) => `<div class="flex items-center justify-between gap-2 mb-2"><label class="text-xs opacity-80 flex-1">${ETIQUETAS_CAJA[m]}</label><input type="text" inputmode="decimal" id="contado_${m}" data-metodo="${m}" class="border rounded-xl p-2 text-right" style="width:150px"></div>`).join('')}
                     <button id="btnAutoArqueo" class="btn-redondeado py-2 px-4 w-full mb-2" style="border:1.5px solid ${accent};color:${accent}">↺ Llenar con lo esperado</button>
-                    <button id="btnArqueo" class="btn-redondeado py-2 px-4 w-full mb-2" style="border:1.5px solid #3b82f6;color:#3b82f6">💾 Guardar arqueo (sin cerrar)</button>
-                    <button id="btnCerrarCaja" class="btn-azul-redondeado btn-redondeado w-full py-2" style="background:#dc2626">🔒 Cerrar caja</button>
+                    <button id="btnArqueo" class="btn-redondeado py-2 px-4 w-full mb-2" style="border:1.5px solid #3b82f6;color:#3b82f6"><i class="fas fa-floppy-disk"></i> Guardar arqueo (sin cerrar)</button>
+                    <button id="btnCerrarCaja" class="btn-azul-redondeado btn-redondeado w-full py-2" style="background:#dc2626"><i class="fas fa-lock"></i> Cerrar caja</button>
                     <div id="resumenArqueo" class="text-xs mt-2"></div>
                 </div>`}
             </div>`;
@@ -2346,8 +2348,8 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
             }
             const toast = document.createElement('div');
             toast.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);padding:10px 20px;border-radius:50px;z-index:10000;font-size:12px;';
-            if(volverBloqueado){ toast.style.background='#dc2626'; toast.style.color='white'; toast.innerHTML='🔒 Módulo BLOQUEADO - Modo profesional activado'; }
-            else{ toast.style.background='#10b981'; toast.style.color='white'; toast.innerHTML='🔓 Módulo DESBLOQUEADO'; }
+            if(volverBloqueado){ toast.style.background='#dc2626'; toast.style.color='white'; toast.innerHTML='<i class="fas fa-lock"></i> Módulo BLOQUEADO - Modo profesional activado'; }
+            else{ toast.style.background='#10b981'; toast.style.color='white'; toast.innerHTML='<i class="fas fa-lock-open"></i> Módulo DESBLOQUEADO'; }
             document.body.appendChild(toast);
             setTimeout(() => toast.remove(), 2000);
             timeoutTitulo = null;
@@ -2538,18 +2540,18 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         let html = '';
         prod.slice(0,5).forEach(p => {
             const prg = preciosProducto(p);
-            const ofG = prg.tieneDesc ? `<div class="text-xs" style="color:#10b981">🏷️ Oferta: ${fmtPrecio(prg.desc.bs)} Bs / $${prg.desc.usd}</div>` : '';
+            const ofG = prg.tieneDesc ? `<div class="text-xs" style="color:#10b981"><i class="fas fa-tag"></i> Oferta: ${fmtPrecio(prg.desc.bs)} Bs / $${prg.desc.usd}</div>` : '';
             html += `<div class="global-result p-3 cursor-pointer border-b" style="border-bottom-color:var(--accent);">
                         <div class="font-bold">${escapeHtml(p.nombre)}</div>
                         <div class="text-sm flex justify-between flex-wrap">
-                            <span>💰 ${fmtPrecio(prg.normalBs)} Bs</span>
-                            <span>💵 $${prg.normalUsd}</span>
-                            <span>📦 Stock: ${p.stock}</span>
+                            <span><i class="fas fa-sack-dollar"></i> ${fmtPrecio(prg.normalBs)} Bs</span>
+                            <span><i class="fas fa-money-bill-wave"></i> $${prg.normalUsd}</span>
+                            <span><i class="fas fa-boxes-stacked"></i> Stock: ${p.stock}</span>
                         </div>
                         ${ofG}
                         <div class="flex gap-2 mt-2">
-                            <button onclick="event.stopPropagation();editarProductoDesdeBusqueda('${p.id}')" class="btn-editar-redondeado">✏️ Editar</button>
-                            <button onclick="event.stopPropagation();venderProductoDesdeBusqueda('${p.id}')" class="btn-verde-redondeado">🛒 Vender</button>
+                            <button onclick="event.stopPropagation();editarProductoDesdeBusqueda('${p.id}')" class="btn-editar-redondeado"><i class="fas fa-pen"></i> Editar</button>
+                            <button onclick="event.stopPropagation();venderProductoDesdeBusqueda('${p.id}')" class="btn-verde-redondeado"><i class="fas fa-cart-shopping"></i> Vender</button>
                         </div>
                     </div>`;
         });
@@ -2580,7 +2582,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         if(!(D.config.dolarRate > 0)){ await garantizarTasa(); }
         const sinTasa = !(D.config.dolarRate > 0);
         let m = document.createElement('div'); m.className = 'modal-form';
-        m.innerHTML = `<div class="modal-form-content"><h3 class="font-bold text-lg mb-3">🔄 Convertidor Bs ↔ USD</h3><div class="mb-3"><label>Bolívares (Bs)</label><input type="text" inputmode="decimal" id="bsInput" ${sinTasa ? 'disabled' : ''} placeholder="Bs" class="border rounded-xl p-2 w-full"></div><div class="mb-3"><label>Dólares (USD)</label><input type="text" inputmode="decimal" id="usdInput" ${sinTasa ? 'disabled' : ''} placeholder="USD" class="border rounded-xl p-2 w-full"></div>${sinTasa ? `<p class="text-sm" style="color:#ef4444;font-weight:600">Sin tasa registrada: conéctate a internet o fíjala manualmente en Configuración.</p>` : `<p class="text-sm">Tasa: 1 USD = ${fmtDolar(D.config.dolarRate)} Bs</p>`}<button id="closeConv" class="mt-3 w-full py-2 rounded-xl bg-gray-200">Cerrar</button></div>`;
+        m.innerHTML = `<div class="modal-form-content"><h3 class="font-bold text-lg mb-3"><i class="fas fa-rotate"></i> Convertidor Bs ↔ USD</h3><div class="mb-3"><label>Bolívares (Bs)</label><input type="text" inputmode="decimal" id="bsInput" ${sinTasa ? 'disabled' : ''} placeholder="Bs" class="border rounded-xl p-2 w-full"></div><div class="mb-3"><label>Dólares (USD)</label><input type="text" inputmode="decimal" id="usdInput" ${sinTasa ? 'disabled' : ''} placeholder="USD" class="border rounded-xl p-2 w-full"></div>${sinTasa ? `<p class="text-sm" style="color:#ef4444;font-weight:600">Sin tasa registrada: conéctate a internet o fíjala manualmente en Configuración.</p>` : `<p class="text-sm">Tasa: 1 USD = ${fmtDolar(D.config.dolarRate)} Bs</p>`}<button id="closeConv" class="mt-3 w-full py-2 rounded-xl bg-gray-200">Cerrar</button></div>`;
         document.body.appendChild(m);
         window.convMod = m;
         let bs = document.getElementById('bsInput'), usd = document.getElementById('usdInput');
@@ -2596,7 +2598,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
     async function renderInventario(){
         let bloqueado = volverBloqueado, accent = D.config.theme;
         productosSeleccionados = new Set(); selectAllChecked = false;
-        document.getElementById('appRoot').innerHTML = `<div class="page-header-fixed"><div class="module-header"><h2 id="tituloModule" class="module-title ${bloqueado?'module-title-bloqueado':''}" style="color:${accent}" onmousedown="iniciarBloqueo(this,'Inventario')" onmouseup="cancelarBloqueo()" onmouseleave="cancelarBloqueo()">Inventario</h2><div id="btnVolverModule" class="btn-back ${bloqueado?'btn-back-bloqueado':''}" onclick="${bloqueado?'':'backToHome()'}">${bloqueado?'<i class="fas fa-lock"></i> Bloqueado':'<i class="fas fa-arrow-left"></i> Volver'}</div></div></div><div class="page-container"><div class="mb-3"><div class="buscador"><i class="fas fa-search icono-busqueda"></i><input type="text" id="searchInv" placeholder="Buscar producto o código de barras..." class="border-2 rounded-xl p-2 w-full" style="border-color:${accent}" autocomplete="off"><button id="btnScanInv" class="btn-icon-cuadrado" title="Escanear con cámara"><i class="fas fa-camera"></i></button></div></div><div class="batch-toolbar"><button id="nuevoProducto" class="btn-azul-redondeado btn-redondeado py-2 px-4">+ Nuevo</button><button id="btnEditarLote" class="btn-azul-redondeado btn-redondeado py-2 px-4" onclick="editarSeleccionLote()" style="display:none">✏️ Editar selección</button><span id="batchCount" class="batch-count"></span><label class="flex items-center gap-2 text-sm">Todo<input type="checkbox" id="selectAllCheckbox" class="select-all-checkbox" onchange="toggleSelectAll(this.checked)"></label></div><div id="listaProductos" class="scroll-area"></div></div>`;
+        document.getElementById('appRoot').innerHTML = `<div class="page-header-fixed"><div class="module-header"><h2 id="tituloModule" class="module-title ${bloqueado?'module-title-bloqueado':''}" style="color:${accent}" onmousedown="iniciarBloqueo(this,'Inventario')" onmouseup="cancelarBloqueo()" onmouseleave="cancelarBloqueo()">Inventario</h2><div id="btnVolverModule" class="btn-back ${bloqueado?'btn-back-bloqueado':''}" onclick="${bloqueado?'':'backToHome()'}">${bloqueado?'<i class="fas fa-lock"></i> Bloqueado':'<i class="fas fa-arrow-left"></i> Volver'}</div></div></div><div class="page-container"><div class="mb-3"><div class="buscador"><i class="fas fa-search icono-busqueda"></i><input type="text" id="searchInv" placeholder="Buscar producto o código de barras..." class="border-2 rounded-xl p-2 w-full" style="border-color:${accent}" autocomplete="off"><button id="btnScanInv" class="btn-icon-cuadrado" title="Escanear con cámara"><i class="fas fa-camera"></i></button></div></div><div class="batch-toolbar"><button id="nuevoProducto" class="btn-azul-redondeado btn-redondeado py-2 px-4">+ Nuevo</button><button id="btnEditarLote" class="btn-azul-redondeado btn-redondeado py-2 px-4" onclick="editarSeleccionLote()" style="display:none"><i class="fas fa-pen"></i> Editar selección</button><span id="batchCount" class="batch-count"></span><label class="flex items-center gap-2 text-sm">Todo<input type="checkbox" id="selectAllCheckbox" class="select-all-checkbox" onchange="toggleSelectAll(this.checked)"></label></div><div id="listaProductos" class="scroll-area"></div></div>`;
         if(volverBloqueado) document.getElementById('btnVolverModule').onclick = () => mostrarOverlayBloqueo();
         document.getElementById('searchInv').addEventListener('input', e => renderListaProductos(e.target.value.toLowerCase()));
         document.getElementById('searchInv').addEventListener('keydown', e => { if(e.key === 'Enter') buscarPorCodigoInventario(e.target.value.trim()); });
@@ -2612,7 +2614,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         let cont = document.getElementById('listaProductos'); if(!cont) return;
         cont.innerHTML = filt.map(p => {
             let checked = productosSeleccionados.has(p.id);
-            return `<div class="product-card"><div class="flex items-start gap-2"><div class="flex-1"><div class="flex justify-between flex-wrap"><span class="font-bold">${escapeHtml(p.nombre)}</span><span class="text-xs">${escapeHtml(p.codigo||'')}</span></div><div class="text-sm">💰 ${fmtPrecio(preciosProducto(p).normalBs)} Bs / $${preciosProducto(p).normalUsd} | 📦 Stock: ${p.stock}</div>${tieneDescuentoProducto(p) ? `<div class="text-sm" style="color:#10b981">🏷️ Oferta: ${fmtPrecio(preciosProducto(p).desc.bs)} Bs / $${preciosProducto(p).desc.usd} <span class="text-xs">(-${typeof p.porcentajeDescuento === 'number' ? p.porcentajeDescuento : 0}%)</span></div>` : ''}${(p.descuentoProveedor && p.descuentoProveedor > 0) ? `<div class="text-xs" style="color:#f59e0b">📦 Costo prov: $${fmtPrecio(preciosProducto(p).costoNetoUsd)} <span style="text-decoration:line-through;opacity:0.6">$${fmtPrecio(preciosProducto(p).costoUsd)}</span> (-${p.descuentoProveedor}%)</div>` : ''}<div class="text-xs break-words">🏷️ ${escapeHtml(p.categoria||'')} | 🚚 ${escapeHtml(p.proveedor||'—')}</div><div class="flex gap-2 mt-2"><button onclick="mostrarFormProducto('${p.id}')" class="btn-editar-redondeado">✏️ Editar</button><button onclick="ajustarStock('${p.id}')" class="btn-redondeado" style="background:#f59e0b;color:#fff;padding:4px 10px;font-size:12px">↔️ Ajustar</button><button onclick="copiarProducto('${p.id}')" class="btn-redondeado" style="background:var(--accent,#3b82f6);color:#fff;padding:4px 10px;font-size:12px">📋 Copiar</button><button onclick="eliminarProducto('${p.id}')" class="btn-eliminar-redondeado">🗑️ Eliminar</button></div></div><input type="checkbox" class="product-checkbox mt-1" data-id="${p.id}" ${checked?'checked':''} onchange="toggleProductoSeleccionado('${p.id}',this.checked)"></div></div>`;
+            return `<div class="product-card"><div class="flex items-start gap-2"><div class="flex-1"><div class="flex justify-between flex-wrap"><span class="font-bold">${escapeHtml(p.nombre)}</span><span class="text-xs">${escapeHtml(p.codigo||'')}</span></div><div class="text-sm"><i class="fas fa-sack-dollar"></i> ${fmtPrecio(preciosProducto(p).normalBs)} Bs / $${preciosProducto(p).normalUsd} | <i class="fas fa-boxes-stacked"></i> Stock: ${p.stock}</div>${tieneDescuentoProducto(p) ? `<div class="text-sm" style="color:#10b981"><i class="fas fa-tag"></i> Oferta: ${fmtPrecio(preciosProducto(p).desc.bs)} Bs / $${preciosProducto(p).desc.usd} <span class="text-xs">(-${typeof p.porcentajeDescuento === 'number' ? p.porcentajeDescuento : 0}%)</span></div>` : ''}${(p.descuentoProveedor && p.descuentoProveedor > 0) ? `<div class="text-xs" style="color:#f59e0b"><i class="fas fa-boxes-stacked"></i> Costo prov: $${fmtPrecio(preciosProducto(p).costoNetoUsd)} <span style="text-decoration:line-through;opacity:0.6">$${fmtPrecio(preciosProducto(p).costoUsd)}</span> (-${p.descuentoProveedor}%)</div>` : ''}<div class="text-xs break-words"><i class="fas fa-tag"></i> ${escapeHtml(p.categoria||'')} | <i class="fas fa-truck"></i> ${escapeHtml(p.proveedor||'—')}</div><div class="flex gap-2 mt-2"><button onclick="mostrarFormProducto('${p.id}')" class="btn-editar-redondeado"><i class="fas fa-pen"></i> Editar</button><button onclick="ajustarStock('${p.id}')" class="btn-redondeado" style="background:#f59e0b;color:#fff;padding:4px 10px;font-size:12px"><i class="fas fa-right-left"></i> Ajustar</button><button onclick="copiarProducto('${p.id}')" class="btn-redondeado" style="background:var(--accent,#3b82f6);color:#fff;padding:4px 10px;font-size:12px"><i class="fas fa-clipboard"></i> Copiar</button><button onclick="eliminarProducto('${p.id}')" class="btn-eliminar-redondeado"><i class="fas fa-trash"></i> Eliminar</button></div></div><input type="checkbox" class="product-checkbox mt-1" data-id="${p.id}" ${checked?'checked':''} onchange="toggleProductoSeleccionado('${p.id}',this.checked)"></div></div>`;
         }).join('');
         actualizarToolbarBatch();
     }
@@ -2639,7 +2641,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         if(ids.length === 0){ alert('Seleccione al menos un producto'); return; }
         let prods = ids.map(id => D.productos.find(p => p.id === id)).filter(Boolean);
         let modal = document.createElement('div'); modal.className = 'modal-form';
-        modal.innerHTML = `<div class="modal-form-content"><h3 class="text-xl font-bold mb-4">✏️ Editar lote (${prods.length} productos)</h3>
+        modal.innerHTML = `<div class="modal-form-content"><h3 class="text-xl font-bold mb-4"><i class="fas fa-pen"></i> Editar lote (${prods.length} productos)</h3>
             <p class="text-xs mb-3 opacity-60">Los campos vacíos no se modificarán</p>
             <div class="mb-3"><label>Precio Venta (Bs) <span class="text-xs opacity-50">(nuevo valor)</span></label><input type="text" id="lotePrecioBs" placeholder="Dejar vacío para no cambiar" class="border rounded-xl p-2 w-full"></div>
             <div class="mb-3"><label>Precio Venta (USD) <span class="text-xs opacity-50">(nuevo valor)</span></label><input type="number" id="lotePrecioUsd" step="any" placeholder="Dejar vacío para no cambiar" class="border rounded-xl p-2 w-full"></div>
@@ -2736,13 +2738,13 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         const descProvIni = prIni.descProvPct || 0;
         let modal = document.createElement('div'); modal.className = 'modal-form';
         modal.innerHTML = `<div class="modal-form-content" style="max-width:420px;padding:14px"><h3 class="text-xl font-bold mb-2">${esNuevo ? 'Nuevo Producto' : 'Editar Producto'}</h3>
-            ${!(D.config.dolarRate > 0) ? `<div id="sinTasaAvisoProd" class="mb-2 p-2 rounded text-sm" style="background:#fef3c7;color:#92400e;font-weight:600">⚠️ Sin tasa de cambio registrada: los precios en Bs se activarán cuando haya tasa (conéctate a internet o fíjala manualmente en Configuración).</div>` : ''}
+            ${!(D.config.dolarRate > 0) ? `<div id="sinTasaAvisoProd" class="mb-2 p-2 rounded text-sm" style="background:#fef3c7;color:#92400e;font-weight:600"><i class="fas fa-triangle-exclamation"></i> Sin tasa de cambio registrada: los precios en Bs se activarán cuando haya tasa (conéctate a internet o fíjala manualmente en Configuración).</div>` : ''}
             <div class="mb-1"><label class="opacity-70">Nombre</label><input id="nombre" value="${escapeHtml(prod?.nombre||'')}" class="border rounded p-1 w-full"></div>
-            <div class="mb-1"><label class="opacity-70">📷 Código de barras</label><div class="flex gap-2"><input id="codigo" value="${escapeHtml(prod?.codigo||'')}" class="border rounded p-1 flex-1" style="border-color:var(--accent,#3b82f6)"><button id="btnScanProducto" class="btn-icon-cuadrado" title="Escanear con cámara"><i class="fas fa-camera"></i></button></div></div>
+            <div class="mb-1"><label class="opacity-70"><i class="fas fa-camera"></i> Código de barras</label><div class="flex gap-2"><input id="codigo" value="${escapeHtml(prod?.codigo||'')}" class="border rounded p-1 flex-1" style="border-color:var(--accent,#3b82f6)"><button id="btnScanProducto" class="btn-icon-cuadrado" title="Escanear con cámara"><i class="fas fa-camera"></i></button></div></div>
             <div class="mb-1"><div class="grid grid-cols-2 gap-2"><div><label class="opacity-70">Categoría</label><input id="categoria" value="${escapeHtml(prod?.categoria||'')}" class="border rounded p-1 w-full"></div><div><label class="opacity-70">Tipo</label><input id="tipo" value="${escapeHtml(prod?.tipo||'')}" class="border rounded p-1 w-full"></div></div></div>
             <div class="mb-1"><div class="grid grid-cols-10 gap-2 relative"><div class="col-span-8 relative"><label class="opacity-70">Proveedor</label><input id="proveedor" value="${escapeHtml(prod?.proveedor||'')}" placeholder="Escriba para buscar..." class="border rounded p-1 w-full" autocomplete="off"><div id="sugProveedor" style="display:none;position:absolute;left:0;right:0;z-index:100;background:var(--bg,#fff);border:1px solid rgba(128,128,128,0.2);border-radius:12px;max-height:150px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.1)"></div></div><div class="col-span-2"><label class="opacity-70">Descuento</label><input type="number" id="descProvInput" step="any" min="0" max="99.99" value="${descProvIni || ''}" placeholder="%" class="border rounded p-1 w-full"></div></div></div>
             <div class="grid grid-cols-10 gap-2 mb-1 items-end">
-                <div class="col-span-3"><label class="opacity-70">💵 Costo (USD)</label><input type="number" id="compraUsd" step="any" min="0" value="${prod?.costoRealUsd||''}" placeholder="Ej: 3.00" class="border rounded p-1 w-full"></div>
+                <div class="col-span-3"><label class="opacity-70"><i class="fas fa-money-bill-wave"></i> Costo (USD)</label><input type="number" id="compraUsd" step="any" min="0" value="${prod?.costoRealUsd||''}" placeholder="Ej: 3.00" class="border rounded p-1 w-full"></div>
                 <div class="col-span-3"><label class="opacity-70">Costo en Bs</label><input type="text" id="compraBs" value="${fmtPrecio(prIni.costoBs)}" class="border rounded p-1 w-full"></div>
                 <div class="col-span-2"><label class="opacity-70">Ganancia</label><input type="number" id="gananciaInput" step="any" min="5" max="100" value="${ganIni}" class="border rounded p-1 w-full"></div>
                 <div class="col-span-2"><label class="opacity-70">Stock</label><input type="number" id="stock" value="${prod?.stock||0}" class="border rounded p-1 w-full"></div>
@@ -2751,11 +2753,11 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
                 <div><label class="opacity-70">Venta en USD</label><input type="number" id="ventaUsd" step="any" min="0" value="${prIni.normalUsd || ''}" class="border rounded p-1 w-full"></div>
                 <div><label class="opacity-70">Venta en Bs</label><input type="text" id="ventaBs" value="${fmtPrecio(prIni.normalBs)}" class="border rounded p-1 w-full"></div>
             </div>
-            <div id="costoNetoInfo" class="text-xs mb-1" style="color:#f59e0b;${descProvIni > 0 ? '' : 'display:none'}">📦 Costo neto prov: $<span id="costoNetoMostrar">${(prIni.costoNetoUsd || 0).toFixed(2)}</span> <span id="costoNetoAntes" style="text-decoration:line-through;opacity:0.6">${descProvIni > 0 ? '$' + (prIni.costoUsd || 0).toFixed(2) : ''}</span></div>
+            <div id="costoNetoInfo" class="text-xs mb-1" style="color:#f59e0b;${descProvIni > 0 ? '' : 'display:none'}"><i class="fas fa-boxes-stacked"></i> Costo neto prov: $<span id="costoNetoMostrar">${(prIni.costoNetoUsd || 0).toFixed(2)}</span> <span id="costoNetoAntes" style="text-decoration:line-through;opacity:0.6">${descProvIni > 0 ? '$' + (prIni.costoUsd || 0).toFixed(2) : ''}</span></div>
             <div class="rounded-xl p-2 mb-2" style="background:rgba(128,128,128,0.08)">
-                <p class="font-bold text-sm mb-1" style="color:var(--accent)">💲 Precios calculados <span class="text-xs opacity-60">(tasa: 1 USD = ${fmtDolar(tasa)} Bs)</span></p>
+                <p class="font-bold text-sm mb-1" style="color:var(--accent)"><i class="fas fa-dollar-sign"></i> Precios calculados <span class="text-xs opacity-60">(tasa: 1 USD = ${fmtDolar(tasa)} Bs)</span></p>
                 <div class="text-xs space-y-1">
-                    <div class="flex items-center justify-between"><label class="font-bold text-sm">🏷️ Oferta del producto</label><label class="switch"><input type="checkbox" id="descOn" ${descPct > 0 ? 'checked' : ''}><span class="slider"></span></label></div>
+                    <div class="flex items-center justify-between"><label class="font-bold text-sm"><i class="fas fa-tag"></i> Oferta del producto</label><label class="switch"><input type="checkbox" id="descOn" ${descPct > 0 ? 'checked' : ''}><span class="slider"></span></label></div>
                     <div id="descDiv" class="grid grid-cols-10 gap-2 items-end" style="${descPct > 0 ? '' : 'display:none'}">
                         <div class="col-span-4"><label class="opacity-70">Oferta en USD</label><input type="number" id="descUsd" step="any" min="0" value="${descUsdIni || ''}" class="border rounded p-1 w-full"></div>
                         <div class="col-span-4"><label class="opacity-70">Oferta en Bs</label><input type="text" id="descBs" value="${fmtPrecio(descBsIni)}" class="border rounded p-1 w-full"></div>
@@ -2900,8 +2902,8 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         const p = D.productos.find(x => x.id === id);
         if(!p) return;
         const modal = document.createElement('div'); modal.className = 'modal-form';
-        modal.innerHTML = `<div class="modal-form-content" style="max-width:400px"><h3 class="text-xl font-bold mb-2">↔️ Ajustar stock</h3>
-            <div class="text-sm mb-3" style="opacity:.7">📦 <b>${escapeHtml(p.nombre)}</b> — stock actual: <b>${parseInt(p.stock)||0} u.</b></div>
+        modal.innerHTML = `<div class="modal-form-content" style="max-width:400px"><h3 class="text-xl font-bold mb-2"><i class="fas fa-right-left"></i> Ajustar stock</h3>
+            <div class="text-sm mb-3" style="opacity:.7"><i class="fas fa-boxes-stacked"></i> <b>${escapeHtml(p.nombre)}</b> — stock actual: <b>${parseInt(p.stock)||0} u.</b></div>
             <div class="mb-3"><label>Unidades a sumar (+) o restar (−)</label><input type="number" id="ajusteDelta" value="0" step="1" class="border rounded-xl p-2 w-full"></div>
             <div class="mb-3"><label>Motivo (obligatorio)</label><input type="text" id="ajusteMotivo" placeholder="Ej: merma, ajuste de inventario, devolución..." class="border rounded-xl p-2 w-full"></div>
             <div class="flex gap-3 mt-4"><button id="aplicarAjuste" class="btn-azul-redondeado btn-redondeado flex-1 py-2 font-bold">Aplicar</button><button id="cancelarAjuste" class="btn-redondeado flex-1 py-2 bg-gray-200">Cancelar</button></div></div>`;
@@ -2957,12 +2959,12 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
             if(!filt.length){ cont.innerHTML = '<div class="text-center py-4 text-gray-500">No hay registros</div>'; return; }
             cont.innerHTML = filt.map(i => {
                 let detalles = '';
-                if(store === 'clientes') detalles = `<div class="text-xs text-gray-500 mt-1">📞 ${escapeHtml(i.telefono||'')} | ✉️ ${escapeHtml(i.email||'')}</div>${(parseFloat(i.adeudo)||0) > 0 ? `<div class="text-xs font-bold mt-1" style="color:#ef4444">💳 Adeuda: ${fmtPrecio(i.adeudo)} Bs</div>` : `<div class="text-xs mt-1" style="color:#10b981">💳 Sin deudas</div>`}`;
-                else if(store === 'proveedores') detalles = `<div class="text-xs text-gray-500 mt-1">📞 ${escapeHtml(i.telefono||'')} | 👤 ${escapeHtml(i.contacto||'')}</div>`;
-                else if(store === 'gastos') detalles = `<div class="text-xs text-gray-500 mt-1">💰 ${fmtPrecio(i.montoBs||0)} Bs | 📅 ${escapeHtml(fmtFechaDisplay(i.fecha)||'')}</div>`;
-                else if(store === 'empleados') detalles = `<div class="text-xs text-gray-500 mt-1">💼 ${escapeHtml(i.cargo||'')} | 💵 ${fmtPrecio(i.salarioBs||0)} Bs${i.diaPago ? ` | 📆 Día de pago: ${escapeHtml(i.diaPago)}` : ''}${i.fechaPago ? ` | ✅ Pagado: ${escapeHtml(fmtFechaDisplay(i.fechaPago)||'')}` : ''}</div>`;
+                if(store === 'clientes') detalles = `<div class="text-xs text-gray-500 mt-1"><i class="fas fa-phone"></i> ${escapeHtml(i.telefono||'')} | <i class="fas fa-envelope"></i> ${escapeHtml(i.email||'')}</div>${(parseFloat(i.adeudo)||0) > 0 ? `<div class="text-xs font-bold mt-1" style="color:#ef4444"><i class="fas fa-credit-card"></i> Adeuda: ${fmtPrecio(i.adeudo)} Bs</div>` : `<div class="text-xs mt-1" style="color:#10b981"><i class="fas fa-credit-card"></i> Sin deudas</div>`}`;
+                else if(store === 'proveedores') detalles = `<div class="text-xs text-gray-500 mt-1"><i class="fas fa-phone"></i> ${escapeHtml(i.telefono||'')} | <i class="fas fa-user"></i> ${escapeHtml(i.contacto||'')}</div>`;
+                else if(store === 'gastos') detalles = `<div class="text-xs text-gray-500 mt-1"><i class="fas fa-sack-dollar"></i> ${fmtPrecio(i.montoBs||0)} Bs | <i class="fas fa-calendar-days"></i> ${escapeHtml(fmtFechaDisplay(i.fecha)||'')}</div>`;
+                else if(store === 'empleados') detalles = `<div class="text-xs text-gray-500 mt-1"><i class="fas fa-briefcase"></i> ${escapeHtml(i.cargo||'')} | <i class="fas fa-money-bill-wave"></i> ${fmtPrecio(i.salarioBs||0)} Bs${i.diaPago ? ` | <i class="fas fa-calendar-days"></i> Día de pago: ${escapeHtml(i.diaPago)}` : ''}${i.fechaPago ? ` | <i class="fas fa-circle-check"></i> Pagado: ${escapeHtml(fmtFechaDisplay(i.fechaPago)||'')}` : ''}</div>`;
                 let nombreTarjeta = (i.nombre && String(i.nombre).trim()) ? i.nombre : (i[campos[0]] || 'Sin nombre');
-                return `<div class="client-card" data-id="${i.id}"><div class="font-bold break-words">${escapeHtml(String(nombreTarjeta))}</div>${detalles}<div class="flex gap-2 mt-2"><button class="btn-editar-item btn-editar-redondeado">✏️ Editar</button>${store === 'empleados' ? `<button class="btn-pagar-empleado btn-verde-redondeado">💰 Pagar</button>` : ''}${store === 'clientes' ? `<button class="btn-abono-cliente btn-verde-redondeado">💵 Abono</button>` : ''}<button class="btn-eliminar-item btn-eliminar-redondeado">🗑️ Eliminar</button></div></div>`;
+                return `<div class="client-card" data-id="${i.id}"><div class="font-bold break-words">${escapeHtml(String(nombreTarjeta))}</div>${detalles}<div class="flex gap-2 mt-2"><button class="btn-editar-item btn-editar-redondeado"><i class="fas fa-pen"></i> Editar</button>${store === 'empleados' ? `<button class="btn-pagar-empleado btn-verde-redondeado"><i class="fas fa-sack-dollar"></i> Pagar</button>` : ''}${store === 'clientes' ? `<button class="btn-abono-cliente btn-verde-redondeado"><i class="fas fa-money-bill-wave"></i> Abono</button>` : ''}<button class="btn-eliminar-item btn-eliminar-redondeado"><i class="fas fa-trash"></i> Eliminar</button></div></div>`;
             }).join('');
             document.querySelectorAll('.btn-editar-item').forEach((btn, idx) => { let it = filt[idx]; btn.onclick = () => window.mostrarFormCrud(store, it.id, campos, false); });
             document.querySelectorAll('.btn-eliminar-item').forEach((btn, idx) => { let it = filt[idx]; btn.onclick = () => eliminarItemCrud(store, it.id); });
@@ -3023,7 +3025,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         emp.forEach(e => {
             const pagado = e.fechaPagoTs || (e.fechaPago ? tsFechaISO(e.fechaPago) : 0);
             const pagadoEnMes = pagado && new Date(pagado).getFullYear() === new Date(base).getFullYear() && new Date(pagado).getMonth() === new Date(base).getMonth();
-            html += `<div class="flex justify-between items-center" style="padding:5px 0;border-bottom:1px solid rgba(128,128,128,.1)"><span class="text-xs" style="opacity:.7">🧑‍💼 ${escapeHtml(e.nombre)}</span><span class="text-xs font-bold" style="color:${pagadoEnMes ? '#10b981' : '#f59e0b'}">${pagadoEnMes ? 'Pagado ✓' : fmtPrecio(e.salarioBs) + ' Bs'}</span></div>`;
+            html += `<div class="flex justify-between items-center" style="padding:5px 0;border-bottom:1px solid rgba(128,128,128,.1)"><span class="text-xs" style="opacity:.7"><i class="fas fa-user-tie"></i> ${escapeHtml(e.nombre)}</span><span class="text-xs font-bold" style="color:${pagadoEnMes ? '#10b981' : '#f59e0b'}">${pagadoEnMes ? 'Pagado ✓' : fmtPrecio(e.salarioBs) + ' Bs'}</span></div>`;
         });
         return html;
     }
@@ -3034,7 +3036,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         let bloqueado = volverBloqueado, accent = D.config.theme;
         D.entregas = await getAll('entregas');
         document.getElementById('appRoot').innerHTML = `<div class="page-header-fixed"><div class="module-header"><div class="flex items-center" style="min-width:0"><span class="module-crumb" onclick="navigateTo('proveedores')" title="Ir a Proveedores">Proveedores</span><span class="module-crumb-sep">/</span><h2 id="tituloModule" class="module-title ${bloqueado?'module-title-bloqueado':''}" style="color:${accent}" onmousedown="iniciarBloqueo(this,'Entregas')" onmouseup="cancelarBloqueo()" onmouseleave="cancelarBloqueo()">Entregas</h2></div><div id="btnVolverModule" class="btn-back ${bloqueado?'btn-back-bloqueado':''}" onclick="${bloqueado?'':'backToHome()'}">${bloqueado?'<i class="fas fa-lock"></i> Bloqueado':'<i class="fas fa-arrow-left"></i> Volver'}</div></div></div><div class="page-container">
-            <div class="flex gap-2 mb-4 items-center"><button id="btnNuevaEntrega" class="btn-azul-redondeado btn-redondeado py-2 px-4">+ Nueva entrega</button><button id="btnCalendarioEntregas" class="btn-redondeado py-2 px-4" style="border:1.5px solid ${accent};color:${accent}">📅 Calendario</button></div>
+            <div class="flex gap-2 mb-4 items-center"><button id="btnNuevaEntrega" class="btn-azul-redondeado btn-redondeado py-2 px-4">+ Nueva entrega</button><button id="btnCalendarioEntregas" class="btn-redondeado py-2 px-4" style="border:1.5px solid ${accent};color:${accent}"><i class="fas fa-calendar-days"></i> Calendario</button></div>
             <div class="config-section" style="margin-bottom:16px"><div class="config-section-title" style="font-size:.75rem;font-weight:700;opacity:.6;margin-bottom:8px">Estado de entregas</div><div id="resumenEntregas"></div></div>
             <h3 class="font-bold mb-2">Registro de entregas</h3>
             <div id="listaEntregas" class="scroll-area"></div>
@@ -3073,9 +3075,9 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         cont.innerHTML = filtro.map(e => `
             <div class="client-card" data-id="${e.id}">
                 <div class="flex justify-between items-start"><div class="font-bold break-words">${escapeHtml(e.proveedor||'Proveedor')} — ${escapeHtml(e.producto||'')}</div>${estadoEntregaBadge(e)}</div>
-                <div class="text-xs text-gray-500 mt-1">📅 Entrega: ${escapeHtml(fmtFechaDisplay(e.fecha)||'')}${e.hora ? ' ' + escapeHtml(e.hora) : ''} | ⏱️ Lapso: ${e.lapsoDias ? escapeHtml(e.lapsoDias) + ' día(s)' : '—'} | 🗓️ Vence: ${escapeHtml(fmtFechaDisplay(e.fechaVencimiento)||'—')} | 📦 ${parseInt(e.cantidad)||0} u.</div>
-                ${e.notas ? `<div class="text-xs mt-1" style="color:#f59e0b">📝 ${escapeHtml(e.notas)}</div>` : ''}
-                <div class="flex gap-2 mt-2"><button class="btn-editar-entrega btn-editar-redondeado">✏️ Editar</button><button class="btn-estado-entrega btn-verde-redondeado">↻ Estado</button><button class="btn-eliminar-entrega btn-eliminar-redondeado">🗑️</button></div>
+                <div class="text-xs text-gray-500 mt-1"><i class="fas fa-calendar-days"></i> Entrega: ${escapeHtml(fmtFechaDisplay(e.fecha)||'')}${e.hora ? ' ' + escapeHtml(e.hora) : ''} | <i class="fas fa-stopwatch"></i> Lapso: ${e.lapsoDias ? escapeHtml(e.lapsoDias) + ' día(s)' : '—'} | <i class="fas fa-calendar-days"></i> Vence: ${escapeHtml(fmtFechaDisplay(e.fechaVencimiento)||'—')} | <i class="fas fa-boxes-stacked"></i> ${parseInt(e.cantidad)||0} u.</div>
+                ${e.notas ? `<div class="text-xs mt-1" style="color:#f59e0b"><i class="fas fa-pen"></i> ${escapeHtml(e.notas)}</div>` : ''}
+                <div class="flex gap-2 mt-2"><button class="btn-editar-entrega btn-editar-redondeado"><i class="fas fa-pen"></i> Editar</button><button class="btn-estado-entrega btn-verde-redondeado">↻ Estado</button><button class="btn-eliminar-entrega btn-eliminar-redondeado"><i class="fas fa-trash"></i></button></div>
             </div>`).join('');
         document.querySelectorAll('.btn-editar-entrega').forEach((btn, idx) => { btn.onclick = () => mostrarFormEntrega(filtro[idx].id); });
         document.querySelectorAll('.btn-estado-entrega').forEach((btn, idx) => { const e = filtro[idx]; btn.onclick = () => cicloEstadoEntrega(e); });
@@ -3135,7 +3137,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
                 <div class="col-span-1"><label class="opacity-70">Fecha vencimiento</label><input type="date" id="entVenc" value="${e?.fechaVencimiento || ''}" class="border rounded p-1 w-full"></div>
             </div>
             <div class="mb-2"><label class="opacity-70">Estado</label><select id="entEstado" class="border rounded p-1 w-full"><option value="pendiente" ${(!e || e.estado==='pendiente')?'selected':''}>Pendiente</option><option value="salida" ${e?.estado==='salida'?'selected':''}>En salida</option><option value="recibido" ${e?.estado==='recibido'?'selected':''}>Recibida</option></select></div>
-            <div class="mb-2"><label class="opacity-70">📝 Notas (problemas / enmiendas)</label><textarea id="entNotas" rows="2" class="border rounded p-1 w-full" placeholder="Notas, incidencias, enmiendas...">${escapeHtml(e?.notas||'')}</textarea></div>
+            <div class="mb-2"><label class="opacity-70"><i class="fas fa-pen"></i> Notas (problemas / enmiendas)</label><textarea id="entNotas" rows="2" class="border rounded p-1 w-full" placeholder="Notas, incidencias, enmiendas...">${escapeHtml(e?.notas||'')}</textarea></div>
             <div class="flex gap-3 mt-4"><button id="guardarEnt" class="btn-azul-redondeado btn-redondeado flex-1 py-2 font-bold">Guardar</button><button id="cancelarEnt" class="btn-redondeado flex-1 py-2 bg-gray-200">Cancelar</button></div></div>`;
         document.body.appendChild(modal);
         document.getElementById('cancelarEnt').onclick = () => modal.remove();
@@ -3189,8 +3191,8 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
             for(let i=0; i<offset; i++) celdas += `<div class="cal-vacio"></div>`;
             for(let d=1; d<=diasMes; d++){
                 const f = fmtCorta(new Date(anio, mes, d));
-                const badges = (D.entregas||[]).filter(e => e.fecha === f).map(e => e.estado === 'recibido' ? '🟢' : e.estado === 'salida' ? '🟡' : '🔴').join('');
-                const vence = (D.entregas||[]).some(e => e.fechaVencimiento === f && (!e.estado || e.estado !== 'recibido')) ? '⚠️' : '';
+                const badges = (D.entregas||[]).filter(e => e.fecha === f).map(e => e.estado === 'recibido' ? '<i class="fas fa-circle" style="color:#22c55e"></i>' : e.estado === 'salida' ? '<i class="fas fa-circle" style="color:#eab308"></i>' : '<i class="fas fa-circle" style="color:#ef4444"></i>').join('');
+                const vence = (D.entregas||[]).some(e => e.fechaVencimiento === f && (!e.estado || e.estado !== 'recibido')) ? '<i class="fas fa-triangle-exclamation"></i>' : '';
                 const hoyF = fmtCorta(hoy); const esHoy = f === hoyF;
                 celdas += `<div class="cal-dia ${esHoy?'cal-dia-hoy':''} ${diaSel === f?'cal-sel':''}" data-f="${f}"><div class="cal-dia-num">${d}</div>${(badges||vence) ? `<div class="cal-badge">${badges}${vence}</div>` : ''}</div>`;
             }
@@ -3201,10 +3203,10 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
             const delDia = diaSel || fmtCorta(hoy);
             const evts = (D.entregas||[]).filter(e => e.fecha === delDia || e.fechaVencimiento === delDia);
             const fechaTxt = fmtFechaDisplay(delDia);
-            document.getElementById('calDetalle').innerHTML = `<div class="text-xs font-bold" style="color:${accent};margin-bottom:6px">📅 ${diaSel ? fechaTxt : 'Hoy: ' + fechaTxt}</div>` + (evts.length ? evts.map(e => `
-                <div class="flex justify-between items-center" style="padding:6px 0;border-bottom:1px solid rgba(128,128,128,.12)"><div><div class="text-xs font-bold">${escapeHtml(e.producto||'')} — ${escapeHtml(e.proveedor||'')}</div><div class="text-[10px]" style="opacity:.6">${escapeHtml(fmtFechaDisplay(e.fecha)||'')}${e.hora ? ' '+escapeHtml(e.hora) : ''} · Vence: ${escapeHtml(fmtFechaDisplay(e.fechaVencimiento)||'—')}</div>${e.notas ? `<div class="text-[10px]" style="color:#f59e0b">📝 ${escapeHtml(e.notas)}</div>` : ''}</div>${estadoEntregaBadge(e)}</div>`).join('') : '<div class="text-xs" style="opacity:.5;text-align:center;padding:10px">Sin entregas este día</div>');
+            document.getElementById('calDetalle').innerHTML = `<div class="text-xs font-bold" style="color:${accent};margin-bottom:6px"><i class="fas fa-calendar-days"></i> ${diaSel ? fechaTxt : 'Hoy: ' + fechaTxt}</div>` + (evts.length ? evts.map(e => `
+                <div class="flex justify-between items-center" style="padding:6px 0;border-bottom:1px solid rgba(128,128,128,.12)"><div><div class="text-xs font-bold">${escapeHtml(e.producto||'')} — ${escapeHtml(e.proveedor||'')}</div><div class="text-[10px]" style="opacity:.6">${escapeHtml(fmtFechaDisplay(e.fecha)||'')}${e.hora ? ' '+escapeHtml(e.hora) : ''} · Vence: ${escapeHtml(fmtFechaDisplay(e.fechaVencimiento)||'—')}</div>${e.notas ? `<div class="text-[10px]" style="color:#f59e0b"><i class="fas fa-pen"></i> ${escapeHtml(e.notas)}</div>` : ''}</div>${estadoEntregaBadge(e)}</div>`).join('') : '<div class="text-xs" style="opacity:.5;text-align:center;padding:10px">Sin entregas este día</div>');
         }
-        popup.innerHTML = `<div class="kpi-popup-titulo" style="color:${accent}">📅 Calendario de entregas <button class="kpi-popup-cerrar" onclick="this.closest('.kpi-popup-overlay').remove()">✕</button></div>
+        popup.innerHTML = `<div class="kpi-popup-titulo" style="color:${accent}"><i class="fas fa-calendar-days"></i> Calendario de entregas <button class="kpi-popup-cerrar" onclick="this.closest('.kpi-popup-overlay').remove()">✕</button></div>
             <div style="display:flex;align-items:center;gap:8px;justify-content:space-between;margin-bottom:8px">
                 <button id="calPrev" class="btn-redondeado py-1 px-3 text-xs" style="border:1px solid ${accent};color:${accent}">‹</button>
                 <div id="calTitulo" class="font-bold text-sm"></div>
@@ -3212,7 +3214,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
             </div>
             <div id="calGrid" class="cal-grid"></div>
             <div id="calDetalle" class="cal-detalle"></div>
-            <div class="text-[10px]" style="opacity:.55;margin-top:8px;text-align:center">🟢 Recibida · 🟡 En salida · 🔴 Pendiente · ⚠️ Vence</div>`;
+            <div class="text-[10px]" style="opacity:.55;margin-top:8px;text-align:center"><i class="fas fa-circle" style="color:#22c55e"></i> Recibida · <i class="fas fa-circle" style="color:#eab308"></i> En salida · <i class="fas fa-circle" style="color:#ef4444"></i> Pendiente · <i class="fas fa-triangle-exclamation"></i> Vence</div>`;
         overlay.appendChild(popup); document.body.appendChild(overlay);
         document.getElementById('calPrev').onclick = () => { mes--; if(mes < 0){ mes = 11; anio--; } pintar(); };
         document.getElementById('calNext').onclick = () => { mes++; if(mes > 11){ mes = 0; anio++; } pintar(); };
@@ -3557,12 +3559,12 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         const nombreDia = (() => { const d = new Date(fecha + 'T12:00:00'); const n = d.toLocaleDateString('es-ES',{weekday:'long'}) || ''; return n ? n.charAt(0).toUpperCase() + n.slice(1) : (label || ''); })();
         popup.innerHTML = `<div class="kpi-popup-titulo" style="color:${accent}"><i class="fas fa-chart-bar"></i> ${nombreDia} <button class="kpi-popup-cerrar" onclick="this.closest('.kpi-popup-overlay').remove()">✕</button></div>
         <div class="kpi-popup-grid">
-            <div class="kpi-popup-card"><div class="kpi-popup-icon">💰</div><div class="kpi-popup-val">${fmtPrecio(total)} Bs</div><div class="kpi-popup-lbl">Ventas</div></div>
-            <div class="kpi-popup-card"><div class="kpi-popup-icon">🧾</div><div class="kpi-popup-val">${cnt}</div><div class="kpi-popup-lbl">Ticket(s)</div></div>
-            <div class="kpi-popup-card"><div class="kpi-popup-icon">📈</div><div class="kpi-popup-val">${fmtPrecio(ganancia)} Bs</div><div class="kpi-popup-lbl">Ganancia cobrada</div></div>
-            <div class="kpi-popup-card"><div class="kpi-popup-icon">💸</div><div class="kpi-popup-val">${fmtPrecio(gastos)} Bs</div><div class="kpi-popup-lbl">Gastos</div></div>
-            <div class="kpi-popup-card"><div class="kpi-popup-icon">📊</div><div class="kpi-popup-val" style="color:${utilidad >= 0 ? '#10b981' : '#ef4444'}">${fmtPrecio(utilidad)} Bs</div><div class="kpi-popup-lbl">Utilidad</div></div>
-            <div class="kpi-popup-card"><div class="kpi-popup-icon">👥</div><div class="kpi-popup-val">${new Set(ventasDia.map(v => v.clienteId)).size}</div><div class="kpi-popup-lbl">Clientes</div></div>
+            <div class="kpi-popup-card"><div class="kpi-popup-icon"><i class="fas fa-sack-dollar"></i></div><div class="kpi-popup-val">${fmtPrecio(total)} Bs</div><div class="kpi-popup-lbl">Ventas</div></div>
+            <div class="kpi-popup-card"><div class="kpi-popup-icon"><i class="fas fa-receipt"></i></div><div class="kpi-popup-val">${cnt}</div><div class="kpi-popup-lbl">Ticket(s)</div></div>
+            <div class="kpi-popup-card"><div class="kpi-popup-icon"><i class="fas fa-chart-line"></i></div><div class="kpi-popup-val">${fmtPrecio(ganancia)} Bs</div><div class="kpi-popup-lbl">Ganancia cobrada</div></div>
+            <div class="kpi-popup-card"><div class="kpi-popup-icon"><i class="fas fa-money-bill-wave"></i></div><div class="kpi-popup-val">${fmtPrecio(gastos)} Bs</div><div class="kpi-popup-lbl">Gastos</div></div>
+            <div class="kpi-popup-card"><div class="kpi-popup-icon"><i class="fas fa-chart-column"></i></div><div class="kpi-popup-val" style="color:${utilidad >= 0 ? '#10b981' : '#ef4444'}">${fmtPrecio(utilidad)} Bs</div><div class="kpi-popup-lbl">Utilidad</div></div>
+            <div class="kpi-popup-card"><div class="kpi-popup-icon"><i class="fas fa-users"></i></div><div class="kpi-popup-val">${new Set(ventasDia.map(v => v.clienteId)).size}</div><div class="kpi-popup-lbl">Clientes</div></div>
         </div>
         <div class="kpi-popup-totales"><span>Acumulado: ${fmtPrecio(totalVentasAll)} Bs</span><span>Ganancia cobrada: ${fmtPrecio(totalGananciaAll)} Bs</span><span>Gastos: ${fmtPrecio(totalGastosAll)} Bs</span><span>Utilidad: <b style="color:${utilidadAll >= 0 ? '#10b981' : '#ef4444'}">${fmtPrecio(utilidadAll)} Bs</b></span></div>`;
         overlay.appendChild(popup);
@@ -3808,7 +3810,7 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
             const formas = { 'efectivo_bs':'EFECTIVO Bs','pago_movil':'PAGO MÓVIL','transferencia':'TRANSFERENCIA','tarjeta_debito':'TARJETA DÉBITO','dolares':'DÓLARES','pago_dividido':'PAGO DIVIDIDO','credito':'CRÉDITO' };
             const filasVentas = ventasPer.length ? ventasPer.slice().reverse().map(v => `<tr><td>${escapeHtml(v.id)}</td><td>${escapeHtml(fmtFechaDisplay(v.fecha)||'')}</td><td>${escapeHtml(v.hora || '')}</td><td>${escapeHtml(v.cliente || 'General')}</td><td style="text-align:right">${escapeHtml((v.items||[]).map(i=>i.nombre + (i.cantidad>1?' x'+i.cantidad:'')).join(', '))}</td><td style="text-align:right">${fmtPrecio(v.total)}</td><td style="text-align:right">${fmtDolar(v.dolarRate||0)}</td><td style="text-align:right">${fmtPrecio(v.gananciaTotal||0)}</td><td>${formas[v.tipoPago] || escapeHtml(v.tipoPago||'')}</td></tr>`).join('') : '<tr><td colspan="9" style="text-align:center;opacity:.6">Sin ventas en el período</td></tr>';
             const filasGastos = gastosPer.length ? gastosPer.slice().reverse().map(g => `<tr><td>${escapeHtml(fmtFechaDisplay(g.fecha)||'')}</td><td>${escapeHtml(g.concepto||'')}</td><td>${escapeHtml(g.categoria||'')}</td><td style="text-align:right">${fmtPrecio(g.montoBs||0)}</td></tr>`).join('') : '<tr><td colspan="4" style="text-align:center;opacity:.6">Sin gastos en el período</td></tr>';
-            const filasNomina = empleados.filter(e => (parseFloat(e.salarioBs)||0) > 0).length ? empleados.filter(e => (parseFloat(e.salarioBs)||0) > 0).map(e => { const pag = e.fechaPagoTs || (e.fechaPago ? tsFechaISO(e.fechaPago) : 0); const pm = pag && new Date(pag).getFullYear() === new Date().getFullYear() && new Date(pag).getMonth() === new Date().getMonth(); return `<tr><td>${escapeHtml(e.nombre)}</td><td>${escapeHtml(e.cargo||'')}</td><td>${e.diaPago ? 'Día ' + escapeHtml(e.diaPago) : '—'}</td><td style="text-align:right">${fmtPrecio(e.salarioBs)}</td><td style="text-align:center">${pm ? '✅ Pagado' : '⏳ Pendiente'}</td></tr>`; }).join('') : '<tr><td colspan="5" style="text-align:center;opacity:.6">Sin empleados con salario registrado</td></tr>';
+            const filasNomina = empleados.filter(e => (parseFloat(e.salarioBs)||0) > 0).length ? empleados.filter(e => (parseFloat(e.salarioBs)||0) > 0).map(e => { const pag = e.fechaPagoTs || (e.fechaPago ? tsFechaISO(e.fechaPago) : 0); const pm = pag && new Date(pag).getFullYear() === new Date().getFullYear() && new Date(pag).getMonth() === new Date().getMonth(); return `<tr><td>${escapeHtml(e.nombre)}</td><td>${escapeHtml(e.cargo||'')}</td><td>${e.diaPago ? 'Día ' + escapeHtml(e.diaPago) : '—'}</td><td style="text-align:right">${fmtPrecio(e.salarioBs)}</td><td style="text-align:center">${pm ? '<i class="fas fa-circle-check"></i> Pagado' : '⏳ Pendiente'}</td></tr>`; }).join('') : '<tr><td colspan="5" style="text-align:center;opacity:.6">Sin empleados con salario registrado</td></tr>';
             const filasEntregas = entregas.length ? entregas.slice().sort((a,b)=>String(a.fecha).localeCompare(String(b.fecha))).map(e => `<tr><td>${escapeHtml(fmtFechaDisplay(e.fecha)||'')}</td><td>${escapeHtml(e.hora||'')}</td><td>${escapeHtml(e.proveedor||'')}</td><td>${escapeHtml(e.producto||'')}</td><td style="text-align:right">${parseInt(e.cantidad)||0}</td><td style="text-align:right">${e.lapsoDias||0}</td><td>${escapeHtml(fmtFechaDisplay(e.fechaVencimiento)||'')}</td><td style="text-align:center">${e.estado==='recibido'?'Recibida':e.estado==='salida'?'Salida':'Pendiente'}</td><td>${escapeHtml(e.notas||'')}</td></tr>`).join('') : '<tr><td colspan="9" style="text-align:center;opacity:.6">Sin entregas registradas</td></tr>';
             const filasTasa = histTasa.filter(h => h && h.fecha && !isNaN(new Date(h.fecha).getTime())).filter(h => enR(new Date(h.fecha).getTime())).map(h => `<tr><td>${escapeHtml(h.fecha)}</td><td>${escapeHtml(h.hora||'')}</td><td style="text-align:right">${escapeHtml(h.tasa)}</td></tr>`).join('') || '<tr><td colspan="3" style="text-align:center;opacity:.6">Sin historial</td></tr>';
             const porForma = {};
@@ -3817,7 +3819,7 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
                 else { const k = v.tipoPago || 'efectivo_bs'; porForma[k] = (porForma[k]||0) + (v.total||0); }
             });
             const filasFormas = Object.keys(porForma).length ? Object.keys(porForma).map(k => { const pct = totVentas > 0 ? (porForma[k] / totVentas * 100) : 0; return `<tr><td>${formas[k] || escapeHtml(k)}</td><td style="text-align:right">${fmtPrecio(porForma[k])}</td><td style="text-align:right">${pct.toFixed(1)}%</td></tr>`; }).join('') : '<tr><td colspan="3" style="text-align:center;opacity:.6">Sin ventas en el período</td></tr>';
-            const filasCartera = conDeudaCxc.length ? conDeudaCxc.map(c => `<tr><td>${escapeHtml(c.nombre||'')}</td><td>${escapeHtml(c.cedula||'')}</td><td>${escapeHtml(c.telefono||'')}</td><td style="text-align:right">${fmtPrecio(c.adeudo)}</td></tr>`).join('') : '<tr><td colspan="4" style="text-align:center;opacity:.6">Sin deudas pendientes 💚</td></tr>';
+            const filasCartera = conDeudaCxc.length ? conDeudaCxc.map(c => `<tr><td>${escapeHtml(c.nombre||'')}</td><td>${escapeHtml(c.cedula||'')}</td><td>${escapeHtml(c.telefono||'')}</td><td style="text-align:right">${fmtPrecio(c.adeudo)}</td></tr>`).join('') : '<tr><td colspan="4" style="text-align:center;opacity:.6">Sin deudas pendientes <i class="fas fa-heart"></i></td></tr>';
             const colorNet = utilNeta >= 0 ? '#10b981' : '#ef4444';
             const fechaGen = new Date().toLocaleString('es-ES');
             const css = `
@@ -3969,7 +3971,7 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
             <div class="page-header-fixed"><div class="module-header"><div class="flex items-center" style="min-width:0"><span class="module-crumb" onclick="navigateTo('reportes')" title="Ir a Reportes">Reportes</span><span class="module-crumb-sep">/</span><h2 id="tituloModule" class="module-title ${bloqueado?'module-title-bloqueado':''}" style="color:${accent}" onmousedown="iniciarBloqueo(this,'Resumen')" onmouseup="cancelarBloqueo()" onmouseleave="cancelarBloqueo()">Resumen</h2></div><div id="btnVolverModule" class="btn-back ${bloqueado?'btn-back-bloqueado':''}" onclick="${bloqueado?'':'backToHome()'}">${bloqueado?'<i class="fas fa-lock"></i> Bloqueado':'<i class="fas fa-arrow-left"></i> Volver'}</div></div></div>
             <div class="page-container">
                 <div class="config-section" style="margin-bottom:16px">
-                    <div class="config-section-title" style="font-size:.75rem;font-weight:700;opacity:.6;margin-bottom:8px">📋 Resumen del período</div>
+                    <div class="config-section-title" style="font-size:.75rem;font-weight:700;opacity:.6;margin-bottom:8px"><i class="fas fa-clipboard"></i> Resumen del período</div>
                     <div class="flex gap-1 mb-2" style="flex-wrap:wrap">${['hoy','semana','mes','anio'].map(p => `<button id="perBtn_${p}" class="btn-redondeado py-1 px-3 text-xs" style="${_p===p ? `background:${accent};color:#fff` : `border:1px solid ${accent};color:${accent}`}">${p==='hoy'?'Hoy':p==='semana'?'7 días':p==='mes'?'Mes':p==='anio'?'Año':''}</button>`).join('')}</div>
                     <div id="resumenPeriodo">
                         <div class="card-bcv" style="padding:10px;margin-bottom:6px"><div class="flex justify-between"><span class="text-xs" style="opacity:.7">Período</span><span class="text-xs font-bold">${labelPeriodo(_p)} · ${rp.ini} → ${rp.fin}</span></div></div>
@@ -3982,10 +3984,10 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
                         <div class="card-bcv" style="padding:10px;margin-top:6px"><div class="flex justify-between items-center"><span class="text-xs" style="opacity:.7">Ganancia a crédito (período)</span><span class="text-lg font-black" style="color:#f59e0b">${totGanCreditoRes > 0 ? fmtPrecio(totGanCreditoRes) + ' Bs' : '—'}</span></div></div>
                         <div class="card-bcv" style="padding:10px;margin-top:6px"><div class="flex justify-between items-center"><span class="text-xs" style="opacity:.7">Utilidad neta</span><span class="text-lg font-black" style="color:${utilNeta >= 0 ? '#10b981' : '#ef4444'}">${fmtPrecio(utilNeta)} Bs</span></div></div>
                     </div>
-                    <div class="flex gap-2 mt-2"><button id="btnDocExcel" class="btn-azul-redondeado btn-redondeado flex-1 py-2 text-xs">📊 Exportar Excel</button><button id="btnDocPrint" class="btn-redondeado flex-1 py-2 text-xs" style="border:1.5px solid ${accent};color:${accent}">📄 Documento (imprimir)</button></div>
+                    <div class="flex gap-2 mt-2"><button id="btnDocExcel" class="btn-azul-redondeado btn-redondeado flex-1 py-2 text-xs"><i class="fas fa-chart-column"></i> Exportar Excel</button><button id="btnDocPrint" class="btn-redondeado flex-1 py-2 text-xs" style="border:1.5px solid ${accent};color:${accent}"><i class="fas fa-file-invoice"></i> Documento (imprimir)</button></div>
                 </div>
                 <div class="config-section" style="margin-bottom:16px">
-                    <div class="config-section-title" style="font-size:.75rem;font-weight:700;opacity:.6;margin-bottom:8px">🧑‍💼 Nómina (salarios de empleados)</div>
+                    <div class="config-section-title" style="font-size:.75rem;font-weight:700;opacity:.6;margin-bottom:8px"><i class="fas fa-user-tie"></i> Nómina (salarios de empleados)</div>
                     ${nóminaPendienteHTML()}
                 </div>
             </div>`;
@@ -4024,7 +4026,7 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
                 <div class="chart-hint" style="text-align:center;font-size:.75rem;opacity:.5;margin-bottom:6px">Toca una barra para ver los indicadores del día</div>
                 <div class="chart-container"><canvas id="chartVentas"></canvas></div>
                 <div class="config-section" style="margin-bottom:16px">
-                    <div class="config-section-title" style="font-size:.75rem;font-weight:700;opacity:.6;margin-bottom:8px">💱 Tasa del dólar — últimos 7 días</div>
+                    <div class="config-section-title" style="font-size:.75rem;font-weight:700;opacity:.6;margin-bottom:8px"><i class="fas fa-money-bill-transfer"></i> Tasa del dólar — últimos 7 días</div>
                     ${tasaHtml}
                 </div>
                 <h3 class="font-bold mb-2">Registro de ventas</h3>
@@ -4067,7 +4069,7 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
         const _clRep = v.clienteId ? D.clientes.find(c => c.id === v.clienteId) : null;
         const cedulaRep = _clRep && _clRep.cedula ? ` (${escapeHtml(_clRep.cedula)})` : '';
         const totalUsdRep = v.dolarRate > 0 ? ` / $${fmtDolar(v.total / v.dolarRate)}` : '';
-        return `<div class="border rounded-xl p-3 mb-2 cursor-pointer hover:opacity-80" style="border-color:var(--accent)" onclick="window.mostrarTicketDesdeReporte('${v.id}')"><div class="flex justify-between items-start"><div><b>${escapeHtml(v.id)}</b></div><div class="text-xs opacity-60">${escapeHtml(v.fecha)}</div></div><div class="text-sm mt-1">👤 ${escapeHtml(v.cliente)}${cedulaRep}</div><div class="flex justify-between items-center mt-1"><span class="text-sm font-bold" style="color:var(--accent)">${fmtPrecio(v.total)} Bs${totalUsdRep}</span><span class="text-xs">${formasPagoGlobal[v.tipoPago] || v.tipoPago}</span></div>${v.dolarRate ? `<div class="text-xs mt-1 opacity-60">💲 Tasa del día: 1 USD = ${fmtDolar(v.dolarRate)} Bs</div>` : ''}<div class="text-xs mt-1 opacity-60">${(v.items||[]).map(i=>`${escapeHtml(i.nombre)} x${i.cantidad}${i.precioUsd ? ` ($${fmtDolar(i.precioUsd)})` : ''}`).join(', ')}</div></div>`;
+        return `<div class="border rounded-xl p-3 mb-2 cursor-pointer hover:opacity-80" style="border-color:var(--accent)" onclick="window.mostrarTicketDesdeReporte('${v.id}')"><div class="flex justify-between items-start"><div><b>${escapeHtml(v.id)}</b></div><div class="text-xs opacity-60">${escapeHtml(v.fecha)}</div></div><div class="text-sm mt-1"><i class="fas fa-user"></i> ${escapeHtml(v.cliente)}${cedulaRep}</div><div class="flex justify-between items-center mt-1"><span class="text-sm font-bold" style="color:var(--accent)">${fmtPrecio(v.total)} Bs${totalUsdRep}</span><span class="text-xs">${formasPagoGlobal[v.tipoPago] || v.tipoPago}</span></div>${v.dolarRate ? `<div class="text-xs mt-1 opacity-60"><i class="fas fa-dollar-sign"></i> Tasa del día: 1 USD = ${fmtDolar(v.dolarRate)} Bs</div>` : ''}<div class="text-xs mt-1 opacity-60">${(v.items||[]).map(i=>`${escapeHtml(i.nombre)} x${i.cantidad}${i.precioUsd ? ` ($${fmtDolar(i.precioUsd)})` : ''}`).join(', ')}</div></div>`;
     }
     let filtroCalendario = null;
     const mesNombre = m => ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'][m];
@@ -4162,14 +4164,14 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
             celdas += `<button class="cal-dia ${n > 0 ? 'cal-dia-venta' : ''}" onclick="window.aplicarFiltroDia('${iso}')"><span class="cal-dia-num">${d}</span>${n > 0 ? `<span class="cal-badge">${n}</span>` : ''}${tasaHtml}</button>`;
         }
         modal.innerHTML = `<div class="modal-form-content" style="max-width:340px">
-            <h3 class="font-bold text-lg mb-1" style="color:${D.config.theme}">📅 Ventas por fecha</h3>
+            <h3 class="font-bold text-lg mb-1" style="color:${D.config.theme}"><i class="fas fa-calendar-days"></i> Ventas por fecha</h3>
             <p class="text-xs opacity-70 mb-2">La tasa del día aparece en cada casilla.</p>
             <div class="cal-nav"><button onclick="window._calMonth--;if(window._calMonth<0){window._calMonth=11;window._calYear--;}renderCalendarioVentas()">◀</button><div class="cal-titulo">${mesNombre(m)} ${a}</div><button onclick="window._calMonth++;if(window._calMonth>11){window._calMonth=0;window._calYear++;}renderCalendarioVentas()">▶</button></div>
             <div class="cal-nav cal-nav-ano"><button onclick="window._calYear--;renderCalendarioVentas()">◀ Año</button><div class="cal-titulo">${ventasMes.length} venta(s) · ${fmtPrecio(totalMes)} Bs</div><button onclick="window._calYear++;renderCalendarioVentas()">Año ▶</button></div>
             <div class="cal-grid">${celdas}</div>
             <div class="flex gap-2 mt-3">
-                <button class="btn-azul-redondeado btn-redondeado flex-1 py-2 text-sm" onclick="window.aplicarFiltroMes('${prefijo}','${mesNombre(m)} ${a}')">📆 Ver todo ${mesNombre(m)}</button>
-                <button class="btn-redondeado flex-1 py-2 bg-gray-200 text-sm" onclick="window.quitarFiltroFecha()">🗑 Quitar</button>
+                <button class="btn-azul-redondeado btn-redondeado flex-1 py-2 text-sm" onclick="window.aplicarFiltroMes('${prefijo}','${mesNombre(m)} ${a}')"><i class="fas fa-calendar-days"></i> Ver todo ${mesNombre(m)}</button>
+                <button class="btn-redondeado flex-1 py-2 bg-gray-200 text-sm" onclick="window.quitarFiltroFecha()"><i class="fas fa-trash"></i> Quitar</button>
             </div>
             <button class="w-full mt-2 py-2 rounded-xl bg-gray-200" onclick="document.getElementById('modalCalendarioVentas').remove()">Cerrar</button>
         </div>`;
@@ -4196,7 +4198,7 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
         if (!cliente) return;
         const adeudo = parseFloat(cliente.adeudo) || 0;
         const modal = document.createElement('div'); modal.className = 'modal-form';
-        modal.innerHTML = `<div class="modal-form-content"><h3 class="text-xl font-bold mb-4">Detalles del Cliente</h3><div class="mb-2"><strong>Nombre:</strong> ${escapeHtml(cliente.nombre)}</div><div class="mb-2"><strong>Cédula/RIF:</strong> ${escapeHtml(cliente.cedula || 'N/A')}</div><div class="mb-2"><strong>Teléfono:</strong> ${escapeHtml(cliente.telefono || 'N/A')}</div><div class="mb-2"><strong>Dirección:</strong> ${escapeHtml(cliente.direccion || 'N/A')}</div><div class="mb-2"><strong>Email:</strong> ${escapeHtml(cliente.email || 'N/A')}</div><div class="mb-3 rounded-xl p-3" style="background:rgba(128,128,128,0.07)"><span class="text-sm font-bold" style="color:${adeudo > 0 ? '#ef4444' : '#10b981'}">💳 Saldo: ${fmtPrecio(adeudo)} Bs</span></div>${(cliente.abonos && cliente.abonos.length) ? `<div class="mb-3 text-xs">📜 Abonos registrados:<br>${cliente.abonos.slice().reverse().map(a => `&nbsp;• ${escapeHtml(fmtFechaDisplay(a.fecha)||a.fecha)}: ${fmtPrecio(a.monto)} Bs${a.nota ? ' (' + escapeHtml(a.nota) + ')' : ''}`).join('<br>')}</div>` : ''}<div class="flex gap-3 mt-4"><button id="btnAbonoDetalle" class="btn-azul-redondeado btn-redondeado flex-1 py-2">💵 Registrar abono</button><button id="closeDetalle" class="btn-redondeado flex-1 py-2 bg-gray-200">Cerrar</button></div></div>`;
+        modal.innerHTML = `<div class="modal-form-content"><h3 class="text-xl font-bold mb-4">Detalles del Cliente</h3><div class="mb-2"><strong>Nombre:</strong> ${escapeHtml(cliente.nombre)}</div><div class="mb-2"><strong>Cédula/RIF:</strong> ${escapeHtml(cliente.cedula || 'N/A')}</div><div class="mb-2"><strong>Teléfono:</strong> ${escapeHtml(cliente.telefono || 'N/A')}</div><div class="mb-2"><strong>Dirección:</strong> ${escapeHtml(cliente.direccion || 'N/A')}</div><div class="mb-2"><strong>Email:</strong> ${escapeHtml(cliente.email || 'N/A')}</div><div class="mb-3 rounded-xl p-3" style="background:rgba(128,128,128,0.07)"><span class="text-sm font-bold" style="color:${adeudo > 0 ? '#ef4444' : '#10b981'}"><i class="fas fa-credit-card"></i> Saldo: ${fmtPrecio(adeudo)} Bs</span></div>${(cliente.abonos && cliente.abonos.length) ? `<div class="mb-3 text-xs"><i class="fas fa-scroll"></i> Abonos registrados:<br>${cliente.abonos.slice().reverse().map(a => `&nbsp;• ${escapeHtml(fmtFechaDisplay(a.fecha)||a.fecha)}: ${fmtPrecio(a.monto)} Bs${a.nota ? ' (' + escapeHtml(a.nota) + ')' : ''}`).join('<br>')}</div>` : ''}<div class="flex gap-3 mt-4"><button id="btnAbonoDetalle" class="btn-azul-redondeado btn-redondeado flex-1 py-2"><i class="fas fa-money-bill-wave"></i> Registrar abono</button><button id="closeDetalle" class="btn-redondeado flex-1 py-2 bg-gray-200">Cerrar</button></div></div>`;
         document.body.appendChild(modal);
         document.getElementById('closeDetalle').onclick = () => modal.remove();
         document.getElementById('btnAbonoDetalle').onclick = () => { modal.remove(); registrarAbono(clienteId); };
@@ -4219,7 +4221,7 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
             <div class="page-header-fixed"><div class="module-header"><div class="flex items-center" style="min-width:0"><span class="module-crumb" onclick="navigateTo('clientes')" title="Ir a Clientes">Clientes</span><span class="module-crumb-sep">/</span><h2 id="tituloModule" class="module-title ${bloqueado?'module-title-bloqueado':''}" style="color:${accent}" onmousedown="iniciarBloqueo(this,'Cartera')" onmouseup="cancelarBloqueo()" onmouseleave="cancelarBloqueo()">Cartera</h2></div><div id="btnVolverModule" class="btn-back ${bloqueado?'btn-back-bloqueado':''}" onclick="${bloqueado?'':'backToHome()'}">${bloqueado?'<i class="fas fa-lock"></i> Bloqueado':'<i class="fas fa-arrow-left"></i> Volver'}</div></div></div>
             <div class="page-container">
                 <div class="config-section" style="margin-bottom:16px">
-                    <div class="config-section-title" style="font-size:.75rem;font-weight:700;opacity:.6;margin-bottom:8px">📊 Resumen de cartera</div>
+                    <div class="config-section-title" style="font-size:.75rem;font-weight:700;opacity:.6;margin-bottom:8px"><i class="fas fa-chart-column"></i> Resumen de cartera</div>
                     <div class="grid grid-cols-3 gap-2">
                         <div class="card-bcv" style="padding:10px;text-align:center"><div class="font-black text-lg" style="color:#ef4444">${fmtPrecio(totalCxC)}</div><div class="text-xs opacity-70">Por cobrar (Bs)</div></div>
                         <div class="card-bcv" style="padding:10px;text-align:center"><div class="font-black text-lg" style="color:${accent}">${conDeuda.length}</div><div class="text-xs opacity-70">Clientes con deuda</div></div>
@@ -4227,8 +4229,8 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
                     </div>
                 </div>
                 <div class="flex gap-1 mb-2" style="flex-wrap:wrap">
-                    <button id="filtroCartera_deuda" class="btn-redondeado py-1 px-3 text-xs" style="${_filtroCartera==='deuda' ? `background:${accent};color:#fff` : `border:1px solid ${accent};color:${accent}`}">💳 Deudores (${conDeuda.length})</button>
-                    <button id="filtroCartera_todos" class="btn-redondeado py-1 px-3 text-xs" style="${_filtroCartera==='todos' ? `background:${accent};color:#fff` : `border:1px solid ${accent};color:${accent}`}">👥 Todos (${todos.length})</button>
+                    <button id="filtroCartera_deuda" class="btn-redondeado py-1 px-3 text-xs" style="${_filtroCartera==='deuda' ? `background:${accent};color:#fff` : `border:1px solid ${accent};color:${accent}`}"><i class="fas fa-credit-card"></i> Deudores (${conDeuda.length})</button>
+                    <button id="filtroCartera_todos" class="btn-redondeado py-1 px-3 text-xs" style="${_filtroCartera==='todos' ? `background:${accent};color:#fff` : `border:1px solid ${accent};color:${accent}`}"><i class="fas fa-users"></i> Todos (${todos.length})</button>
                 </div>
                 <div class="mb-3 relative">
                     <i class="fas fa-search absolute left-3 top-3 text-gray-400"></i>
@@ -4254,14 +4256,14 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
             })
             .sort((a,b) => b.adeudo - a.adeudo);
         const cont = document.getElementById('listaCartera'); if(!cont) return;
-        if(!filt.length){ cont.innerHTML = '<div class="text-center py-4 text-gray-500">' + (_filtroCartera==='deuda' ? 'Sin clientes con deuda 💚' : 'No hay clientes registrados') + '</div>'; return; }
+        if(!filt.length){ cont.innerHTML = '<div class="text-center py-4 text-gray-500">' + (_filtroCartera==='deuda' ? 'Sin clientes con deuda <i class="fas fa-heart"></i>' : 'No hay clientes registrados') + '</div>'; return; }
         cont.innerHTML = filt.map(x => `
             <div class="client-card" data-id="${x.c.id}">
                 <div class="font-bold break-words">${escapeHtml(String(x.c.nombre || 'Sin nombre'))}</div>
-                <div class="text-xs text-gray-500 mt-1">🪪 ${escapeHtml(x.c.cedula || 'N/A')} | 📞 ${escapeHtml(x.c.telefono || '—')}</div>
+                <div class="text-xs text-gray-500 mt-1"><i class="fas fa-id-card"></i> ${escapeHtml(x.c.cedula || 'N/A')} | <i class="fas fa-phone"></i> ${escapeHtml(x.c.telefono || '—')}</div>
                 <div class="flex justify-between items-center mt-1"><span class="text-xs" style="opacity:.7">Saldo</span><span class="text-sm font-bold" style="color:${x.adeudo > 0 ? '#ef4444' : '#10b981'}">${fmtPrecio(x.adeudo)} Bs</span></div>
-                ${(x.c.abonos && x.c.abonos.length) ? `<div class="text-xs mt-1" style="opacity:.6">📜 Último abono: ${escapeHtml(fmtFechaDisplay(x.c.abonos[x.c.abonos.length-1].fecha)||'')} · ${fmtPrecio(x.c.abonos[x.c.abonos.length-1].monto)} Bs</div>` : ''}
-                <div class="flex gap-2 mt-2"><button class="btn-abono-cartera btn-verde-redondeado">💵 Abono</button><button class="btn-detalle-cartera btn-editar-redondeado">👤 Detalle</button></div>
+                ${(x.c.abonos && x.c.abonos.length) ? `<div class="text-xs mt-1" style="opacity:.6"><i class="fas fa-scroll"></i> Último abono: ${escapeHtml(fmtFechaDisplay(x.c.abonos[x.c.abonos.length-1].fecha)||'')} · ${fmtPrecio(x.c.abonos[x.c.abonos.length-1].monto)} Bs</div>` : ''}
+                <div class="flex gap-2 mt-2"><button class="btn-abono-cartera btn-verde-redondeado"><i class="fas fa-money-bill-wave"></i> Abono</button><button class="btn-detalle-cartera btn-editar-redondeado"><i class="fas fa-user"></i> Detalle</button></div>
             </div>`).join('');
         document.querySelectorAll('.btn-abono-cartera').forEach((btn, idx) => { btn.onclick = () => registrarAbono(filt[idx].c.id); });
         document.querySelectorAll('.btn-detalle-cartera').forEach((btn, idx) => { btn.onclick = () => mostrarDetalleCliente(filt[idx].c.id); });
@@ -4279,10 +4281,10 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
         const adeudo = parseFloat(cli.adeudo) || 0;
         if(adeudo <= 0){ await jamAlert(cli.nombre + ' no tiene deudas registradas', 'info'); return; }
         const modal = document.createElement('div'); modal.className = 'modal-form';
-        modal.innerHTML = `<div class="modal-form-content" style="max-width:400px"><h3 class="text-xl font-bold mb-2">💵 Abono de ${escapeHtml(cli.nombre)}</h3>
+        modal.innerHTML = `<div class="modal-form-content" style="max-width:400px"><h3 class="text-xl font-bold mb-2"><i class="fas fa-money-bill-wave"></i> Abono de ${escapeHtml(cli.nombre)}</h3>
             <div class="text-sm mb-3" style="opacity:.7">Adeudo actual: <b style="color:#ef4444">${fmtPrecio(adeudo)} Bs</b></div>
             <div class="mb-3"><label>Monto del abono (Bs)</label><input type="text" id="abonoMonto" inputmode="decimal" value="${adeudo > 0 ? fmtPrecio(adeudo) : ''}" class="border rounded-xl p-2 w-full"></div>
-            <div class="mb-3"><label>Método de cobro</label><select id="abonoMetodo" class="border rounded-xl p-2 w-full"><option value="efectivo_bs">💵 Efectivo Bs</option><option value="pago_movil">📱 Pago Móvil</option><option value="transferencia">🏦 Transferencia</option><option value="tarjeta_debito">💳 Tarjeta Débito</option></select></div>
+            <div class="mb-3"><label>Método de cobro</label><select id="abonoMetodo" class="border rounded-xl p-2 w-full"><option value="efectivo_bs">\u{f53a} Efectivo Bs</option><option value="pago_movil">\u{f3cd} Pago Móvil</option><option value="transferencia">\u{f19c} Transferencia</option><option value="tarjeta_debito">\u{f09d} Tarjeta Débito</option></select></div>
             <div class="mb-3"><label>Nota (opcional)</label><input type="text" id="abonoNota" placeholder="Ej: primer corte" class="border rounded-xl p-2 w-full"></div>
             <div class="flex gap-3 mt-4"><button id="guardarAbono" class="btn-azul-redondeado btn-redondeado flex-1 py-2 font-bold">Registrar abono</button><button id="cancelarAbono" class="btn-redondeado flex-1 py-2 bg-gray-200">Cancelar</button></div></div>`;
         document.body.appendChild(modal);
@@ -4363,11 +4365,11 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
         const estado = document.getElementById('carpetaEstado');
         if (estado) {
             estado.innerHTML = carpetaNativa && carpetaNativa.uri
-                ? '✅ Carpeta activa: <b>' + escapeHtml(carpetaNativa.nombre) + '/JAMPOS</b>. Ahí se guardan tickets y respaldos.'
-                : 'ℹ️ Sin carpeta configurada. Elija una carpeta para guardar tickets y respaldos (se creará la subcarpeta JAMPOS).';
+                ? '<i class="fas fa-circle-check"></i> Carpeta activa: <b>' + escapeHtml(carpetaNativa.nombre) + '/JAMPOS</b>. Ahí se guardan tickets y respaldos.'
+                : '<i class="fas fa-circle-info"></i> Sin carpeta configurada. Elija una carpeta para guardar tickets y respaldos (se creará la subcarpeta JAMPOS).';
         }
         const btn = document.getElementById('elegirCarpetaBtn');
-        if (btn) btn.innerText = carpetaNativa && carpetaNativa.uri ? '📂 Cambiar carpeta' : '📂 Elegir carpeta';
+        if (btn) btn.innerHTML = carpetaNativa && carpetaNativa.uri ? '<i class="fas fa-folder-open"></i> Cambiar carpeta' : '<i class="fas fa-folder"></i> Elegir carpeta';
     }
     async function obtenerTodosLosDatos(){
         let stores = ['productos','clientes','proveedores','gastos','empleados','ventas','entregas','tickets'];
@@ -4724,17 +4726,17 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
         let colores = ['#ef4444','#f97316','#f59e0b','#10b981','#22c55e','#3b82f6','#00ced1','#8b5cf6','#a855f7','#ec4899','#ff69b4','#000000'];
         let bloqueado = volverBloqueado, accent = D.config.theme;
         const filaOpcion = (icono, nombre, desc, id, checked) => `
-            <label class="opcion-fila">
+            <div class="opcion-fila">
                 <span class="opcion-izq"><span class="opcion-icono">${icono}</span><span class="opcion-nombre">${nombre}${desc ? `<span class="opcion-desc">${desc}</span>` : ''}</span></span>
-                <span class="switch"><input type="checkbox" id="${id}" ${checked?'checked':''}><span class="slider"></span></span>
-            </label>`;
+                <label class="switch"><input type="checkbox" id="${id}" ${checked?'checked':''}><span class="slider"></span></label>
+            </div>`;
         let html = `
             <div class="page-header-fixed"><div class="module-header"><h2 id="tituloModule" class="module-title ${bloqueado?'module-title-bloqueado':''}" style="color:${accent}" onmousedown="iniciarBloqueo(this,'Configuración')" onmouseup="cancelarBloqueo()" onmouseleave="cancelarBloqueo()">Configuración</h2><div id="btnVolverModule" class="btn-back ${bloqueado?'btn-back-bloqueado':''}" onclick="${bloqueado?'':'backToHome()'}">${bloqueado?'<i class="fas fa-lock"></i> Bloqueado':'<i class="fas fa-arrow-left"></i> Volver'}</div></div></div>
             <div class="page-container">
-                <div class="config-section"><button id="btnToggleEmpresa" class="btn-azul-redondeado btn-redondeado w-full mb-2 py-2">🏢 Datos de la Empresa</button><div id="panelEmpresa" style="display:none;" class="mt-2 config-inner"><div class="mb-2"><label>Nombre de la tienda</label><input type="text" id="empresaNombre" value="${escapeHtml(D.config.empresa.nombre)}" class="border rounded-xl p-2 w-full"></div><div class="mb-2"><label>Dirección</label><input type="text" id="empresaDireccion" value="${escapeHtml(D.config.empresa.direccion)}" class="border rounded-xl p-2 w-full"></div><div class="mb-2"><label>Teléfono</label><input type="text" id="empresaTelefono" value="${escapeHtml(D.config.empresa.telefono)}" class="border rounded-xl p-2 w-full"></div><div class="mb-2"><label>RIF</label><input type="text" id="empresaRif" value="${escapeHtml(D.config.empresa.rif)}" class="border rounded-xl p-2 w-full"></div><div class="mb-2"><label>Logo (URL o emoji)</label><input type="text" id="empresaLogo" value="${escapeHtml(D.config.empresa.logo)}" placeholder="🛍️ o URL de imagen" class="border rounded-xl p-2 w-full"></div><button id="guardarEmpresa" class="btn-azul-redondeado btn-redondeado w-full mt-2 py-2">💾 Guardar datos empresa</button></div></div>
-                <div class="config-section"><button id="btnToggleTasa" class="btn-azul-redondeado btn-redondeado w-full mb-2 py-2">💰 Tasa de Cambio (${fuenteRegidoraClave() === 'ALCB-USDT' ? 'USDT/BS' : 'USD/BS'})</button><div id="panelTasa" style="display:none;" class="mt-2 config-inner">
+                <div class="config-section"><button id="btnToggleEmpresa" class="btn-azul-redondeado btn-redondeado w-full mb-2 py-2"><i class="fas fa-building"></i> Datos de la Empresa</button><div id="panelEmpresa" style="display:none;" class="mt-2 config-inner"><div class="mb-2"><label>Nombre de la tienda</label><input type="text" id="empresaNombre" value="${escapeHtml(D.config.empresa.nombre)}" class="border rounded-xl p-2 w-full"></div><div class="mb-2"><label>Dirección</label><input type="text" id="empresaDireccion" value="${escapeHtml(D.config.empresa.direccion)}" class="border rounded-xl p-2 w-full"></div><div class="mb-2"><label>Teléfono</label><input type="text" id="empresaTelefono" value="${escapeHtml(D.config.empresa.telefono)}" class="border rounded-xl p-2 w-full"></div><div class="mb-2"><label>RIF</label><input type="text" id="empresaRif" value="${escapeHtml(D.config.empresa.rif)}" class="border rounded-xl p-2 w-full"></div><div class="mb-2"><label>Logo (URL o emoji)</label><input type="text" id="empresaLogo" value="${escapeHtml(D.config.empresa.logo)}" placeholder="<i class="fas fa-bag-shopping"></i> o URL de imagen" class="border rounded-xl p-2 w-full"></div><button id="guardarEmpresa" class="btn-azul-redondeado btn-redondeado w-full mt-2 py-2"><i class="fas fa-floppy-disk"></i> Guardar datos empresa</button></div></div>
+                <div class="config-section"><button id="btnToggleTasa" class="btn-azul-redondeado btn-redondeado w-full mb-2 py-2"><i class="fas fa-sack-dollar"></i> Tasa de Cambio (${fuenteRegidoraClave() === 'ALCB-USDT' ? 'USDT/BS' : 'USD/BS'})</button><div id="panelTasa" style="display:none;" class="mt-2 config-inner">
                     <div class="mb-3">
-                        <div class="bg-gray-100 dark:bg-gray-800 p-3 rounded-lg mb-3">
+                        <div class="panel-tasa p-3 rounded-lg mb-3">
                             <div class="flex justify-between items-center">
                                 <span class="font-semibold">API activa:</span>
                                 <span id="fuenteTasaActiva" class="text-xs font-mono">${nombreFuenteTasa(D.config.fuenteTasa)}</span>
@@ -4742,9 +4744,9 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
                             <div class="mt-2">
                                 <div class="text-xs font-semibold opacity-70 mb-1">Cambiar fuente de referencia (toca la deseada):</div>
                                 <div class="flex flex-col gap-1.5">
-                                    <button data-fuente="BCV" class="fuente-opcion ${(D.config.fuenteTasa || 'BCV')==='BCV' ? 'fuente-opcion-activa' : ''}"><span class="fuente-titulo"><span>📘 Tasa BCV</span><span class="fuente-vivo" id="tvBCV">${tasaVivaNumero('BCV')}</span></span><span class="text-xs opacity-60">(oficial · por defecto)</span></button>
-                                    <button data-fuente="ALCB-BCV" class="fuente-opcion ${(D.config.fuenteTasa || 'BCV')==='ALCB-BCV' ? 'fuente-opcion-activa' : ''}"><span class="fuente-titulo"><span>🌐 Tasa Al Cambio BCV</span><span class="fuente-vivo" id="tvALCB-BCV">${tasaVivaNumero('ALCB-BCV')}</span></span><span class="text-xs opacity-60">(BCV vía API Al Cambio)</span></button>
-                                    <button data-fuente="ALCB-USDT" class="fuente-opcion ${(D.config.fuenteTasa || 'BCV')==='ALCB-USDT' ? 'fuente-opcion-activa' : ''}"><span class="fuente-titulo"><span>🪙 Tasa Al Cambio USDT</span><span class="fuente-vivo" id="tvALCB-USDT">${tasaVivaNumero('ALCB-USDT')}</span></span><span class="text-xs opacity-60">(USDT vía API Al Cambio)</span></button>
+                                    <button data-fuente="BCV" class="fuente-opcion ${(D.config.fuenteTasa || 'BCV')==='BCV' ? 'fuente-opcion-activa' : ''}"><span class="fuente-titulo"><span><i class="fas fa-book"></i> Tasa BCV</span><span class="fuente-vivo" id="tvBCV">${tasaVivaNumero('BCV')}</span></span><span class="text-xs opacity-60">(oficial · por defecto)</span></button>
+                                    <button data-fuente="ALCB-BCV" class="fuente-opcion ${(D.config.fuenteTasa || 'BCV')==='ALCB-BCV' ? 'fuente-opcion-activa' : ''}"><span class="fuente-titulo"><span><i class="fas fa-globe"></i> Tasa Al Cambio BCV</span><span class="fuente-vivo" id="tvALCB-BCV">${tasaVivaNumero('ALCB-BCV')}</span></span><span class="text-xs opacity-60">(BCV vía API Al Cambio)</span></button>
+                                    <button data-fuente="ALCB-USDT" class="fuente-opcion ${(D.config.fuenteTasa || 'BCV')==='ALCB-USDT' ? 'fuente-opcion-activa' : ''}"><span class="fuente-titulo"><span><i class="fas fa-coins"></i> Tasa Al Cambio USDT</span><span class="fuente-vivo" id="tvALCB-USDT">${tasaVivaNumero('ALCB-USDT')}</span></span><span class="text-xs opacity-60">(USDT vía API Al Cambio)</span></button>
                                 </div>
                             </div>
                             <div class="flex justify-between items-center mt-2">
@@ -4753,54 +4755,51 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
                                 <span id="tasaMonedaEtiqueta">${D.config.dolarRate > 0 ? (fuenteRegidoraClave() === 'ALCB-USDT' ? 'Bs/USDT' : 'Bs/USD') : ''}</span>
                             </div>
                             <div class="text-xs text-gray-500 mt-1">Actualizado: ${D.config.lastUpdate}</div>
-                            ${D.config.tasaManual ? `<div class="text-xs mt-1 p-2 rounded" style="background:rgba(239,68,68,.1);color:#ef4444;font-weight:600">⚠️ Modo manual activo. Verifique siempre el valor actual en el BCV antes de fijar un precio.</div>` : `<div class="text-xs mt-1 p-2 rounded" style="background:rgba(16,185,129,.1);color:#10b981;font-weight:600">✅ Modo automático — la tasa se actualiza sola al abrir la app.</div>`}
+                            ${D.config.tasaManual ? `<div class="text-xs mt-1 p-2 rounded" style="background:rgba(239,68,68,.1);color:#ef4444;font-weight:600"><i class="fas fa-triangle-exclamation"></i> Modo manual activo. Verifique siempre el valor actual en el BCV antes de fijar un precio.</div>` : `<div class="text-xs mt-1 p-2 rounded" style="background:rgba(16,185,129,.1);color:#10b981;font-weight:600"><i class="fas fa-circle-check"></i> Modo automático — la tasa se actualiza sola al abrir la app.</div>`}
                         </div>
                         <div class="flex flex-col gap-3">
-                            <label class="flex items-center gap-2 cursor-pointer">
-                                <input type="checkbox" id="modoManualCheck" ${D.config.tasaManual ? 'checked' : ''}> 
-                                <span>🔒 Usar tasa manual (fija, sin internet)</span>
-                            </label>
+                            ${filaOpcion('<i class="fas fa-lock"></i>','Usar tasa manual', 'Fija, sin internet', 'modoManualCheck', D.config.tasaManual)}
                             <div id="tasaManualDiv" style="${D.config.tasaManual ? 'display:flex' : 'display:none'}" class="flex gap-2 items-center">
                                 <input type="number" id="tasaManualInput" step="0.01" value="${D.config.tasaManualValue > 0 ? D.config.tasaManualValue : ''}" placeholder="Ej: 800.00" class="border rounded-xl p-2 flex-1">
                                 <button id="guardarTasaManualBtn" class="btn-azul-redondeado btn-redondeado py-2 px-4">Fijar</button>
                             </div>
                             <button id="actualizarTasaInternetBtn" class="btn-redondeado py-2 px-4" style="background:#3b82f6; color:white;">
-                                🌐 Actualizar tasa desde Internet
+                                <i class="fas fa-globe"></i> Actualizar tasa desde Internet
                             </button>
                             <button id="fijarTasaDiaBtn" class="btn-redondeado py-2 px-4" style="background:#10b981; color:white;">
-                                🔒 Fijar tasa del día (inmutable en el calendario)
+                                <i class="fas fa-lock"></i> Fijar tasa del día (inmutable en el calendario)
                             </button>
                             <div class="text-xs text-gray-500 mt-2">
-                                ℹ️ La API se actualiza automáticamente. ${!D.config.tasaManual ? '✅ Modo AUTOMÁTICO activado' : '🔒 Modo MANUAL activado'}
+                                <i class="fas fa-circle-info"></i> La API se actualiza automáticamente. ${!D.config.tasaManual ? '<i class="fas fa-circle-check"></i> Modo AUTOMÁTICO activado' : '<i class="fas fa-lock"></i> Modo MANUAL activado'}
                             </div>
                         </div>
                     </div>
                 </div></div>
-                <div class="config-section"><button id="btnToggleOpciones" class="btn-azul-redondeado btn-redondeado w-full mb-2 py-2">⚙️ Opciones generales</button><div id="panelOpciones" style="display:none;" class="mt-2 config-inner">
+                <div class="config-section"><button id="btnToggleOpciones" class="btn-azul-redondeado btn-redondeado w-full mb-2 py-2"><i class="fas fa-gear"></i> Opciones generales</button><div id="panelOpciones" style="display:none;" class="mt-2 config-inner">
                     <div class="grupo-opciones">
-                        <div class="grupo-opciones-titulo">💳 Facturación</div>
-                        ${filaOpcion('📊','IVA', 'Aplicar ' + D.config.ivaPorcentaje + '% sobre el subtotal de cada venta', 'toggleIVA', D.config.ivaActivo)}
-                        ${filaOpcion('💰','Mostrar dólar', 'Mostrar la tasa USD en la pantalla principal', 'toggleMostrarDolar', D.config.mostrarDolar)}
-                        ${filaOpcion('🔒','Prevenir cierre', 'Confirmar antes de salir de un módulo', 'togglePrevenirCierre', D.config.prevenirCierre)}
+                        <div class="grupo-opciones-titulo"><i class="fas fa-credit-card"></i> Facturación</div>
+                        ${filaOpcion('<i class="fas fa-chart-column"></i>','IVA', 'Aplicar ' + D.config.ivaPorcentaje + '% sobre el subtotal de cada venta', 'toggleIVA', D.config.ivaActivo)}
+                        ${filaOpcion('<i class="fas fa-sack-dollar"></i>','Mostrar dólar', 'Mostrar la tasa USD en la pantalla principal', 'toggleMostrarDolar', D.config.mostrarDolar)}
+                        ${filaOpcion('<i class="fas fa-lock"></i>','Prevenir cierre', 'Confirmar antes de salir de un módulo', 'togglePrevenirCierre', D.config.prevenirCierre)}
                     </div>
                     <div class="grupo-opciones">
-                        <div class="grupo-opciones-titulo">🌗 Apariencia</div>
-                        ${filaOpcion('🌓','Modo oscuro automático', 'Se sincroniza con el modo del sistema', 'toggleAutoOscuro', D.config.autoOscuro)}
-                        ${filaOpcion('🌙','Fondo oscuro', 'Activar el tema oscuro manualmente', 'toggleFondoOscuro', D.config.backgroundMode==='dark')}
+                        <div class="grupo-opciones-titulo"><i class="fas fa-moon"></i> Apariencia</div>
+                        ${filaOpcion('<i class="fas fa-circle-half-stroke"></i>','Modo oscuro automático', 'Se sincroniza con el modo del sistema', 'toggleAutoOscuro', D.config.autoOscuro)}
+                        ${filaOpcion('<i class="fas fa-moon"></i>','Fondo oscuro', 'Activar el tema oscuro manualmente', 'toggleFondoOscuro', D.config.backgroundMode==='dark')}
                     </div>
                     <div class="grupo-opciones">
-                        <div class="grupo-opciones-titulo">🔔 Alertas inteligentes</div>
-                        ${filaOpcion('📦','Stock bajo', 'Notificar cuando hay productos con stock bajo', 'toggleAlertaStock', D.config.alertaStockBajo)}
-                        ${filaOpcion('💱','Cambio de tasa USD', 'Notificar cuando cambia la tasa del dólar', 'toggleAlertaTasa', D.config.alertaTasa)}
-                        ${filaOpcion('🔊','Sonido', 'Reproducir sonido cuando se emite una alerta', 'toggleSonidoAlertas', D.config.sonidoAlertas)}
+                        <div class="grupo-opciones-titulo"><i class="fas fa-bell"></i> Alertas inteligentes</div>
+                        ${filaOpcion('<i class="fas fa-boxes-stacked"></i>','Stock bajo', 'Notificar cuando hay productos con stock bajo', 'toggleAlertaStock', D.config.alertaStockBajo)}
+                        ${filaOpcion('<i class="fas fa-money-bill-transfer"></i>','Cambio de tasa USD', 'Notificar cuando cambia la tasa del dólar', 'toggleAlertaTasa', D.config.alertaTasa)}
+                        ${filaOpcion('<i class="fas fa-volume-high"></i>','Sonido', 'Reproducir sonido cuando se emite una alerta', 'toggleSonidoAlertas', D.config.sonidoAlertas)}
                     </div>
                     <div class="mb-2"><label class="text-xs opacity-70">Umbral de stock mínimo</label><input type="number" id="stockMinimoInput" min="0" value="${D.config.stockMinimo > 0 ? D.config.stockMinimo : 5}" class="border rounded-xl p-2 w-full"></div>
                     <p class="text-xs text-center mt-3 opacity-60">Las alertas aparecen como notificaciones al iniciar y al realizar acciones clave</p>
                 </div></div>
-                <div class="config-section"><button id="btnToggleSeguridad" class="btn-azul-redondeado btn-redondeado w-full mb-2 py-2">🔒 Seguridad (PIN)</button><div id="panelSeguridad" style="display:none;" class="mt-2 config-inner"><div class="mb-2"><label>PIN de acceso (4 dígitos, dejar vacío para deshabilitar)</label><input type="password" id="pinInput" value="${escapeHtml(D.config.pin)}" maxlength="4" pattern="[0-9]*" inputmode="numeric" class="border rounded-xl p-2 w-full text-center text-2xl tracking-widest" placeholder="****"></div><button id="guardarPinBtn" class="btn-azul-redondeado btn-redondeado w-full py-2">🔐 Guardar PIN</button><p class="text-xs text-center mt-2 opacity-60">${D.config.pin ? '✅ PIN activo. Se pedirá al abrir la app.' : 'ℹ️ Sin PIN. Cualquiera puede acceder.'}</p></div></div>
-                <div class="config-section"><button id="btnToggleColores" class="btn-azul-redondeado btn-redondeado w-full mb-2 py-2">🎨 Temas de color</button><div id="panelColores" style="display:none;" class="mt-2 config-inner"><div class="flex flex-wrap justify-center gap-2" id="paletaColores" style="max-width:290px;margin:0 auto"></div></div></div>
-                <div class="config-section"><button id="btnToggleSync" class="btn-azul-redondeado btn-redondeado w-full mb-2 py-2">🔄 Sincronización entre dispositivos</button><div id="panelSync" style="display:none;" class="mt-2 config-inner"><div class="text-xs opacity-70 mb-2">Conecta este equipo con otros (PC o teléfono) y comparte productos, clientes, ventas, proveedores, gastos, empleados, tasa y tickets, sin necesidad de servidores. Mientras dos equipos estén encendidos con Internet, los datos se copian solos.</div><button id="abrirSyncBtn" class="btn-redondeado py-2 px-4 w-full" style="background:#3b82f6;color:#fff">🔗 Abrir Sincronización</button><p class="text-xs text-center mt-2 opacity-60">Crea un círculo o únete escaneando el QR (o escribiendo ID + código)</p></div></div>
-                <div class="config-section"><button id="btnToggleBackup" class="btn-azul-redondeado btn-redondeado w-full mb-2 py-2">💾 Copia de seguridad</button><div id="panelBackup" style="display:none;" class="mt-2 config-inner"><div class="flex flex-col gap-3">${esAppNativa() ? `<div class="rounded-xl p-3" style="background:rgba(14,165,233,0.08);border:1px solid rgba(14,165,233,0.3)"><p class="text-sm font-semibold mb-1">📁 Carpeta de la aplicación</p><p id="carpetaEstado" class="text-xs opacity-70 mb-2">ℹ️ Elija una carpeta para guardar tickets y respaldos (se creará la subcarpeta JAMPOS).</p><button id="elegirCarpetaBtn" class="btn-redondeado py-2 px-4 w-full" style="background:#0ea5e9;color:#fff">📂 Elegir carpeta</button></div>` : `<p class="text-xs text-center opacity-60">💡 En la app Android podrás elegir una carpeta donde guardar los archivos.</p>`}<button id="exportJsonBtn" class="btn-redondeado py-2 px-4" style="background:#3b82f6;color:#fff">📥 Exportar todo (JSON)</button><button id="exportCsvBtn" class="btn-redondeado py-2 px-4" style="background:#10b981;color:#fff">📥 Exportar todo (CSV / Excel)</button><button id="importJsonBtn" class="btn-redondeado py-2 px-4" style="background:#8b5cf6;color:#fff">📤 Importar desde JSON</button><button id="importCsvBtn" class="btn-redondeado py-2 px-4" style="background:#f59e0b;color:#fff">📤 Importar desde CSV / Excel</button>${esAppNativa() ? `<button id="importCarpetaBtn" class="btn-redondeado py-2 px-4" style="background:#14b8a6;color:#fff">📂 Importar desde la carpeta JAMPOS</button><button id="restaurarBackupBtn" class="btn-redondeado py-2 px-4" style="background:#ef4444;color:#fff">🔄 Restaurar desde respaldo automático</button>` : ''}<input type="file" id="importFileInput" accept=".json" style="display:none"><input type="file" id="importCsvFileInput" accept=".csv,.xlsx,.xls,.txt" style="display:none"><p class="text-xs text-center mt-2 opacity-60">Los archivos CSV se abren directamente en Excel</p></div></div></div>
+                <div class="config-section"><button id="btnToggleSeguridad" class="btn-azul-redondeado btn-redondeado w-full mb-2 py-2"><i class="fas fa-lock"></i> Seguridad (PIN)</button><div id="panelSeguridad" style="display:none;" class="mt-2 config-inner"><div class="mb-2"><label>PIN de acceso (4 dígitos, dejar vacío para deshabilitar)</label><input type="password" id="pinInput" value="${escapeHtml(D.config.pin)}" maxlength="4" pattern="[0-9]*" inputmode="numeric" class="border rounded-xl p-2 w-full text-center text-2xl tracking-widest" placeholder="****"></div><button id="guardarPinBtn" class="btn-azul-redondeado btn-redondeado w-full py-2"><i class="fas fa-lock"></i> Guardar PIN</button><p class="text-xs text-center mt-2 opacity-60">${D.config.pin ? '<i class="fas fa-circle-check"></i> PIN activo. Se pedirá al abrir la app.' : '<i class="fas fa-circle-info"></i> Sin PIN. Cualquiera puede acceder.'}</p></div></div>
+                <div class="config-section"><button id="btnToggleColores" class="btn-azul-redondeado btn-redondeado w-full mb-2 py-2"><i class="fas fa-palette"></i> Temas de color</button><div id="panelColores" style="display:none;" class="mt-2 config-inner"><div class="flex flex-wrap justify-center gap-2" id="paletaColores" style="max-width:290px;margin:0 auto"></div></div></div>
+                <div class="config-section"><button id="btnToggleSync" class="btn-azul-redondeado btn-redondeado w-full mb-2 py-2"><i class="fas fa-rotate"></i> Sincronización entre dispositivos</button><div id="panelSync" style="display:none;" class="mt-2 config-inner"><div class="text-xs opacity-70 mb-2">Conecta este equipo con otros (PC o teléfono) y comparte productos, clientes, ventas, proveedores, gastos, empleados, tasa y tickets, sin necesidad de servidores. Mientras dos equipos estén encendidos con Internet, los datos se copian solos.</div><button id="abrirSyncBtn" class="btn-redondeado py-2 px-4 w-full" style="background:#3b82f6;color:#fff"><i class="fas fa-link"></i> Abrir Sincronización</button><p class="text-xs text-center mt-2 opacity-60">Crea un círculo o únete escaneando el QR (o escribiendo ID + código)</p></div></div>
+                <div class="config-section"><button id="btnToggleBackup" class="btn-azul-redondeado btn-redondeado w-full mb-2 py-2"><i class="fas fa-floppy-disk"></i> Copia de seguridad</button><div id="panelBackup" style="display:none;" class="mt-2 config-inner"><div class="flex flex-col gap-3">${esAppNativa() ? `<div class="rounded-xl p-3" style="background:rgba(14,165,233,0.08);border:1px solid rgba(14,165,233,0.3)"><p class="text-sm font-semibold mb-1"><i class="fas fa-folder"></i> Carpeta de la aplicación</p><p id="carpetaEstado" class="text-xs opacity-70 mb-2"><i class="fas fa-circle-info"></i> Elija una carpeta para guardar tickets y respaldos (se creará la subcarpeta JAMPOS).</p><button id="elegirCarpetaBtn" class="btn-redondeado py-2 px-4 w-full" style="background:#0ea5e9;color:#fff"><i class="fas fa-folder-open"></i> Elegir carpeta</button></div>` : `<p class="text-xs text-center opacity-60"><i class="fas fa-lightbulb"></i> En la app Android podrás elegir una carpeta donde guardar los archivos.</p>`}<button id="exportJsonBtn" class="btn-redondeado py-2 px-4" style="background:#3b82f6;color:#fff"><i class="fas fa-download"></i> Exportar todo (JSON)</button><button id="exportCsvBtn" class="btn-redondeado py-2 px-4" style="background:#10b981;color:#fff"><i class="fas fa-download"></i> Exportar todo (CSV / Excel)</button><button id="importJsonBtn" class="btn-redondeado py-2 px-4" style="background:#8b5cf6;color:#fff"><i class="fas fa-upload"></i> Importar desde JSON</button><button id="importCsvBtn" class="btn-redondeado py-2 px-4" style="background:#f59e0b;color:#fff"><i class="fas fa-upload"></i> Importar desde CSV / Excel</button>${esAppNativa() ? `<button id="importCarpetaBtn" class="btn-redondeado py-2 px-4" style="background:#14b8a6;color:#fff"><i class="fas fa-folder-open"></i> Importar desde la carpeta JAMPOS</button><button id="restaurarBackupBtn" class="btn-redondeado py-2 px-4" style="background:#ef4444;color:#fff"><i class="fas fa-rotate"></i> Restaurar desde respaldo automático</button>` : ''}<input type="file" id="importFileInput" accept=".json" style="display:none"><input type="file" id="importCsvFileInput" accept=".csv,.xlsx,.xls,.txt" style="display:none"><p class="text-xs text-center mt-2 opacity-60">Los archivos CSV se abren directamente en Excel</p></div></div></div>
             </div>
         `;
         document.getElementById('appRoot').innerHTML = html;
@@ -5028,7 +5027,7 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
             var btn = document.querySelector('.install-btn');
             if (!btn) {
                 btn = document.createElement('button');
-                btn.innerText = '📲 Instalar App';
+                btn.innerHTML = '<i class="fas fa-mobile-screen-button"></i> Instalar App';
                 btn.className = 'install-btn';
                 btn.style.setProperty('background', D.config.theme);
                 btn.style.setProperty('color', '#ffffff');
@@ -5057,7 +5056,7 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
         let overlay = document.createElement('div');
         overlay.id = 'pinOverlay';
         overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--bg,#000);color:var(--text,#fff);';
-        overlay.innerHTML = '<h2 class=\"text-xl font-bold mb-4\">🔒 PIN de acceso</h2><input type=\"password\" id=\"pinAuthInput\" maxlength=\"4\" pattern=\"[0-9]*\" inputmode=\"numeric\" class=\"border rounded-xl p-2 text-center text-2xl tracking-widest w-48\" placeholder=\"****\" autofocus style=\"background:var(--card-bg,#222);color:var(--text,#fff)\"><p id=\"pinErrorMsg\" class=\"text-red-400 text-sm mt-2 hidden\">PIN incorrecto</p>';
+        overlay.innerHTML = '<h2 class=\"text-xl font-bold mb-4\"><i class="fas fa-lock"></i> PIN de acceso</h2><input type=\"password\" id=\"pinAuthInput\" maxlength=\"4\" pattern=\"[0-9]*\" inputmode=\"numeric\" class=\"border rounded-xl p-2 text-center text-2xl tracking-widest w-48\" placeholder=\"****\" autofocus style=\"background:var(--card-bg,#222);color:var(--text,#fff)\"><p id=\"pinErrorMsg\" class=\"text-red-400 text-sm mt-2 hidden\">PIN incorrecto</p>';
         document.body.appendChild(overlay);
         let input = document.getElementById('pinAuthInput');
         input.focus();
@@ -5258,8 +5257,8 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
         let paso = 0;
         const pintar = () => {
             const p = pasos[paso];
-            burbuja.querySelector('h3').textContent = p.titulo;
-            burbuja.querySelector('p').textContent = p.texto;
+            const h3 = burbuja.querySelector('h3'); h3.textContent = ''; nodosIconosFA(p.titulo, h3);
+            const pr = burbuja.querySelector('p'); pr.textContent = ''; nodosIconosFA(p.texto, pr);
             burbuja.querySelector('.tuto-contador').textContent = `${paso + 1} de ${pasos.length}`;
             burbuja.querySelector('.tuto-siguiente').textContent = paso === pasos.length - 1 ? 'Terminar' : 'Siguiente';
             if (p.sel) {

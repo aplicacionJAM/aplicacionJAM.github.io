@@ -70,11 +70,11 @@
         .modal-form{position:fixed;inset:0;background:rgba(0,0,0,.5);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:1000;padding:16px}
         .modal-form-content{max-width:460px;width:100%;border-radius:28px;padding:20px;max-height:85vh;overflow:auto}
         /* SOLO popups: campos de entrada marcados con borde en reposo y color del tema al enfocar.
-           Las ventanas principales y módulos conservan sus bordes originales de tema. */
+           Las ventanas principales y mÃ³dulos conservan sus bordes originales de tema. */
         .modal-form-content input:not([type=range]):not([type=checkbox]), .modal-form-content select, .modal-form-content textarea,
         .kpi-popup input:not([type=range]):not([type=checkbox]), .kpi-popup select, .kpi-popup textarea,
         .backup-popup input:not([type=range]):not([type=checkbox]), .backup-popup select, .backup-popup textarea{border:2px solid;border-color:#1e1e1e!important}
-        /* Compactar TODOS los campos de los popups: mismo tamaño, forma, altura y fuente
+        /* Compactar TODOS los campos de los popups: mismo tamaÃ±o, forma, altura y fuente
            en todo el popup de producto (anula la regla global input{padding:10px 14px;border-radius:20px}). */
         .modal-form-content input:not([type=range]):not([type=checkbox]), .modal-form-content select, .modal-form-content textarea{border-radius:8px!important;padding:6px 8px!important;font-size:14px!important;height:36px!important;line-height:1!important;box-sizing:border-box!important}
         .modal-form-content label{font-size:12px!important}
@@ -100,7 +100,7 @@
         .ticket-line{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed #ddd}
         .scroll-area{overflow-y:auto;max-height:none}
 
-        /* ===== MÓDULOS CON TARJETAS: búsqueda + toolbar fijos, solo lista con scroll ===== */
+        /* ===== MÃ“DULOS CON TARJETAS: bÃºsqueda + toolbar fijos, solo lista con scroll ===== */
         #appRoot:has(#listaProductos),
         #appRoot:has(#listaCrud),
         #appRoot:has(#listaCartera),
@@ -150,7 +150,7 @@ body.dark-mode .fuente-vivo{background:rgba(96,165,250,.18)}
         body.dark-mode .tv-item{background:rgba(255,255,255,.05)}
 
         .module-header{display:flex;justify-content:space-between;align-items:center}
-        .install-btn{position:fixed;bottom:20px;right:20px;z-index:9999;border-radius:50px;padding:10px 20px;font-weight:bold;box-shadow:0 2px 8px rgba(0,0,0,.2);cursor:pointer}
+        .install-btn{position:fixed;bottom:20px;right:20px;z-index:9999;border-radius:50px;padding:10px 20px;font-weight:bold;box-shadow:0 2px 8px rgba(0,0,0,.2);cursor:pointer;display:inline-flex;align-items:center;gap:8px}
         .home-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-top:4px}
         .ticket-virtual { font-family: 'Courier New', monospace; font-size: 12px; line-height: 1.4; width: 280px; background: white; color: black; padding: 15px; border-radius: 8px; margin: 0 auto; }
         .ticket-virtual .logo { text-align: center; margin-bottom: 8px; }
@@ -176,7 +176,7 @@ body.dark-mode .fuente-vivo{background:rgba(96,165,250,.18)}
         .modulo-bloqueado-mensaje p { margin: 10px 0; font-size: 14px; }
         .modulo-bloqueado-mensaje small { font-size: 11px; color: gray; }
         
-        /* Modos de fondo con soporte para barra de navegación */
+        /* Modos de fondo con soporte para barra de navegaciÃ³n */
         body.light-mode{background:#fff}
         body.light-mode .main-container, body.light-mode .page-container, body.light-mode .card-bcv, body.light-mode .product-card, body.light-mode .client-card, body.light-mode .modal-form-content, body.light-mode .home-container{background:#fff!important;color:#1e1e1e!important}
         body.light-mode input, body.light-mode select, body.light-mode textarea, body.light-mode .btn-back{background:#fff;color:#1e1e1e;border-color:#e2e8f0}
@@ -326,14 +326,13 @@ body.has-sidebar .tasas-extras{max-width:450px;margin-left:auto;margin-right:aut
         /* ===== OPCIONES GENERALES (lista + switches) ===== */
         .grupo-opciones{border-radius:16px;overflow:hidden;margin-bottom:14px;padding:0 12px}
         .grupo-opciones-titulo{font-size:.72rem;font-weight:800;letter-spacing:.5px;text-transform:uppercase;opacity:.55;padding:10px 2px 4px}
-        .opcion-fila{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 2px;border-bottom:1px solid rgba(128,128,128,.15);cursor:pointer;-webkit-tap-highlight-color:transparent}
+        .opcion-fila{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 2px;border-bottom:1px solid rgba(128,128,128,.15);-webkit-tap-highlight-color:transparent}
         .opcion-fila:last-child{border-bottom:none}
-        .opcion-fila:active{opacity:.7}
         .opcion-izq{display:flex;align-items:center;gap:12px;flex:1;min-width:0}
         .opcion-icono{width:38px;height:38px;border-radius:11px;background:rgba(128,128,128,.12);display:flex;align-items:center;justify-content:center;font-size:1.05rem;flex-shrink:0}
         .opcion-nombre{font-weight:600;font-size:.95rem;line-height:1.25;flex:1;min-width:0}
         .opcion-desc{display:block;font-size:.72rem;font-weight:400;opacity:.55;margin-top:2px}
-        .switch{position:relative;display:inline-block;width:48px;height:27px;flex-shrink:0}
+        .switch{position:relative;display:inline-block;width:48px;height:27px;flex-shrink:0;cursor:pointer}
         .switch input{opacity:0;width:0;height:0}
         .switch .slider{position:absolute;inset:0;border-radius:999px;background:rgba(128,128,128,.35);transition:background .2s}
         .switch .slider:before{content:"";position:absolute;height:21px;width:21px;left:3px;top:3px;background:#fff;border-radius:50%;transition:transform .2s;box-shadow:0 1px 3px rgba(0,0,0,.3)}
@@ -355,7 +354,7 @@ body.has-sidebar .tasas-extras{max-width:450px;margin-left:auto;margin-right:aut
         @keyframes scanPulse{0%{opacity:1}50%{opacity:.4}100%{opacity:1}}
         #scannerResult{animation:scanPulse 1.5s infinite}
         
-        /* ===== DIÁLOGOS NATIVOS ===== */
+        /* ===== DIÃLOGOS NATIVOS ===== */
         .dialogo-nativo{background:#fff;border-radius:28px;max-width:360px;width:100%;padding:24px 20px 18px;box-shadow:0 24px 50px rgba(0,0,0,.35)}
         body.dark-mode .dialogo-nativo{background:#1f1f1f;color:#e0e0e0}
         .dialogo-titulo{display:flex;align-items:center;gap:10px;font-weight:700;font-size:1.05rem;margin-bottom:10px}
@@ -403,7 +402,7 @@ body.has-sidebar .tasas-extras{max-width:450px;margin-left:auto;margin-right:aut
         .cal-sel .cal-dia-num{color:#fff}
         .cal-detalle{margin-top:8px;padding-top:6px;border-top:1px solid rgba(128,128,128,.18);max-height:180px;overflow-y:auto}
 
-        /* ===== GUÍA / TUTORIAL / AYUDA ===== */
+        /* ===== GUÃA / TUTORIAL / AYUDA ===== */
         .btn-ayuda-home{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:34px;height:34px;border-radius:50%;border:2px solid var(--accent,#3b82f6);background:transparent;color:var(--accent,#3b82f6);font-size:.95rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.08);transition:opacity .6s ease,transform .6s ease}
         .btn-ayuda-home:active{transform:translateY(-50%) scale(.9)}
         .btn-ayuda-home.oculto{opacity:0;pointer-events:none;transform:translateY(-50%) scale(.5)}
@@ -511,4 +510,7 @@ body.has-sidebar .tasas-extras{max-width:450px;margin-left:auto;margin-right:aut
         .backup-popup-btn-principal{color:#fff}
         .backup-popup-btn-secundario{background:rgba(59,130,246,.1);color:#3b82f6;border:1px solid rgba(59,130,246,.3)}
         .backup-popup-btn-texto{background:none;color:#999;font-size:.8rem;font-weight:400}
-        @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+#tipoPago, #tipoPago option, #abonoMetodo, #abonoMetodo option, .split-payment-row select, .split-payment-row select option { font-family:'FontAwesome', system-ui, sans-serif; }
+.panel-tasa{background:rgba(0,0,0,.04);border:1px solid rgba(128,128,128,.2)}
+body.dark-mode .panel-tasa{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.12)}

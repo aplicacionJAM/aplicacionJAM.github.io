@@ -1,4 +1,4 @@
-const CACHE_NAME = "jampos-web-cache-v11-xlsx";
+const CACHE_NAME = "jampos-web-cache-v11-a1";
 const STATIC_ASSETS = [
   "./",
   "./index.html",
@@ -25,6 +25,8 @@ const STATIC_ASSETS = [
   "./quagga.min.js",
   "./web-bridge.js",
   "./trial.js",
+  "./update-notify.js",
+  "./update.json",
   "./app.js"
 ];
 
@@ -53,6 +55,9 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("message", function(event) {
   var data = event.data;
+  if (data && data.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
   if (data && data.type === "showNotification") {
     self.registration.showNotification(data.title, {
       body: data.body,
@@ -100,6 +105,13 @@ self.addEventListener("fetch", (event) => {
   var url = new URL(req.url);
 
   if (url.origin !== location.origin) return;
+
+  // update.json SIEMPRE va a red (nunca a cache) para que el aviso vea
+  // versiones nuevas aunque el resto de la app funcione offline.
+  if (url.pathname.indexOf("/update.json") !== -1) {
+    event.respondWith(fetch(req).catch(function() { return caches.match("./update.json"); }));
+    return;
+  }
 
   event.respondWith(
     caches.match(req).then(function(cached) {

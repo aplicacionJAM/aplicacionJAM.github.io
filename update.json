@@ -1,0 +1,12 @@
+{
+  "version": "1.1.0",
+  "nombre": "JAM POS 1.1 estable final",
+  "titulo": "Versión 1.1.0",
+  "fecha": "2026-09-13",
+  "bloqueo": "Si te quedas con la versión actual podrías perder acceso a las nuevas funciones, correcciones y mejoras publicadas.",
+  "notas": [
+    "Aviso automático de nuevas versiones con botón «Actualizar ahora».",
+    "El usuario puede quedarse con su versión actual y es advertido de que podría perder funcionalidades.",
+    "Nueva versión publicada: instálala para recibir las últimas mejoras y correcciones."
+  ]
+}

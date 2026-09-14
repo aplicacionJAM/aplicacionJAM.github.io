@@ -1,6 +1,6 @@
 {
-  "name": "JAM POS · Tienda Profesional",
-  "short_name": "JAM POS",
+  "name": "JAM POS 1.1 estable final",
+  "short_name": "JAM POS 1.1",
   "description": "Sistema de punto de venta profesional. Gestión de inventario, ventas, clientes y reportes. Funciona sin conexión.",
   "start_url": "./",
   "display": "standalone",

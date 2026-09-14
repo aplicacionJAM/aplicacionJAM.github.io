@@ -234,7 +234,7 @@
         toast.innerHTML =
             '<span class="jamult-icon">&#9200;</span>' +
             '<div class="jamult-cuerpo">' +
-            '<div class="jamult-titulo">JAM POS &middot; Versi&oacute;n de prueba &mdash; d&iacute;a ' + textoDia + ' de ' + estado.diasTotales + '</div>' +
+            '<div class="jamult-titulo">JAM POS 1.1 estable final &middot; Versi&oacute;n de prueba &mdash; d&iacute;a ' + textoDia + ' de ' + estado.diasTotales + '</div>' +
             '<div class="jamult-barra"><div class="jamult-barra-fill" style="width:' + pct + '%"></div></div>' +
             '<div class="jamult-pct">' + (estado.diasRestantes === 1 ? '1 d&iacute;a restante' : (estado.diasRestantes) + ' d&iacute;as restantes') + '</div>' +
             '</div>' +
@@ -260,22 +260,31 @@
             '<div class="jamult-bloqueo-caja">' +
             '<div class="jamult-bloqueo-icono">&#128274;</div>' +
             '<h2>Periodo de prueba finalizado</h2>' +
-            '<p>El periodo de prueba de <b>7 d&iacute;as</b> de JAM POS Ultimate ha terminado.</p>' +
+            '<p>El periodo de prueba de <b>7 d&iacute;as</b> de JAM POS 1.1 estable final ha terminado.</p>' +
             '<button class="jamult-bloqueo-btn" onclick="' +
             'if(window.AndroidBridge&&typeof AndroidBridge.cerrarApp===\'function\')AndroidBridge.cerrarApp();' +
             'else try{window.close()}catch(e){}' +
             '">Cerrar aplicaci&oacute;n</button>' +
-            '<div class="jamult-bloqueo-marca">JAM POS Ultimate &middot; v0.1</div>' +
+            '<div class="jamult-bloqueo-marca">JAM POS 1.1 estable final &middot; v1.1</div>' +
             '</div>';
         document.body.appendChild(fondo);
     }
 
-    // ---------------- Arranque (VERSION LIBRE: sin bloqueo, inerte) ----------------
+    // ---------------- Arranque ----------------
     function iniciar() {
-        return;
+        crearEstilos();
+        verificar().then(function (estado) {
+            if (estado && estado.bloqueada) mostrarBloqueo();
+            else mostrarDiscreto(estado);
+        });
     }
 
     function bloquearInmediato() {
+        // Si el bloqueo ya estaba confirmado en esta sesion, cortar el arranque de la app.
+        var est = estadoActual();
+        if (est && est.bloqueada) return true;
+        var n = estadoNativo();
+        if (n && n.bloqueada) { window.__jamt_estado = { bloqueada: true, tamper: false, diaActual: DIAS, diasRestantes: 0, fechaInicio: n.fechaInicio, diasTotales: DIAS }; mostrarBloqueo(); return true; }
         return false;
     }
 
