@@ -1,24 +1,47 @@
-// ==================== AVISO DE NUEVAS VERSIONES (PWA/HTML) ====================
-// Mecanismo fiable y estable:
-//   - Compara la version desplegada en esta instalacion contra la version
-//     publicada en "update.json" del servidor.
-//   - Si el servidor tiene version mayor, muestra un popup con las novedades
-//     y dos botones: "Actualizar ahora" o "Quedarme con la version actual".
-//   - Si el usuario decide quedarse, se guarda en localStorage y NO se vuelve
-//     a molestar durante REAVISO_DIAS dias (salvo que aparezca una version
-//     aun mas nueva).
-//   - Funciona offline: cualquier fallo de red se ignora en silencio.
-//   - No interfiere con el candado de prueba ni con la interfaz de la app.
+// =========== AVISO DE NUEVAS VERSIONES (WEB/PWA/APK/EXE/DEB) ===========
+// Mecanismo fiable y estable para TODAS las plataformas:
+//   - La web/PWA revisa "update.json" RELATIVO (su propio directorio).
+//   - Las nativas (apk/exe/deb) revisan una CARPETA por plataforma en el
+//     servidor: https://aplicacionjam.github.io/<apk|exe|deb>/update.json
+//   - Si esa carpeta "esta llena" (update.json responde 200) hay version
+//     nueva publicada; si responde 404 (carpeta vacia) no hay nada y la app
+//     arranca normal en silencio.
+//   - Si hay version distinta a la instalada, popup con novedades + 2 botones:
+//     en web recarga la app; en nativas abre la descarga del instalador.
+//   - Regla que PREVALECE: se recuerda en CADA inicio mientras la version
+//     publicada siga siendo distinta (no hay silencio de 7 dias).
+//   - Funciona offline / sin servidor del libro: cualquier fallo de red o
+//     404 se ignora en silencio. No interfiere con el candado ni con la UI.
 (function () {
     if (window.jamUpdaterLoaded) return;
     window.jamUpdaterLoaded = true;
 
-    var APP_VERSION = '1.1.0';                   // version DE ESTA instalacion (editar al publicar)
-    var UPDATE_URL = 'update.json';              // version publicada en el servidor
-    var REAVISO_DIAS = 7;                        // dias minimos entre recordatorios de la misma version
+    var APP_VERSION = '1.1.1';                   // version DE ESTA instalacion (editar al publicar)
+    var BASE_URL = 'https://aplicacionjam.github.io/'; // raiz publicada (GitHub Pages)
+    var PLATAFORMA = detectarPlataforma();       // 'web' | 'apk' | 'exe' | 'deb'
+    var UPDATE_URL = PLATAFORMA === 'web'
+        ? 'update.json'                          // web/PWA: su propio directorio
+        : BASE_URL + PLATAFORMA + '/update.json';// nativas: carpeta por plataforma
     var CHECK_INICIAL_MS = 4000;                 // espera tras cargar la app
     var CHECK_INTERVALO_MS = 6 * 60 * 60 * 1000; // cada 6 horas
-    var CLAVE_SKIP = 'jampos_upd_skip';
+
+    // Deteccion automatica de la plataforma. Prioridad:
+    //   1) window.plataformaApp si el shell nativo lo inyecta (apk/exe/deb/web).
+    //   2) Por userAgent: WebView Android -> apk; Electron Windows -> exe;
+    //      Electron Linux -> deb; navegador/PWA -> web.
+    function detectarPlataforma() {
+        try {
+            if (window.plataformaApp) return String(window.plataformaApp);
+            var ua = (navigator.userAgent || '').toLowerCase();
+            var nativa = !!(window.AndroidBridge ||
+                (typeof window.process !== 'undefined' && window.process.versions && window.process.versions.electron));
+            if (!nativa && ua.indexOf('electron') === -1) return 'web';
+            if (ua.indexOf('android') !== -1) return 'apk';
+            if (ua.indexOf('windows') !== -1) return 'exe';
+            if (ua.indexOf('linux') !== -1) return 'deb';
+            return 'web';
+        } catch (e) { return 'web'; }
+    }
 
     function normalizar(v) {
         return String(v == null ? '' : v).replace(/^v/i, '').split('.').map(function (n) { return parseInt(n, 10) || 0; });
@@ -39,10 +62,6 @@
         });
     }
 
-    function leerSkips() {
-        try { return JSON.parse(localStorage.getItem(CLAVE_SKIP)) || {}; } catch (e) { return {}; }
-    }
-
     function appBloqueada() {
         try {
             if (window.__jamt_estado && window.__jamt_estado.bloqueada) return true;
@@ -53,6 +72,7 @@
     }
 
     var overlay = null;
+    var __avisadoSesion = {}; // evita re-avisar la misma version varias veces en UNA sesion
 
     function cerrarPopup() {
         if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
@@ -105,36 +125,41 @@
         crearEstilos();
         overlay = document.createElement('div');
         overlay.className = 'jamupd-fondo';
+        var esNativa = PLATAFORMA !== 'web';
         var notasHtml = (datos.notas && datos.notas.length)
             ? '<ul class="jamupd-notas">' + datos.notas.map(function (n) { return '<li><b>&#10003;</b><span>' + escapeHtml(String(n)) + '</span></li>'; }).join('') + '</ul>'
             : '';
-        var bloqueHtml = datos.bloqueo
-            ? '<div class="jamupd-aviso">&#9888;&nbsp;' + escapeHtml(String(datos.bloqueo)) + '</div>'
-            : '<div class="jamupd-aviso">&#9888;&nbsp;Si te quedas con la versi&oacute;n actual podr&iacute;as perder acceso a las nuevas funciones, correcciones y mejoras publicadas.</div>';
+        var textoAceptar = esNativa
+            ? '&#10515;&nbsp; Descargar y actualizar'
+            : '&#8635;&nbsp; Aceptar y actualizar ahora';
+        var avisoPlataforma = esNativa
+            ? 'Hay una nueva versi&oacute;n de la aplicaci&oacute;n. Desc&aacute;rgala e inst&aacute;lala para disfrutar de las mejoras.'
+            : '<b>Regla de actualizaci&oacute;n:</b> debes actualizar al iniciar la aplicaci&oacute;n. Si no lo haces ahora, se te recordar&aacute; en cada inicio.';
         overlay.innerHTML =
             '<div class="jamupd-caja">' +
-            '<div class="jamupd-badge">&#9650;&nbsp;Nueva versi&oacute;n</div>' +
-            '<h2>JAM POS <span>' + escapeHtml(String(datos.version)) + '</span></h2>' +
-            '<p class="jamupd-sub">' + (datos.fecha ? 'Publicada el ' + escapeHtml(String(datos.fecha)) : 'Ya est&aacute; disponible.') + '</p>' +
+            '<div class="jamupd-badge">&#9650;&nbsp;Actualizaci&oacute;n disponible</div>' +
+            '<h2>JAM POS v1.1 By @felinuxs</h2>' +
+            '<p class="jamupd-sub">Nueva versi&oacute;n <b>' + escapeHtml(String(datos.version)) + '</b>' + (datos.fecha ? ' &middot; Publicada el ' + escapeHtml(String(datos.fecha)) : '') + '</p>' +
             (datos.titulo ? '<p class="jamupd-sub" style="opacity:.85;margin-top:-6px"><b>' + escapeHtml(String(datos.titulo)) + '</b></p>' : '') +
             notasHtml +
-            bloqueHtml +
-            '<button class="jamupd-btn jamupd-btn-actualizar" id="jamupdSi">&#8635;&nbsp; Actualizar ahora</button>' +
-            '<button class="jamupd-btn jamupd-btn-quedarme" id="jamupdNo">Quedarme con la versi&oacute;n actual</button>' +
+            '<div class="jamupd-aviso">&#9888;&nbsp;' + avisoPlataforma + '</div>' +
+            '<button class="jamupd-btn jamupd-btn-actualizar" id="jamupdSi">' + textoAceptar + '</button>' +
+            '<button class="jamupd-btn jamupd-btn-quedarme" id="jamupdNo">No aceptar por ahora</button>' +
             '</div>';
         document.body.appendChild(overlay);
         overlay.dataset.version = String(datos.version);
+        ultimosDatos = datos;
         overlay.querySelector('#jamupdSi').onclick = actualizarAhora;
         overlay.querySelector('#jamupdNo').onclick = quedarse;
     }
 
+    var ultimosDatos = null; // update.json de la ultima version detectada
+
     function quedarse() {
-        var v = overlay ? overlay.dataset.version : null;
-        var skips = leerSkips();
-        if (v) skips[v] = Date.now();
-        try { localStorage.setItem(CLAVE_SKIP, JSON.stringify(skips)); } catch (e) {}
         cerrarPopup();
-        toast('Puedes actualizar cuando quieras. Te lo recordaremos en la pr&oacute;xima versi&oacute;n.');
+        // Regla que PREVALECE: NO se guarda silencio. En el proximo inicio de la
+        // aplicacion se le volvera a recordar la actualizacion obligatoria.
+        toast('Debes actualizar al iniciar la aplicaci\u00f3n. Te lo recordaremos en el pr\u00f3ximo inicio.');
     }
 
     var recargando = false;
@@ -146,8 +171,40 @@
         setTimeout(function () { window.location.reload(); }, 4000);
     }
 
+    // URL de descarga del instalador para nativas (apk/exe/deb).
+    function urlDescargaNativa() {
+        try {
+            var d = ultimosDatos || {};
+            if (d.descarga) return String(d.descarga);
+            if (d.url) return String(d.url);
+            if (d.archivo) return BASE_URL + PLATAFORMA + '/' + String(d.archivo);
+        } catch (e) {}
+        return '';
+    }
+
     function actualizarAhora() {
         cerrarPopup();
+        if (PLATAFORMA !== 'web') {
+            // NATIVA (apk/exe/deb): abre la descarga del instalador de su carpeta.
+            var url = urlDescargaNativa();
+            if (!url) { toast('No se encontre el enlace de descarga de la actualizaci\u00f3n.'); return; }
+            toast('Abriendo descarga de la actualizaci\u00f3n...');
+            var puente = window.AndroidBridge;
+            try {
+                if (puente && typeof puente.abrirEnlace === 'function') { puente.abrirEnlace(url); return; }
+            } catch (e) {}
+            try {
+                var a = document.createElement('a');
+                a.href = url;
+                a.target = '_blank';
+                a.rel = 'noopener';
+                document.body.appendChild(a);
+                a.click();
+                setTimeout(function () { if (a.parentNode) a.parentNode.removeChild(a); }, 100);
+            } catch (e) {}
+            return;
+        }
+        // WEB/PWA: recarga a la nueva version via Service Worker.
         toast('Buscando actualizaci&oacute;n...');
         if ('serviceWorker' in navigator) {
             try {
@@ -180,10 +237,13 @@
                 .then(function (r) { if (!r.ok) throw new Error('http'); return r.json(); })
                 .then(function (datos) {
                     if (!datos || !datos.version) return;
-                    if (!esMayor(APP_VERSION, datos.version)) return;
-                    var skips = leerSkips();
-                    var ultimo = skips[datos.version];
-                    if (ultimo && Date.now() - ultimo < REAVISO_DIAS * 86400000) return;
+                    // Regla que PREVALECE: avisa en CADA inicio mientras la version
+                    // publicada del servidor sea distinta a la instalada localmente.
+                    var distinta = normalizar(datos.version).join('.') !== normalizar(APP_VERSION).join('.');
+                    if (!distinta) return;
+                    var v = String(datos.version);
+                    if (__avisadoSesion[v]) return;
+                    __avisadoSesion[v] = true;
                     mostrarPopup(datos);
                 })
                 .catch(function () {});
