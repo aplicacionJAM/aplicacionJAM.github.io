@@ -1,12 +1,13 @@
 {
-  "version": "1.1.2",
+  "version": "1.1a",
   "nombre": "JAM POS v1.1 By @felinuxs",
-  "titulo": "Actualizacion para Windows (EXE)",
+  "titulo": "Parche 1.1a para Windows",
   "fecha": "2026-09-14",
   "archivo": "JAM POS 1.1 estable final.exe",
   "notas": [
-    "Correcciones de seguridad y estabilidad.",
-    "Cambia el archivo .exe de esta carpeta por la nueva version.",
-    "La app detectara esta carpeta llena (update.json) y avisara al iniciar."
+    "Publicación por presencia de archivo: solo hay aviso si existe un instalable (.exe) o un .txt en la carpeta exe/.",
+    "Carpeta exe/ vacía = sin notificación ni aviso.",
+    "Barra de menú en inglés eliminada.",
+    "Correcciones de seguridad y estabilidad."
   ]
 }
