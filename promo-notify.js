@@ -6,7 +6,7 @@
   // .txt  -> el contenido del archivo es el texto del cuadro de la notificacion.
   // imagen-> la imagen se muestra como notificacion (PNG/JPG/GIF/WEBP con transparencia).
   // Carpeta vacia o irremisiblemente ausente -> silencio total (no invasivo).
-  // Activo en TODAS las plataformas: web/PWA (github.io), APK, EXE y DEB.
+  // Por ahora SOLO activo en web/PWA; el codigo queda listo para activar en nativas.
 
   if (window.jamPromoNotificado) return;
   window.jamPromoNotificado = true;
@@ -14,9 +14,7 @@
   var INTERVALO = 30 * 60 * 1000;          // cada 30 minutos
   var PRIMERA = 15 * 1000;                 // primer disparo rapido al abrir
   var CLAVE = "jampos_promocion_cola";     // localStorage (indice de la cola)
-  var EN_GITHUB_IO = (location.hostname || "").indexOf(".github.io") !== -1;
-  // BASE LOCAL en github.io/web; BASE REMOTA (CDN GitHub Pages) en nativas.
-  var BASE = EN_GITHUB_IO ? "./Promocion/" : "https://aplicacionjam.github.io/Promocion/";
+  var BASE = "./Promocion/";
 
   function esPlataforma(plataforma) {
     if (window.plataformaApp) return window.plataformaApp === plataforma;
@@ -38,12 +36,13 @@
 
   var EXTENSIONS = { "txt": 1, "png": 1, "jpg": 1, "jpeg": 1, "gif": 1, "webp": 1 };
 
-  // Lista de archivos de la carpeta Promocion. En github.io (web) se obtiene la
-  // carpeta real con la API de GitHub; si falla (local, offline, otro host) cae
-  // al manifest estatico indice.json (que en nativas se consulta REMOTO).
+  // Lista de archivos de la carpeta Promocion. En github.io se obtiene la
+  // carpeta real con la API de GitHub; si falla (local, offline, otro host)
+  // cae al manifest estatico indice.json que trae el mismo listado.
   function leerLista() {
-    if (EN_GITHUB_IO) {
-      var repo = (location.hostname || "").replace(".github.io", "");
+    var hs = location.hostname || "";
+    if (hs.indexOf(".github.io") !== -1) {
+      var repo = hs.replace(".github.io", "");
       return fetch("https://api.github.com/repos/" + repo + "/" + repo + ".github.io/contents/Promocion")
         .then(function (r) {
           if (!r.ok) throw new Error("api");
@@ -54,16 +53,15 @@
           return arr.map(function (x) { return x.name; });
         })
         .catch(function () {
-          return leerIndice();
+          return fetch(BASE + "indice.json").then(function (r) {
+            if (!r.ok) throw new Error("indice");
+            return r.json();
+          }).then(function (nombres) {
+            return Array.isArray(nombres) ? nombres : [];
+          });
         });
     }
-    return leerIndice();
-  }
-
-  // En nativas SIEMPRE se consulta el indice.json remoto de la CDN (o el local
-  // en web). El fetch a la CDN GitHub Pages responde con CORS abierto (*).
-  function leerIndice() {
-    return fetch(BASE + "indice.json", { cache: "no-store" }).then(function (r) {
+    return fetch(BASE + "indice.json").then(function (r) {
       if (!r.ok) throw new Error("indice");
       return r.json();
     }).then(function (nombres) {
@@ -131,6 +129,7 @@
   }
 
   function tick() {
+    if (detectarPlataforma() !== "web") return; // activo SOLO en web/PWA por ahora
     leerLista().then(normalizar).then(publicar).catch(function () {
       guardarEstado({ nombre: "", repeticiones: 0 });
     });

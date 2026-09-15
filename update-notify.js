@@ -28,7 +28,7 @@
     var APP_ARCHIVO = {
         web: '',
         apk: 'JAMPOS-1.1-estable-final.apk',
-        exe: 'JAM POS 1.1 estable final Setup 1.1.0.exe',
+        exe: 'JAM POS 1.1 estable final.exe',
         deb: 'JAM POS 1.1 estable final (Linux).deb'
     };
     var EXTENSION_INSTALABLE = { web: '', apk: '.apk', exe: '.exe', deb: '.deb' };
@@ -39,7 +39,6 @@
     var UPDATE_URL = 'update.json';                    // respaldo (solo si no se puede listar)
     var CHECK_INICIAL_MS = 4000;                       // espera tras cargar la app
     var CHECK_INTERVALO_MS = 6 * 60 * 60 * 1000;       // cada 6 horas
-    var ultimoManifest = null;                         // contenido del update.json mas reciente (remoto/nativo)
 
     // Deteccion automatica de la plataforma. Prioridad:
     //   1) window.plataformaApp si el shell nativo lo inyecta (apk/exe/deb/web).
@@ -149,13 +148,9 @@
     // Lista los archivos de la carpeta de la plataforma como {name, size}.
     // En github.io se obtiene la carpeta REAL con la API de GitHub; si falla
     // (local, offline, otro host) cae al update.json de respaldo.
-    // En NATIVAS (apk/exe/deb) la carpeta local no existe ni importa: se
-    // consulta SIEMPRE el update.json REMOTO de su plataforma (publicado en el
-    // repo), que declara el campo 'archivo' (y opcionalmente 'descarga').
     function listarCarpeta() {
         var hs = location.hostname || '';
-        var enGithubIo = hs.indexOf('.github.io') !== -1;
-        if (enGithubIo) {
+        if (hs.indexOf('.github.io') !== -1) {
             var repo = hs.replace('.github.io', '');
             return fetch('https://api.github.com/repos/' + repo + '/' + repo + '.github.io/contents/' + CARPETA)
                 .then(function (r) {
@@ -167,33 +162,14 @@
                     return arr.map(function (x) { return { name: x.name, size: x.size || 0 }; });
                 })
                 .catch(function () {
-                    return listarPorManifestRemoto();
+                    return leerUpdateJson().then(function (u) {
+                        return u && u.archivo ? [{ name: u.archivo, size: 0 }] : [];
+                    });
                 });
         }
-        return listarPorManifestRemoto();
-    }
-
-    // En NATIVAS (o cuando no hay github.io): el update.json remoto de la
-    // propia plataforma es LA fuente (tiene 'archivo' y opcionalmente
-    // 'descarga' a GitHub Releases). El update.json LOCAL solo se usa como
-    // ultimo respaldo offline (sin archivo => seria una lista vacia).
-    function listarPorManifestRemoto() {
-        var url = PLATAFORMA === 'web' ? UPDATE_URL : BASE_URL + CARPETA + 'update.json';
-        return fetch(url + '?v=' + Date.now(), { cache: 'no-store' })
-            .then(function (r) {
-                if (!r.ok) throw new Error('manifest');
-                return r.json();
-            })
-            .then(function (u) {
-                ultimoManifest = u;
-                return u && u.archivo ? [{ name: u.archivo, size: 0 }] : [];
-            })
-            .catch(function () {
-                return leerUpdateJson().then(function (u) {
-                    ultimoManifest = u;
-                    return u && u.archivo ? [{ name: u.archivo, size: 0 }] : [];
-                });
-            });
+        return leerUpdateJson().then(function (u) {
+            return u && u.archivo ? [{ name: u.archivo, size: 0 }] : [];
+        });
     }
 
     function leerUpdateJson() {
@@ -408,23 +384,13 @@
         var titulo = archivo
             ? (tituloDeTxt(txt ? txt.name : null) + ' &middot; ' + escapeHtml(nombreInst))
             : tituloDeTxt(txt ? txt.name : null);
-        // La URL de descarga puede venir del update.json remoto (campo
-        // 'descarga', util para EXE/DEB alojados en GitHub Releases) o, en su
-        // defecto, del instalable publicado en la carpeta de la plataforma.
-        var descarga = '';
-        try {
-            if (ultimoManifest && ultimoManifest.descarga) descarga = String(ultimoManifest.descarga);
-        } catch (e) {}
-        if (!descarga && archivo && PLATAFORMA !== 'web') {
-            descarga = BASE_URL + PLATAFORMA + '/' + nombreInst;
-        }
         mostrarPopup({
             archivo: nombreInst,
             firma: firma || '',
             claveVisto: txt ? String(txt.name).replace(/\.txt$/i, '') : '',
             titulo: titulo,
             notas: notas,
-            descarga: descarga
+            descarga: archivo && PLATAFORMA !== 'web' ? BASE_URL + PLATAFORMA + '/' + nombreInst : ''
         });
     }
 
@@ -445,11 +411,6 @@
                 }
                 if (__avisadoSesion[archivo ? firmaDe(archivo) : ('txt:' + claveTxt)]) return;
                 return leerNotas(txt ? txt.name : null).then(function (notas) {
-                    // Si no hay .txt con notas (caso nativas via manifest), usar
-                    // las notas publicadas en el propio update.json.
-                    if ((!notas || notas.length === 0) && ultimoManifest && Array.isArray(ultimoManifest.notas)) {
-                        notas = ultimoManifest.notas.map(String);
-                    }
                     aviso_nuevo(archivo, txt, notas);
                 });
             })
