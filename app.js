@@ -125,6 +125,15 @@
     function mostrarNotificacion(mensaje, tipo = 'info') { const notif = document.createElement('div'); notif.className = 'notificacion-flotante'; notif.style.backgroundColor = tipo === 'success' ? '#10b981' : (tipo === 'error' ? '#ef4444' : '#3b82f6'); notif.style.color = 'white'; const iconos = { success: 'fa-circle-check', error: 'fa-circle-xmark', info: 'fa-circle-info' }; const ic = document.createElement('i'); ic.className = 'fas ' + (iconos[tipo] || 'fa-circle-info'); notif.appendChild(ic); const txt = document.createElement('span'); nodosIconosFA(String(mensaje || '').replace(/^\s*(✅|❌|⚠️|ℹ️|❓)\s*/u, ''), txt); notif.appendChild(txt); document.body.appendChild(notif); setTimeout(() => notif.remove(), 3000); }
     async function puenteResultado(v){ return (v && typeof v.then === 'function') ? await v : v; }
     function mostrarNotificacionNativa(titulo, cuerpo, tag, opciones) {
+        // NATIVAS primero: si hay puente con canal real (Android notification /
+        // Electron OS notification) se usa ese; lo demas es solo web/PWA.
+        try {
+            var br = window.AndroidBridge;
+            if (br && typeof br.mostrarNotificacion === 'function') {
+                br.mostrarNotificacion(String(titulo || ''), String(cuerpo || ''), String(tag || 'jampos'));
+                return;
+            }
+        } catch (e) {}
         if (!('Notification' in window) || !('serviceWorker' in navigator)) return;
         const mensaje = () => { return { type: 'showNotification', title: titulo, body: cuerpo, tag: tag || 'jampos', image: opciones && opciones.image ? String(opciones.image) : undefined, icon: './icon-192.png', badge: './icon-192.png' }; };
         if (Notification.permission === 'granted') {
