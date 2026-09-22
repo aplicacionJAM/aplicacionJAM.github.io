@@ -424,7 +424,8 @@ body.has-sidebar .tasas-extras{max-width:450px;margin-left:auto;margin-right:aut
         #searchGlobalInput{transition:padding-right .6s ease}
         #searchGlobalInput.sin-ayuda{padding-right:1rem!important}
         .module-header-izq{display:flex;align-items:center;min-width:0;gap:2px}
-        .btn-ayuda-modulo{margin:0 10px 0 2px;width:36px;height:36px;border-radius:50%;border:none;background:transparent;color:var(--accent,#3b82f6);font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center}
+        .module-header-der{display:flex;align-items:center;gap:4px;margin-left:10px}
+        .btn-ayuda-modulo{margin:0;width:36px;height:36px;border-radius:50%;border:none;background:transparent;color:var(--accent,#3b82f6);font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center}
         .btn-ayuda-modulo:active{transform:scale(.9)}
         @media(max-width:1023px){body.teclado-abierto, body.teclado-abierto #appRoot{position:fixed;inset:0;width:100%;overflow:hidden}}
         .guia-fondo{position:fixed;inset:0;background:rgba(0,0,0,.55);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:15000;padding:16px}

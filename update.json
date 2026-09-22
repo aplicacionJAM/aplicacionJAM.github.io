@@ -13,6 +13,9 @@
     "Silenciar notificaciones: ahora suprime también el aviso de 'Tasa actualizada' (ningún aviso visible ni sonido al cambiar la tasa).",
     "Tasas vivas: las 3 fuentes (BCV, Al Cambio BCV y Al Cambio USDT) se cargan y se guardan en el dispositivo, disponibles incluso sin internet.",
     "Sincronización: cabecera reorganizada igual que el resto de los módulos.",
-    "Service Worker v12-a9 para renovar automáticamente la aplicación web/PWA."
+    "Proveedores / Entregas: un pedido ahora admite VARIOS productos — cada renglón lleva producto + cantidad con un botón (+) que añade otra línea (variante o producto nuevo) y una sola línea con fecha de entrega, hora, lapso (días) y fecha de vencimiento.",
+    "Tarjeta de entrega: con varios productos muestra 'Productos varios' y el total de unidades; al tocar la tarjeta se abre el ticket PEDIDO VIRTUAL con encabezado, proveedor, fecha del pedido, cada producto con su cantidad, total y fechas (Imprimir / WhatsApp / Imagen / Copiar / Cerrar).",
+    "Ajustes del formulario de entrega: etiqueta 'Lapso (días)' reducida a 'Días' con el cuadro angosto (cabe '99' ≈ 3 meses) y 'Fecha entrega' abreviada a 'Fech/entreg'.",
+    "Service Worker v12-a19 para renovar automáticamente la aplicación web/PWA."
   ]
 }

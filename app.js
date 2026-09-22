@@ -1753,7 +1753,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         let sug = document.getElementById('sugerencias');
         if(term.length < 2){ sug.classList.add('hidden'); return; }
         let norm = normalizeText(term);
-        let filt = D.productos.filter(p => normalizeText(p.nombre).includes(norm) || (p.codigo && normalizeText(p.codigo).includes(norm)));
+        let filt = D.productos.filter(p => normalizeText(p.nombre).includes(norm) || (p.marca && normalizeText(p.marca).includes(norm)) || (p.codigo && normalizeText(p.codigo).includes(norm)));
         if(!filt.length){ sug.classList.add('hidden'); return; }
         sug.innerHTML = filt.map(p => `<div class="sugerencia-item" onclick="agregarAlCarrito('${p.id}')">${escapeHtml(p.nombre)} | ${fmtPrecio(p.precioVentaBs)} Bs / $${fmtPrecio(p.precioVentaUsd)} | Stock: ${p.stock}</div>`).join('');
         sug.classList.remove('hidden');
@@ -3076,7 +3076,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         let div = document.getElementById('globalResults');
         if(term.length < 2){ div.classList.add('hidden'); return; }
         let norm = normalizeText(term);
-        let prod = D.productos.filter(p => normalizeText(p.nombre).includes(norm) || (p.codigo && normalizeText(p.codigo).includes(norm)));
+        let prod = D.productos.filter(p => normalizeText(p.nombre).includes(norm) || (p.marca && normalizeText(p.marca).includes(norm)) || (p.codigo && normalizeText(p.codigo).includes(norm)));
         let cli = D.clientes.filter(c => normalizeText(c.nombre).includes(norm));
         let html = '';
         prod.slice(0,5).forEach(p => {
@@ -3151,11 +3151,11 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
     
     function renderListaProductos(filtro = ''){
         let norm = normalizeText(filtro);
-        let filt = D.productos.filter(p => normalizeText(p.nombre).includes(norm) || (p.codigo && normalizeText(p.codigo).includes(norm)));
+        let filt = D.productos.filter(p => normalizeText(p.nombre).includes(norm) || (p.marca && normalizeText(p.marca).includes(norm)) || (p.codigo && normalizeText(p.codigo).includes(norm)));
         let cont = document.getElementById('listaProductos'); if(!cont) return;
         cont.innerHTML = filt.map(p => {
             let checked = productosSeleccionados.has(p.id);
-            return `<div class="product-card"><div class="flex flex-wrap items-start gap-2"><div class="flex-1"><div class="flex justify-between flex-wrap"><span class="font-bold">${escapeHtml(p.nombre)}</span><span class="text-xs">${escapeHtml(p.codigo||'')}</span></div><div class="text-sm"><i class="fas fa-sack-dollar"></i> ${fmtPrecio(preciosProducto(p).normalBs)} Bs / $${preciosProducto(p).normalUsd} | <i class="fas fa-boxes-stacked"></i> Stock: ${p.stock}</div>${tieneDescuentoProducto(p) ? `<div class="text-sm" style="color:#10b981"><i class="fas fa-tag"></i> Oferta: ${fmtPrecio(preciosProducto(p).desc.bs)} Bs / $${preciosProducto(p).desc.usd} <span class="text-xs">(-${typeof p.porcentajeDescuento === 'number' ? p.porcentajeDescuento : 0}%)</span></div>` : ''}${(p.descuentoProveedor && p.descuentoProveedor > 0) ? `<div class="text-xs" style="color:#f59e0b"><i class="fas fa-boxes-stacked"></i> Costo prov: $${fmtPrecio(preciosProducto(p).costoNetoUsd)} <span style="text-decoration:line-through;opacity:0.6">$${fmtPrecio(preciosProducto(p).costoUsd)}</span> (-${p.descuentoProveedor}%)</div>` : ''}<div class="text-xs break-words"><i class="fas fa-tag"></i> ${escapeHtml(p.categoria||'')} | <i class="fas fa-truck"></i> ${escapeHtml(p.proveedor||'—')}</div><div class="card-btns"><button onclick="mostrarFormProducto('${p.id}')" class="btn-editar-redondeado"><i class="fas fa-pen"></i> Editar</button><button onclick="ajustarStock('${p.id}')" class="btn-redondeado" style="background:#f59e0b;color:#fff"><i class="fas fa-right-left"></i> Ajustar</button><button onclick="copiarProducto('${p.id}')" class="btn-redondeado" style="background:var(--accent,#3b82f6);color:#fff"><i class="fas fa-clipboard"></i> Copiar</button><button onclick="eliminarProducto('${p.id}')" class="btn-eliminar-redondeado"><i class="fas fa-trash"></i> Eliminar</button></div></div><input type="checkbox" class="product-checkbox mt-1" data-id="${p.id}" ${checked?'checked':''} onchange="toggleProductoSeleccionado('${p.id}',this.checked)"></div></div>`;
+            return `<div class="product-card"><div class="flex flex-wrap items-start gap-2"><div class="flex-1"><div class="flex justify-between flex-wrap"><span class="font-bold">${escapeHtml(p.nombre)}</span><span class="text-xs">${escapeHtml(p.codigo||'')}</span></div><div class="text-sm"><i class="fas fa-sack-dollar"></i> ${fmtPrecio(preciosProducto(p).normalBs)} Bs / $${preciosProducto(p).normalUsd} | <i class="fas fa-boxes-stacked"></i> Stock: ${p.stock}</div>${tieneDescuentoProducto(p) ? `<div class="text-sm" style="color:#10b981"><i class="fas fa-tag"></i> Oferta: ${fmtPrecio(preciosProducto(p).desc.bs)} Bs / $${preciosProducto(p).desc.usd} <span class="text-xs">(-${typeof p.porcentajeDescuento === 'number' ? p.porcentajeDescuento : 0}%)</span></div>` : ''}${(p.descuentoProveedor && p.descuentoProveedor > 0) ? `<div class="text-xs" style="color:#f59e0b"><i class="fas fa-boxes-stacked"></i> Costo prov: $${fmtPrecio(preciosProducto(p).costoNetoUsd)} <span style="text-decoration:line-through;opacity:0.6">$${fmtPrecio(preciosProducto(p).costoUsd)}</span> (-${p.descuentoProveedor}%)</div>` : ''}<div class="text-xs break-words">${p.marca ? `<i class="fas fa-certificate"></i> ${escapeHtml(p.marca)} · ` : ''}<i class="fas fa-tag"></i> ${escapeHtml(p.categoria||'')} | <i class="fas fa-truck"></i> ${escapeHtml(p.proveedor||'—')}</div><div class="card-btns"><button onclick="mostrarFormProducto('${p.id}')" class="btn-editar-redondeado"><i class="fas fa-pen"></i> Editar</button><button onclick="ajustarStock('${p.id}')" class="btn-redondeado" style="background:#f59e0b;color:#fff"><i class="fas fa-right-left"></i> Ajustar</button><button onclick="copiarProducto('${p.id}')" class="btn-redondeado" style="background:var(--accent,#3b82f6);color:#fff"><i class="fas fa-clipboard"></i> Copiar</button><button onclick="eliminarProducto('${p.id}')" class="btn-eliminar-redondeado"><i class="fas fa-trash"></i> Eliminar</button></div></div><input type="checkbox" class="product-checkbox mt-1" data-id="${p.id}" ${checked?'checked':''} onchange="toggleProductoSeleccionado('${p.id}',this.checked)"></div></div>`;
         }).join('');
         actualizarToolbarBatch();
     }
@@ -3187,6 +3187,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
             <div class="mb-3"><label>Precio Venta (Bs) <span class="text-xs opacity-50">(nuevo valor)</span></label><input type="text" id="lotePrecioBs" placeholder="Dejar vacío para no cambiar" class="border rounded-xl p-2 w-full"></div>
             <div class="mb-3"><label>Precio Venta (USD) <span class="text-xs opacity-50">(nuevo valor)</span></label><input type="number" id="lotePrecioUsd" step="any" placeholder="Dejar vacío para no cambiar" class="border rounded-xl p-2 w-full"></div>
             <div class="mb-3"><label>Categoría <span class="text-xs opacity-50">(nuevo valor)</span></label><input id="loteCategoria" placeholder="Dejar vacío para no cambiar" class="border rounded-xl p-2 w-full"></div>
+            <div class="mb-3"><label>Marca <span class="text-xs opacity-50">(nuevo valor)</span></label><input id="loteMarca" placeholder="Dejar vacío para no cambiar" class="border rounded-xl p-2 w-full"></div>
             <div class="mb-3"><label>Proveedor <span class="text-xs opacity-50">(nuevo valor)</span></label><input id="loteProveedor" placeholder="Dejar vacío para no cambiar" class="border rounded-xl p-2 w-full"></div>
             <div class="mb-3"><label>Stock <span class="text-xs opacity-50">(sumar este valor al actual)</span></label><input type="number" id="loteStock" placeholder="0 = no cambiar" class="border rounded-xl p-2 w-full"></div>
             <div class="flex gap-3 mt-4"><button id="aplicarLoteBtn" class="btn-azul-redondeado btn-redondeado flex-1 py-2 font-bold">Aplicar cambios</button><button id="cancelarLoteBtn" class="btn-redondeado flex-1 py-2 bg-gray-200">Cancelar</button></div></div>`;
@@ -3197,6 +3198,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
             let precioBsRaw = document.getElementById('lotePrecioBs').value;
             let precioUsd = document.getElementById('lotePrecioUsd').value;
             let categoria = document.getElementById('loteCategoria').value.trim();
+            let marca = document.getElementById('loteMarca').value.trim();
             let proveedor = document.getElementById('loteProveedor').value.trim();
             let stockDelta = parseInt(document.getElementById('loteStock').value) || 0;
             let cambios = false;
@@ -3205,6 +3207,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
                 if(precioBsRaw !== ''){ p.precioVentaBs = parseBs(precioBsRaw); cambiado = true; }
                 if(precioUsd !== ''){ p.precioVentaUsd = parseFloat(precioUsd); cambiado = true; }
                 if(categoria){ p.categoria = categoria; cambiado = true; }
+                if(marca){ p.marca = marca; cambiado = true; }
                 if(proveedor){ p.proveedor = proveedor; cambiado = true; }
                 if(stockDelta !== 0){ p.stock = (parseInt(p.stock)||0) + stockDelta; if(p.stock < 0) p.stock = 0; cambiado = true; }
                 if(cambiado){ await saveItem('productos', p); cambios = true; }
@@ -3282,7 +3285,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
             ${!(D.config.dolarRate > 0) ? `<div id="sinTasaAvisoProd" class="mb-2 p-2 rounded text-sm" style="background:#fef3c7;color:#92400e;font-weight:600"><i class="fas fa-triangle-exclamation"></i> Sin tasa de cambio registrada: los precios en Bs se activarán cuando haya tasa (conéctate a internet o fíjala manualmente en Configuración).</div>` : ''}
             <div class="mb-1"><label class="opacity-70">Nombre</label><input id="nombre" value="${escapeHtml(prod?.nombre||'')}" class="border rounded p-1 w-full"></div>
             <div class="mb-1"><label class="opacity-70"><i class="fas fa-camera"></i> Código de barras</label><div class="flex gap-2"><input id="codigo" value="${escapeHtml(prod?.codigo||'')}" class="border rounded p-1 flex-1" style="border-color:var(--accent,#3b82f6)"><button id="btnScanProducto" class="btn-icon-cuadrado" title="Escanear con cámara"><i class="fas fa-camera"></i></button></div></div>
-            <div class="mb-1"><div class="grid grid-cols-2 gap-2"><div><label class="opacity-70">Categoría</label><input id="categoria" value="${escapeHtml(prod?.categoria||'')}" class="border rounded p-1 w-full"></div><div><label class="opacity-70">Tipo</label><input id="tipo" value="${escapeHtml(prod?.tipo||'')}" class="border rounded p-1 w-full"></div></div></div>
+            <div class="mb-1"><div class="grid grid-cols-3 gap-2"><div><label class="opacity-70">Marca</label><input id="marca" value="${escapeHtml(prod?.marca||'')}" placeholder="Ej: Polar" class="border rounded p-1 w-full"></div><div><label class="opacity-70">Categoría</label><input id="categoria" value="${escapeHtml(prod?.categoria||'')}" class="border rounded p-1 w-full"></div><div><label class="opacity-70">Tipo</label><input id="tipo" value="${escapeHtml(prod?.tipo||'')}" class="border rounded p-1 w-full"></div></div></div>
             <div class="mb-1"><div class="grid grid-cols-10 gap-2 relative"><div class="col-span-8 relative"><label class="opacity-70">Proveedor</label><input id="proveedor" value="${escapeHtml(prod?.proveedor||'')}" placeholder="Escriba para buscar..." class="border rounded p-1 w-full" autocomplete="off"><div id="sugProveedor" style="display:none;position:absolute;left:0;right:0;z-index:100;background:var(--bg,#fff);border:1px solid rgba(128,128,128,0.2);border-radius:12px;max-height:150px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.1)"></div></div><div class="col-span-2"><label class="opacity-70">Descuento</label><input type="number" id="descProvInput" step="any" min="0" max="99.99" value="${descProvIni || ''}" placeholder="%" class="border rounded p-1 w-full"></div></div></div>
             <div class="grid grid-cols-10 gap-2 mb-1 items-end">
                 <div class="col-span-3"><label class="opacity-70"><i class="fas fa-money-bill-wave"></i> Costo (USD)</label><input type="number" id="compraUsd" step="any" min="0" value="${prod?.costoRealUsd||''}" placeholder="Ej: 3.00" class="border rounded p-1 w-full"></div>
@@ -3366,7 +3369,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         descuentoInput.oninput = () => { manual.desc = false; try{recalcular();}catch(e){console.error('recalc descuento',e);} };
         descOn.onchange = () => { manual.desc = false; if(descOn.checked && !descuentoInput.value) descuentoInput.value = 10; try{recalcular();}catch(e){console.error('recalc descOn',e);} };
         descProvInput.oninput = () => { try{recalcular();}catch(e){console.error('recalc descProvInput',e);} };
-        compraBs.oninput = () => { manual.costo = true; try{recalcular();}catch(e){console.error('recalc compraBs',e);} };
+        compraBs.oninput = () => { if(!(D.config.dolarRate > 0)){ mostrarNotificacion('Sin tasa registrada: conéctate a internet o fíjala manualmente', 'error'); return; } manual.costo = true; const bs = parseBs(compraBs.value); if(bs > 0) compraUsd.value = (bs / D.config.dolarRate).toFixed(2); try{recalcular();}catch(e){console.error('recalc compraBs',e);} };
         ventaBs.oninput = () => { if(!(D.config.dolarRate > 0)){ mostrarNotificacion('Sin tasa registrada: conéctate a internet o fíjala manualmente', 'error'); return; } manual.venta = true; const bs = parseBs(ventaBs.value); if(bs > 0) ventaUsd.value = (bs / D.config.dolarRate).toFixed(2); try{recalcular();}catch(e){console.error('recalc ventaBs',e);} };
         ventaUsd.oninput = () => { if(!(D.config.dolarRate > 0)){ mostrarNotificacion('Sin tasa registrada: conéctate a internet o fíjala manualmente', 'error'); return; } manual.venta = true; const usd = parseFloat(ventaUsd.value); if(!isNaN(usd) && usd > 0) { ventaBs.value = fmtPrecio(tRedondeo(usd * D.config.dolarRate)); sincronizarBs(ventaBs); } try{recalcular();}catch(e){console.error('recalc ventaUsd',e);} };
         descBs.oninput = () => { if(!(D.config.dolarRate > 0)){ mostrarNotificacion('Sin tasa registrada: conéctate a internet o fíjala manualmente', 'error'); return; } manual.desc = true; const bs = parseBs(descBs.value); if(bs > 0) descUsd.value = (bs / D.config.dolarRate).toFixed(2); try{recalcular();}catch(e){console.error('recalc descBs',e);} };
@@ -3400,7 +3403,8 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
             if(descProveedor >= 100) descProveedor = 99.99; if(descProveedor < 0) descProveedor = 0;
             let costoNetoUsd = tRedondeo(costoRealUsd * (1 - descProveedor / 100));
             let costoNetoBs = tRedondeo(costoNetoUsd * tasaV);
-            if(costoRealBs <= 0 && costoRealUsd > 0) costoRealBs = tRedondeo(costoRealUsd * tasaV);
+            if(costoRealBs <= 0 && costoRealUsd > 0){ costoRealBs = tRedondeo(costoRealUsd * tasaV); costoNetoUsd = tRedondeo(costoRealUsd * (1 - descProveedor / 100)); costoNetoBs = tRedondeo(costoNetoUsd * tasaV); }
+            else if(costoRealUsd <= 0 && costoRealBs > 0){ costoRealUsd = tRedondeo(costoRealBs / tasaV); costoNetoUsd = tRedondeo(costoRealUsd * (1 - descProveedor / 100)); costoNetoBs = tRedondeo(costoNetoUsd * tasaV); }
             let precioVentaUsd = parseFloat(ventaUsd.value) || 0;
             let precioVentaBs = parseBs(ventaBs.value);
             if(precioVentaBs <= 0 && precioVentaUsd > 0) precioVentaBs = tRedondeo(precioVentaUsd * tasaV);
@@ -3416,7 +3420,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
             if(!document.getElementById('nombre').value.trim()) { await jamAlert('El nombre del producto es obligatorio', 'error'); return; }
             if(precioVentaBs <= 0) { await jamAlert('El precio de venta debe ser mayor a 0', 'error'); return; }
             let nombre = capitalizeWords(document.getElementById('nombre').value.trim());
-            let nuevo = { id: esNuevo ? 'p'+Date.now()+'_'+Math.random().toString(36).slice(2,7) : prod.id, nombre, codigo: document.getElementById('codigo').value, categoria: document.getElementById('categoria').value, tipo: document.getElementById('tipo').value, proveedor: document.getElementById('proveedor').value, stock: parseInt(document.getElementById('stock').value) || 0, precioVentaBs, precioVentaUsd, costoRealBs, costoRealUsd, descuentoProveedor: descProveedor, costoNetoUsd, costoNetoBs, porcentajeGanancia, porcentajeDescuento, precioDescuentoUsd, precioDescuentoBs, tasaRegistro: tasaV };
+            let nuevo = { id: esNuevo ? 'p'+Date.now()+'_'+Math.random().toString(36).slice(2,7) : prod.id, nombre, marca: document.getElementById('marca').value, codigo: document.getElementById('codigo').value, categoria: document.getElementById('categoria').value, tipo: document.getElementById('tipo').value, proveedor: document.getElementById('proveedor').value, stock: parseInt(document.getElementById('stock').value) || 0, precioVentaBs, precioVentaUsd, costoRealBs, costoRealUsd, descuentoProveedor: descProveedor, costoNetoUsd, costoNetoBs, porcentajeGanancia, porcentajeDescuento, precioDescuentoUsd, precioDescuentoBs, tasaRegistro: tasaV };
             await saveItem('productos', nuevo);
             const provNombre = document.getElementById('proveedor').value.trim();
             if(provNombre) {
@@ -3478,7 +3482,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         const pr = preciosProducto(p);
         let bsPrecio = fmtPrecio(pr.normalBs);
         let usdPrecio = pr.normalUsd ? '$' + pr.normalUsd + ' USD' : '';
-        let msg = `${saludo}, estimado cliente! 🌟\n\n${hayStock ? '📦 SÍ tenemos en existencia:' : '❌ Por ahora NO tenemos en stock este producto. Le avisaremos cuando se reponga.'}\n\n📌 *${p.nombre.toUpperCase()}*\n${p.codigo ? '🔖 Código: ' + p.codigo + '\n' : ''}${hayStock ? '💰 *Precio por unidad:*' : '💰 *Precio de referencia:*'} ${bsPrecio} Bs  |  ${usdPrecio}\n${pr.tieneDesc ? `🏷️ *OFERTA:* ${fmtPrecio(pr.desc.bs)} Bs | $${pr.desc.usd} USD (-${typeof p.porcentajeDescuento === 'number' ? p.porcentajeDescuento : 0}%)\n` : ''}📅 Precio en Bs válido solo para el ${hoy} (sujeto a cambios tasa BCV).\n💵 El precio en USD se mantiene fijo.\n\n${hayStock ? '✅ Por favor confirme su pedido para gestionarlo con anticipación. Le enviaremos confirmación una vez verificado el pago. 🙏' : ''}`;
+        let msg = `${saludo}, estimado cliente! 🌟\n\n${hayStock ? '📦 SÍ tenemos en existencia:' : '❌ Por ahora NO tenemos en stock este producto. Le avisaremos cuando se reponga.'}\n\n📌 *${p.nombre.toUpperCase()}*\n${p.codigo ? '🔖 Código: ' + p.codigo + '\n' : ''}${p.marca ? '🏷️ Marca: ' + p.marca + '\n' : ''}${hayStock ? '💰 *Precio por unidad:*' : '💰 *Precio de referencia:*'} ${bsPrecio} Bs  |  ${usdPrecio}\n${pr.tieneDesc ? `🏷️ *OFERTA:* ${fmtPrecio(pr.desc.bs)} Bs | $${pr.desc.usd} USD (-${typeof p.porcentajeDescuento === 'number' ? p.porcentajeDescuento : 0}%)\n` : ''}📅 Precio en Bs válido solo para el ${hoy} (sujeto a cambios tasa BCV).\n💵 El precio en USD se mantiene fijo.\n\n${hayStock ? '✅ Por favor confirme su pedido para gestionarlo con anticipación. Le enviaremos confirmación una vez verificado el pago. 🙏' : ''}`;
         navigator.clipboard.writeText(msg).then(() => mostrarNotificacion('✅ Copiado al portapapeles', 'success')).catch(() => {});
     };
     
@@ -3606,24 +3610,39 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         const lbl = st === 'recibido' ? 'Recibida' : st === 'salida' ? 'Salida' : 'Pendiente';
         return `<span class="text-[10px] font-bold" style="color:${col};border:1px solid ${col};border-radius:999px;padding:1px 8px">${lbl}</span>`;
     }
+    // Una entrega puede tener UNO o VARIOS productos (renglones producto+cantidad).
+    // 'items' es el formato nuevo; las entregas antiguas solo tienen
+    // producto/cantidad → se tratan como un único renglón (retrocompatible).
+    function itemsEntrega(e){
+        if(!e) return [];
+        if(Array.isArray(e.items) && e.items.length){
+            return e.items.map(it => ({ producto: (it && it.producto) ? String(it.producto) : '', cantidad: parseInt(it && it.cantidad) || 0 }));
+        }
+        return [{ producto: e.producto || '', cantidad: parseInt(e.cantidad) || 0 }];
+    }
+    function totalUnidadesEntrega(e){ return itemsEntrega(e).reduce((s, it) => s + it.cantidad, 0); }
+    function esEntregaVarios(e){ return itemsEntrega(e).length > 1; }
+    function tituloProductoEntrega(e){ const its = itemsEntrega(e); return esEntregaVarios(e) ? 'Productos varios' : (its[0] ? its[0].producto : ''); }
     function renderListaEntregas(norm){
         let filtro = (D.entregas || []).filter(e => {
-            let texto = [e.proveedor||'', e.producto||'', e.notas||'', e.estado||''].join(' ');
+            let texto = [e.proveedor||'', e.producto||'', ...((e.items||[]).map(i => i.producto)), e.notas||'', e.estado||''].join(' ');
             return normalizeText(texto).includes(norm);
         }).sort((a,b) => (a._fechaDT||0) - (b._fechaDT||0));
         let cont = document.getElementById('listaEntregas'); if(!cont) return;
         if(!filtro.length){ cont.innerHTML = '<div class="text-center py-4 text-gray-500">No hay entregas registradas</div>'; return; }
-        cont.innerHTML = filtro.map(e => `
-            <div class="client-card" data-id="${e.id}">
-                <div class="flex justify-between items-start"><div class="font-bold break-words">${escapeHtml(e.proveedor||'Proveedor')} — ${escapeHtml(e.producto||'')}</div>${estadoEntregaBadge(e)}</div>
-                <div class="text-xs text-gray-500 mt-1"><i class="fas fa-calendar-days"></i> Entrega: ${escapeHtml(fmtFechaDisplay(e.fecha)||'')}${e.hora ? ' ' + escapeHtml(e.hora) : ''} | <i class="fas fa-stopwatch"></i> Lapso: ${e.lapsoDias ? escapeHtml(e.lapsoDias) + ' día(s)' : '—'} | <i class="fas fa-calendar-days"></i> Vence: ${escapeHtml(fmtFechaDisplay(e.fechaVencimiento)||'—')} | <i class="fas fa-boxes-stacked"></i> ${parseInt(e.cantidad)||0} u.</div>
+        cont.innerHTML = filtro.map(e => {
+            const varios = esEntregaVarios(e), totalU = totalUnidadesEntrega(e), prim = itemsEntrega(e)[0] || {};
+            return `
+            <div class="client-card" data-id="${e.id}" style="cursor:pointer" onclick="window.mostrarTicketEntrega('${e.id}')" title="Ver pedido">
+                <div class="flex justify-between items-start"><div class="font-bold break-words">${escapeHtml(e.proveedor||'Proveedor')} — ${varios ? '<i class="fas fa-boxes-stacked" style="opacity:.7"></i> Productos varios' : escapeHtml(prim.producto||'')}</div>${estadoEntregaBadge(e)}</div>
+                <div class="text-xs text-gray-500 mt-1"><i class="fas fa-calendar-days"></i> Entrega: ${escapeHtml(fmtFechaDisplay(e.fecha)||'')}${e.hora ? ' ' + escapeHtml(e.hora) : ''} | <i class="fas fa-stopwatch"></i> Lapso: ${e.lapsoDias ? escapeHtml(e.lapsoDias) + ' día(s)' : '—'} | <i class="fas fa-calendar-days"></i> Vence: ${escapeHtml(fmtFechaDisplay(e.fechaVencimiento)||'—')} | <i class="fas fa-boxes-stacked"></i> ${varios ? 'Total: ' : ''}${totalU} u.</div>
                 ${e.notas ? `<div class="text-xs mt-1" style="color:#f59e0b"><i class="fas fa-pen"></i> ${escapeHtml(e.notas)}</div>` : ''}
                 <div class="card-btns"><button class="btn-editar-entrega btn-editar-redondeado"><i class="fas fa-pen"></i> Editar</button><button class="btn-estado-entrega btn-verde-redondeado"><i class="fas fa-rotate"></i> Estado</button><button class="btn-eliminar-entrega btn-eliminar-redondeado"><i class="fas fa-trash"></i> Eliminar</button></div>
-            </div>`).join('');
-        document.querySelectorAll('.btn-editar-entrega').forEach((btn, idx) => { btn.onclick = () => mostrarFormEntrega(filtro[idx].id); });
-        document.querySelectorAll('.btn-estado-entrega').forEach((btn, idx) => { const e = filtro[idx]; btn.onclick = () => cicloEstadoEntrega(e); });
+            </div>`; }).join('');
+        document.querySelectorAll('.btn-editar-entrega').forEach((btn, idx) => { btn.onclick = (ev) => { ev.stopPropagation(); mostrarFormEntrega(filtro[idx].id); }; });
+        document.querySelectorAll('.btn-estado-entrega').forEach((btn, idx) => { const e = filtro[idx]; btn.onclick = (ev) => { ev.stopPropagation(); cicloEstadoEntrega(e); }; });
         document.querySelectorAll('.btn-eliminar-entrega').forEach((btn, idx) => {
-            btn.onclick = async () => { const e = filtro[idx]; if(await jamConfirm('¿Eliminar esta entrega?')){ await deleteItem('entregas', e.id); renderEntregas(); } };
+            btn.onclick = async (ev) => { ev.stopPropagation(); const e = filtro[idx]; if(await jamConfirm('¿Eliminar esta entrega?')){ await deleteItem('entregas', e.id); renderEntregas(); } };
         });
     }
     // ==================== ENTREGAS → STOCK ====================
@@ -3642,13 +3661,18 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         return found.length;
     }
     function aplicarEntregaStock(e){
-        if(!e || !(parseInt(e.cantidad) > 0) || !e.producto) return 0;
-        if(e.stockAplicado) return 0;
-        const found = productosEntrega(e.producto);
-        if(found.length === 0){ mostrarNotificacion('⚠️ No hay producto con ese nombre: la entrega no sumó stock', 'error'); return 0; }
-        found.forEach(p => { p.stock = (parseInt(p.stock)||0) + (parseInt(e.cantidad)||0); saveItem('productos', p); });
-        e.stockAplicado = true;
-        return found.length;
+        if(!e || e.stockAplicado) return 0;
+        const items = itemsEntrega(e);
+        let ok = 0;
+        items.forEach(it => {
+            if(!(parseInt(it.cantidad) > 0) || !it.producto) return;
+            const found = productosEntrega(it.producto);
+            if(found.length === 0){ mostrarNotificacion('⚠️ Ningún producto coincide exactamente con "' + it.producto + '": el stock no se ajustó', 'error'); return; }
+            found.forEach(p => { p.stock = (parseInt(p.stock)||0) + it.cantidad; saveItem('productos', p); });
+            ok++;
+        });
+        if(ok > 0) e.stockAplicado = true;
+        return ok;
     }
     function cicloEstadoEntrega(e){
         const orden = ['pendiente','salida','recibido'];
@@ -3656,32 +3680,57 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         const estadoPrevio = e.estado || 'pendiente';
         e.estado = orden[(i + 1) % 3];
         if(e.estado === 'recibido' && estadoPrevio !== 'recibido') aplicarEntregaStock(e);
-        else if(estadoPrevio === 'recibido' && e.estado !== 'recibido'){ ajustarStockEntregaProductos(e.producto, -(parseInt(e.cantidad)||0)); e.stockAplicado = false; }
+        else if(estadoPrevio === 'recibido' && e.estado !== 'recibido'){ itemsEntrega(e).forEach(it => ajustarStockEntregaProductos(it.producto, -it.cantidad)); e.stockAplicado = false; }
         saveItem('entregas', e).then(() => renderEntregas());
     }
     async function mostrarFormEntrega(id){
         const e = id ? (D.entregas || []).find(x => x.id === id) : null;
         await cargarProveedoresSiNo();
         const listProv = (D.proveedores || []).map(p => p.nombre).join('|');
+        const accent = D.config.theme;
         let modal = document.createElement('div'); modal.className = 'modal-form';
-        const sinTasaIgnorar = true;
-        modal.innerHTML = `<div class="modal-form-content" style="max-width:420px"><h3 class="text-xl font-bold mb-4">${e ? 'Editar entrega' : 'Nueva entrega'}</h3>
+        // Renglones de productos: cada fila = [producto | cantidad | (+)]
+        // El (+) agrega otra fila idéntica debajo (variante o producto nuevo).
+        let currentItems = e ? itemsEntrega(e) : [{ producto: '', cantidad: 1 }];
+        modal.innerHTML = `<div class="modal-form-content" style="max-width:460px"><h3 class="text-xl font-bold mb-3">${e ? 'Editar entrega' : 'Nueva entrega'}</h3>
             <div class="mb-2"><label class="opacity-70">Proveedor</label><input id="entProv" list="listProvEnt" value="${escapeHtml(e?.proveedor||'')}" placeholder="Nombre del proveedor..." class="border rounded p-1 w-full" autocomplete="off"><datalist id="listProvEnt">${listProv ? listProv.split('|').map(n => `<option value="${escapeHtml(n)}">`).join('') : ''}</datalist></div>
-            <div class="mb-2"><label class="opacity-70">Producto / Descripción</label><input id="entProducto" value="${escapeHtml(e?.producto||'')}" placeholder="Ej: Harina 1kg x50" class="border rounded p-1 w-full"></div>
-            <div class="grid grid-cols-3 gap-2 mb-2 items-end">
-                <div class="col-span-1"><label class="opacity-70">Cantidad</label><input type="number" id="entCantidad" value="${e?.cantidad||1}" min="0" class="border rounded p-1 w-full"></div>
-                <div class="col-span-1"><label class="opacity-70">Fecha entrega</label><input type="date" id="entFecha" value="${e?.fecha || msToDateStr(Date.now())}" class="border rounded p-1 w-full"></div>
-                <div class="col-span-1"><label class="opacity-70">Hora</label><input type="time" id="entHora" value="${e?.hora || ''}" class="border rounded p-1 w-full"></div>
-            </div>
-            <div class="grid grid-cols-2 gap-2 mb-2 items-end">
-                <div class="col-span-1"><label class="opacity-70">Lapso de entrega (días)</label><input type="number" id="entLapso" value="${e?.lapsoDias || 1}" min="0" class="border rounded p-1 w-full"></div>
-                <div class="col-span-1"><label class="opacity-70">Fecha vencimiento</label><input type="date" id="entVenc" value="${e?.fechaVencimiento || ''}" class="border rounded p-1 w-full"></div>
+            <div class="mb-2"><label class="opacity-70"><i class="fas fa-boxes-stacked"></i> Productos del pedido</label><div id="entItems"></div><div class="text-xs mt-1" style="opacity:.6"><i class="fas fa-calculator"></i> Total del pedido: <b id="entTotalUnid">—</b><span style="opacity:.55"> · toca (+) para añadir otro producto</span></div></div>
+            <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 46px minmax(0,1fr);gap:6px;align-items:end;margin-bottom:8px">
+                <div><label class="opacity-70" style="font-size:10px">Fech/entreg</label><input type="date" id="entFecha" value="${e?.fecha || msToDateStr(Date.now())}" class="border rounded p-1 w-full" style="min-width:0;font-size:12px"></div>
+                <div><label class="opacity-70" style="font-size:10px">Hora</label><input type="time" id="entHora" value="${e?.hora || ''}" class="border rounded p-1 w-full" style="min-width:0;font-size:12px"></div>
+                <div><label class="opacity-70" style="font-size:10px;display:block">Días</label><input type="number" id="entLapso" value="${e?.lapsoDias || 1}" min="0" class="border rounded p-1" style="min-width:0;font-size:12px;width:46px;text-align:center" title="Lapso de entrega en días (ej: 99 ≈ 3 meses)"></div>
+                <div><label class="opacity-70" style="font-size:10px">Vence</label><input type="date" id="entVenc" value="${e?.fechaVencimiento || ''}" class="border rounded p-1 w-full" style="min-width:0;font-size:12px"></div>
             </div>
             <div class="mb-2"><label class="opacity-70">Estado</label><select id="entEstado" class="border rounded p-1 w-full"><option value="pendiente" ${(!e || e.estado==='pendiente')?'selected':''}>Pendiente</option><option value="salida" ${e?.estado==='salida'?'selected':''}>En salida</option><option value="recibido" ${e?.estado==='recibido'?'selected':''}>Recibida</option></select></div>
             <div class="mb-2"><label class="opacity-70"><i class="fas fa-pen"></i> Notas (problemas / enmiendas)</label><textarea id="entNotas" rows="2" class="border rounded p-1 w-full" placeholder="Notas, incidencias, enmiendas...">${escapeHtml(e?.notas||'')}</textarea></div>
             <div class="flex gap-3 mt-4"><button id="guardarEnt" class="btn-azul-redondeado btn-redondeado flex-1 py-2 font-bold">Guardar</button><button id="cancelarEnt" class="btn-redondeado flex-1 py-2 bg-gray-200">Cancelar</button></div></div>`;
         document.body.appendChild(modal);
         document.getElementById('cancelarEnt').onclick = () => modal.remove();
+        const itemsCont = document.getElementById('entItems');
+        const syncFromDOM = () => {
+            itemsCont.querySelectorAll('.ent-ip').forEach(inp => { const i = Number(inp.dataset.idx); currentItems[i] = currentItems[i] || {}; currentItems[i].producto = inp.value; });
+            itemsCont.querySelectorAll('.ent-ic').forEach(inp => { const i = Number(inp.dataset.idx); currentItems[i] = currentItems[i] || {}; currentItems[i].cantidad = parseFloat(inp.value) || 0; });
+            const totEl = document.getElementById('entTotalUnid');
+            if(totEl) totEl.textContent = currentItems.reduce((s, it) => s + (it.cantidad||0), 0) + ' u.';
+        };
+        const pintarItems = () => {
+            itemsCont.innerHTML = currentItems.map((it, idx) => `
+                <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
+                    <input class="ent-ip border rounded p-1" data-idx="${idx}" value="${escapeHtml(it.producto||'')}" placeholder="Producto / descripción" style="flex:1;min-width:0;font-size:13px">
+                    <input type="number" class="ent-ic border rounded p-1" data-idx="${idx}" value="${it.cantidad||''}" min="0" style="width:62px;min-width:0;font-size:13px" title="Cantidad" placeholder="Cant.">
+                    <button type="button" class="ent-ia" data-idx="${idx}" title="Agregar otro producto" style="flex:0 0 auto;width:30px;height:30px;padding:0;display:inline-flex;align-items:center;justify-content:center;border:1.5px solid ${accent};color:${accent};background:transparent;border-radius:50%;cursor:pointer"><i class="fas fa-plus" style="font-size:11px"></i></button>
+                    <button type="button" class="ent-ix" data-idx="${idx}" title="Quitar renglón" style="${idx > 0 ? 'flex:0 0 auto;width:30px;height:30px;padding:0;display:inline-flex;align-items:center;justify-content:center;border:1.5px solid #ef4444;color:#ef4444;background:transparent;border-radius:50%;cursor:pointer' : 'display:none'}"><i class="fas fa-times" style="font-size:11px"></i></button>
+                </div>`).join('');
+            syncFromDOM();
+        };
+        itemsCont.oninput = () => syncFromDOM();
+        itemsCont.onclick = (ev) => {
+            const btnAdd = ev.target.closest('.ent-ia');
+            const btnDel = ev.target.closest('.ent-ix');
+            if(btnAdd){ syncFromDOM(); currentItems.push({ producto: '', cantidad: 1 }); pintarItems(); ev.preventDefault(); }
+            if(btnDel){ syncFromDOM(); const i = Number(btnDel.dataset.idx); if(currentItems.length > 1){ currentItems.splice(i, 1); pintarItems(); } }
+        };
+        pintarItems();
         const fechaEl = document.getElementById('entFecha'), lapsoEl = document.getElementById('entLapso'), vencEl = document.getElementById('entVenc');
         const calcVenc = () => {
             const fs = fechaEl.value, lap = parseInt(lapsoEl.value) || 0;
@@ -3689,18 +3738,22 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         };
         fechaEl.onchange = () => calcVenc(); lapsoEl.oninput = () => calcVenc();
         document.getElementById('guardarEnt').onclick = async () => {
+            syncFromDOM();
             const prov = document.getElementById('entProv').value.trim();
-            const producto = document.getElementById('entProducto').value.trim();
-            if(!prov || !producto){ await jamAlert('Proveedor y producto son obligatorios', 'error'); return; }
+            const items = currentItems.filter(it => (it.producto||'').trim() !== '' && (it.cantidad||0) > 0).map(it => ({ producto: String(it.producto).trim(), cantidad: it.cantidad }));
+            if(!prov){ await jamAlert('El proveedor es obligatorio', 'error'); return; }
+            if(!items.length){ await jamAlert('Agrega al menos un producto con su cantidad', 'error'); return; }
             const fecha = document.getElementById('entFecha').value;
             const fechaVencimiento = vencEl.value || fecha;
-            let nueva = { id: e ? e.id : 'en'+Date.now()+'_'+Math.random().toString(36).slice(2,7), proveedor: prov, producto, cantidad: parseFloat(document.getElementById('entCantidad').value) || 0, fecha, hora: document.getElementById('entHora').value || '', lapsoDias: parseInt(lapsoEl.value) || 0, fechaVencimiento, estado: document.getElementById('entEstado').value, notas: document.getElementById('entNotas').value.trim(), timestamp: Date.now() };
+            const primero = items[0];
+            let nueva = { id: e ? e.id : 'en'+Date.now()+'_'+Math.random().toString(36).slice(2,7), proveedor: prov, items, producto: primero.producto, cantidad: primero.cantidad, fecha, hora: document.getElementById('entHora').value || '', lapsoDias: parseInt(lapsoEl.value) || 0, fechaVencimiento, estado: document.getElementById('entEstado').value, notas: document.getElementById('entNotas').value.trim(), timestamp: Date.now() };
+            // Stock: si la entrega ya estaba aplicada, revierte TODOS los renglones
+            // anteriores y aplica los nuevos (o ninguno si dejó de ser "recibida").
             if(e && e.stockAplicado && nueva.estado === 'recibido'){
-                const delta = (parseInt(nueva.cantidad)||0) - (parseInt(e.cantidad)||0);
-                const nombreCambio = normalizeText(nueva.producto) !== normalizeText(e.producto);
-                if(nombreCambio || delta !== 0){ ajustarStockEntregaProductos(e.producto, -(parseInt(e.cantidad)||0)); ajustarStockEntregaProductos(nueva.producto, parseInt(nueva.cantidad)||0); }
+                itemsEntrega(e).forEach(it => ajustarStockEntregaProductos(it.producto, -it.cantidad));
+                aplicarEntregaStock(nueva);
             } else if(e && e.stockAplicado && nueva.estado !== 'recibido'){
-                ajustarStockEntregaProductos(e.producto, -(parseInt(e.cantidad)||0));
+                itemsEntrega(e).forEach(it => ajustarStockEntregaProductos(it.producto, -it.cantidad));
                 nueva.stockAplicado = false;
             } else if(nueva.estado === 'recibido' && !nueva.stockAplicado){
                 aplicarEntregaStock(nueva);
@@ -3710,6 +3763,118 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
             renderEntregas();
         };
     }
+    // ==================== PEDIDO (TICKET VIRTUAL) ====================
+    // Al tocar una tarjeta de entrega se despliega un tiket de PEDIDO con el
+    // detalle completo: encabezado, proveedor, fecha del pedido, cada producto
+    // con su cantidad, el total de unidades y las fechas del pedido. Lleva los
+    // mismos botones del ticket de ventas (imprimir / WhatsApp / imagen / copiar)
+    // salvo el de anular, que es exclusivo de ventas.
+    function generarPedidoTicketHTML(e){
+        const items = itemsEntrega(e);
+        const totalU = items.reduce((s, it) => s + it.cantidad, 0);
+        const logoHtml = D.config.logoDataUrl ? `<div class="logo"><img src="${D.config.logoDataUrl}" alt="logo" style="max-height:56px;margin:0 auto 4px;display:block"></div>` : '';
+        const itemsHtml = items.map(it => `<div class="item"><span>${escapeHtml(it.cantidad)} x ${escapeHtml(it.producto)}</span><span></span></div>`).join('');
+        const estEtq = e.estado === 'recibido' ? 'Recibida' : e.estado === 'salida' ? 'En salida' : 'Pendiente';
+        const estadoCol = e.estado === 'recibido' ? '#10b981' : e.estado === 'salida' ? '#f59e0b' : '#ef4444';
+        return `<div class="ticket-virtual" id="ticketParaImprimir">${logoHtml}<div class="header"><h3>${escapeHtml(D.config.empresa.nombre)}</h3>${D.config.empresa.direccion ? `<p>${escapeHtml(D.config.empresa.direccion)}</p>` : ''}${D.config.empresa.telefono ? `<p><i class="fas fa-phone"></i> ${escapeHtml(D.config.empresa.telefono)}</p>` : ''}${D.config.empresa.rif ? `<p>RIF: ${escapeHtml(D.config.empresa.rif)}</p>` : ''}</div><div style="text-align:center;font-weight:800;letter-spacing:2px;margin:6px 0 4px;font-size:13px">PEDIDO VIRTUAL</div><div class="ticket-line"><span>Pedido N°</span><span>${escapeHtml(e.id||'')}</span></div><div class="ticket-line"><span>Proveedor</span><span>${escapeHtml(e.proveedor||'')}</span></div><div class="ticket-line"><span>Fecha del pedido</span><span>${escapeHtml(fmtFechaDisplay(e.fecha)||'')}${e.hora ? ' ' + escapeHtml(e.hora) : ''}</span></div><div class="items">${itemsHtml}</div><div class="ticket-line total"><span>TOTAL</span><span>${totalU} u.</span></div><div class="ticket-line"><span>Entregar</span><span>${escapeHtml(fmtFechaDisplay(e.fecha)||'—')}${e.hora ? ' '+escapeHtml(e.hora) : ''}</span></div><div class="ticket-line"><span>Lapso</span><span>${e.lapsoDias ? escapeHtml(e.lapsoDias)+' día(s)' : '—'}</span></div><div class="ticket-line"><span>Vence</span><span>${escapeHtml(fmtFechaDisplay(e.fechaVencimiento)||'—')}</span></div><div class="ticket-line"><span>Estado</span><span style="color:${estadoCol};font-weight:700">${estEtq}</span></div>${e.notas ? `<div class="ticket-line"><span style="color:#b45309"><i class="fas fa-pen"></i> Notas</span><span style="color:#b45309">${escapeHtml(e.notas)}</span></div>` : ''}<div class="footer"><p style="font-size:9px;opacity:0.6;margin-top:8px">Pedido de compra al proveedor</p><p>${escapeHtml(D.config.empresa.nombre)}</p></div></div>`;
+    }
+    function mostrarTicketEntrega(id){
+        const e = (D.entregas || []).find(x => x.id === id); if(!e) return;
+        const modal = document.createElement('div'); modal.className = 'modal-form';
+        modal.innerHTML = `<div class="modal-form-content" style="max-width:350px;text-align:center">${generarPedidoTicketHTML(e)}<div class="ticket-buttons"><button class="ticket-btn btn-print" onclick="window.imprimirPedidoEntrega('${e.id}')"><i class="fas fa-print"></i> Imprimir</button><button class="ticket-btn btn-wa" onclick="window.enviarPedidoEntregaWhatsApp('${e.id}')"><i class="fab fa-whatsapp"></i> WhatsApp</button><button class="ticket-btn btn-img" onclick="window.descargarTicketImagen()"><i class="fas fa-download"></i> Imagen</button><button class="ticket-btn btn-copy" onclick="window.copiarTicketTexto()"><i class="fas fa-copy"></i> Copiar</button><button class="ticket-btn btn-cerrar" onclick="window.cerrarTicketModalYVolverInicio()"><i class="fas fa-times"></i> Cerrar</button></div></div>`;
+        document.body.appendChild(modal);
+        window.modalTicketActual = modal;
+        modal.onclick = ev => { if(ev.target === modal) window.cerrarTicketModalYVolverInicio(); };
+    }
+    window.mostrarTicketEntrega = mostrarTicketEntrega;
+    window.imprimirPedidoEntrega = (id) => {
+        const e = (D.entregas || []).find(x => x.id === id); if(!e) return;
+        if (window.AndroidBridge && typeof AndroidBridge.printTicket === 'function') {
+            const html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><link rel="stylesheet" href="style.css"><style>html,body{margin:0;padding:0;background:#fff}@media print{@page{margin:8px}body{padding:0}.ticket-buttons{display:none!important}}</style></head><body>' + generarPedidoTicketHTML(e) + '</body></html>';
+            try { AndroidBridge.printTicket(html, 'Pedido ' + e.id); }
+            catch(err) { imprimirPedidoTexto(e); }
+        } else {
+            imprimirPedidoTexto(e);
+        }
+    };
+    function imprimirPedidoTexto(e){
+        // Impresión 42 columnas (80mm) tipo ticketera: mismo estilo que la venta
+        const W = 42;
+        const rep = (c, n) => { let r = ''; for (let i=0; i<n; i++) r += c; return r; };
+        const padR = (s, n) => { s = String(s); return s.length >= n ? s.slice(0,n) : s + rep(' ', n - s.length); };
+        const padL = (s, n) => { s = String(s); return s.length >= n ? s.slice(-n) : rep(' ', n - s.length) + s; };
+        const cen = (s) => { s = String(s); let p = Math.max(0, W - s.length); return rep(' ', Math.floor(p/2)) + s + rep(' ', Math.ceil(p/2)); };
+        const eq  = rep('=', W), gui = rep('-', W);
+        const esc = (v) => v ? String(v).replace(/[<>&"']/g, '') : '';
+        const items = itemsEntrega(e);
+        const totalU = items.reduce((s, it) => s + it.cantidad, 0);
+        const estEtq = e.estado === 'recibido' ? 'RECIBIDA' : e.estado === 'salida' ? 'EN SALIDA' : 'PENDIENTE';
+        let t = '';
+        t += cen(D.config.empresa.nombre.toUpperCase()) + '\n';
+        if (D.config.empresa.direccion) t += cen(esc(D.config.empresa.direccion)) + '\n';
+        if (D.config.empresa.telefono) t += cen('TEL: ' + esc(D.config.empresa.telefono)) + '\n';
+        t += eq + '\n';
+        t += cen('PEDIDO VIRTUAL') + '\n';
+        t += 'Pedido: ' + esc(e.id) + '\n';
+        t += 'Proveedor: ' + esc(e.proveedor) + '\n';
+        t += 'Fecha pedido: ' + esc(fmtFechaDisplay(e.fecha)||'') + (e.hora ? ' ' + esc(e.hora) : '') + '\n';
+        t += eq + '\n';
+        items.forEach(it => { t += padR(esc(it.producto), W - 12) + padL(String(it.cantidad) + ' u', 12) + '\n'; });
+        t += gui + '\n';
+        t += padR('TOTAL', W - 12) + padL(String(totalU) + ' u', 12) + '\n';
+        t += gui + '\n';
+        t += 'Entregar: ' + esc(fmtFechaDisplay(e.fecha)||'---') + (e.hora ? ' ' + esc(e.hora) : '') + '\n';
+        t += 'Lapso: ' + (e.lapsoDias ? esc(String(e.lapsoDias)) + ' dia(s)' : '---') + '\n';
+        t += 'Vence: ' + esc(fmtFechaDisplay(e.fechaVencimiento)||'---') + '\n';
+        t += 'Estado: ' + estEtq + '\n';
+        if (e.notas) t += 'Notas: ' + esc(e.notas) + '\n';
+        t += eq + '\n';
+        t += cen('Pedido de compra al proveedor') + '\n';
+        t += cen(D.config.empresa.nombre) + '\n';
+        let v = window.open('', '_blank', 'width=380,height=600');
+        if(!v) { mostrarNotificacion('Permite ventanas emergentes para imprimir', 'error'); return; }
+        v.document.write(
+            '<html><head><meta charset="UTF-8"><title>Pedido</title>' +
+            '<style>' +
+            'body{font-family:"Courier New",monospace;font-size:11px;line-height:1.3;margin:0;padding:8px;white-space:pre;color:#000;background:#fff}' +
+            '@media print{@page{margin:0}body{padding:0}}' +
+            '</style></head><body>' + t.replace(/\n/g, '<br>') +
+            '</body></html>'
+        );
+        v.document.close();
+        setTimeout(() => { try { v.focus(); v.print(); } catch(e){} }, 500);
+    }
+    window.enviarPedidoEntregaWhatsApp = async (id) => {
+        const e = (D.entregas || []).find(x => x.id === id); if(!e) return;
+        const items = itemsEntrega(e);
+        const totalU = items.reduce((s, it) => s + it.cantidad, 0);
+        const estEtq = e.estado === 'recibido' ? 'Recibida' : e.estado === 'salida' ? 'En salida' : 'Pendiente';
+        let mensaje = `🏪 *${D.config.empresa.nombre}*\n━━━━━━━━━━━━━━━━━━━━\n📦 *PEDIDO VIRTUAL*\n🧾 *${e.id}*\n👤 *Proveedor:* ${e.proveedor}\n📅 *Fecha del pedido:* ${fmtFechaDisplay(e.fecha)||''}${e.hora ? ' ' + e.hora : ''}\n━━━━━━━━━━━━━━━━━━━━\n`;
+        items.forEach(it => { mensaje += `${it.cantidad}x ${it.producto}\n`; });
+        mensaje += `━━━━━━━━━━━━━━━━━━━━\n📦 *TOTAL:* ${totalU} u.\n📅 *Entregar:* ${fmtFechaDisplay(e.fecha)||'—'}${e.hora ? ' '+e.hora : ''}\n⏳ *Lapso:* ${e.lapsoDias ? e.lapsoDias + ' día(s)' : '—'}\n⌛ *Vence:* ${fmtFechaDisplay(e.fechaVencimiento)||'—'}\n📋 *Estado:* ${estEtq}`;
+        if(e.notas) mensaje += `\n✏️ *Notas:* ${e.notas}`;
+        try { await navigator.clipboard.writeText(mensaje); mostrarNotificacion('📋 Pedido copiado al portapapeles', 'success'); } catch(err) {}
+        if (typeof window !== 'undefined' && window.AndroidBridge && typeof AndroidBridge.copiarImagenWhatsApp === 'function') {
+            try {
+                const canvas = await capturarTicketImagen();
+                if (canvas) {
+                    const dataUrl = canvas.toDataURL('image/png');
+                    AndroidBridge.copiarImagenWhatsApp(dataUrl.split(',')[1]);
+                } else {
+                    if (typeof AndroidBridge.copiarPortapapeles === 'function') AndroidBridge.copiarPortapapeles(mensaje);
+                    AndroidBridge.abrirWhatsApp();
+                }
+            } catch(err) { console.error('whatsapp pedido nativo', err); }
+            return;
+        }
+        const telefono = await jamPrompt("📱 Ingrese el número de teléfono (ej: 584121234567):");
+        if(telefono) {
+            let numeroLimpio = telefono.replace(/[^0-9]/g, '');
+            if(numeroLimpio.startsWith('0')) numeroLimpio = '58' + numeroLimpio.substring(1);
+            if(!numeroLimpio.startsWith('58')) numeroLimpio = '58' + numeroLimpio;
+            window.open(`https://wa.me/${numeroLimpio}?text=${encodeURIComponent(mensaje)}`, '_blank');
+        }
+    };
     async function cargarProveedoresSiNo(){ if(!D.proveedores || D.proveedores.length === 0){ try { D.proveedores = await getAll('proveedores'); } catch(e){} } }
     async function mostrarCalendarioEntregas(){
         D.entregas = await getAll('entregas');
@@ -3745,7 +3910,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
             const evts = (D.entregas||[]).filter(e => e.fecha === delDia || e.fechaVencimiento === delDia);
             const fechaTxt = fmtFechaDisplay(delDia);
             document.getElementById('calDetalle').innerHTML = `<div class="text-xs font-bold" style="color:${accent};margin-bottom:6px"><i class="fas fa-calendar-days"></i> ${diaSel ? fechaTxt : 'Hoy: ' + fechaTxt}</div>` + (evts.length ? evts.map(e => `
-                <div class="flex justify-between items-center" style="padding:6px 0;border-bottom:1px solid rgba(128,128,128,.12)"><div><div class="text-xs font-bold">${escapeHtml(e.producto||'')} — ${escapeHtml(e.proveedor||'')}</div><div class="text-[10px]" style="opacity:.6">${escapeHtml(fmtFechaDisplay(e.fecha)||'')}${e.hora ? ' '+escapeHtml(e.hora) : ''} · Vence: ${escapeHtml(fmtFechaDisplay(e.fechaVencimiento)||'—')}</div>${e.notas ? `<div class="text-[10px]" style="color:#f59e0b"><i class="fas fa-pen"></i> ${escapeHtml(e.notas)}</div>` : ''}</div>${estadoEntregaBadge(e)}</div>`).join('') : '<div class="text-xs" style="opacity:.5;text-align:center;padding:10px">Sin entregas este día</div>');
+                <div class="flex justify-between items-center" style="padding:6px 0;border-bottom:1px solid rgba(128,128,128,.12)"><div><div class="text-xs font-bold">${escapeHtml(tituloProductoEntrega(e))} — ${escapeHtml(e.proveedor||'')}</div><div class="text-[10px]" style="opacity:.6">${escapeHtml(fmtFechaDisplay(e.fecha)||'')}${e.hora ? ' '+escapeHtml(e.hora) : ''} · Vence: ${escapeHtml(fmtFechaDisplay(e.fechaVencimiento)||'—')}</div>${e.notas ? `<div class="text-[10px]" style="color:#f59e0b"><i class="fas fa-pen"></i> ${escapeHtml(e.notas)}</div>` : ''}</div>${estadoEntregaBadge(e)}</div>`).join('') : '<div class="text-xs" style="opacity:.5;text-align:center;padding:10px">Sin entregas este día</div>');
         }
         popup.innerHTML = `<div class="kpi-popup-titulo" style="color:${accent}"><i class="fas fa-calendar-days"></i> Calendario de entregas <button class="kpi-popup-cerrar" onclick="this.closest('.kpi-popup-overlay').remove()">✕</button></div>
             <div style="display:flex;align-items:center;gap:8px;justify-content:space-between;margin-bottom:8px">
@@ -5362,6 +5527,7 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
                         <div class="grupo-opciones-titulo"><i class="fas fa-moon"></i> Apariencia</div>
                         ${filaOpcion('<i class="fas fa-circle-half-stroke"></i>','Modo oscuro automático', 'Se sincroniza con el modo del sistema', 'toggleAutoOscuro', D.config.autoOscuro)}
                         ${filaOpcion('<i class="fas fa-moon"></i>','Fondo oscuro', 'Activar el tema oscuro manualmente', 'toggleFondoOscuro', D.config.backgroundMode==='dark')}
+                        ${filaOpcion('<i class="fas fa-circle-question"></i>','Guía en cabeceras', 'Mostrar el icono de guía interactiva en las cabeceras de los módulos', 'toggleGuiaCabecera', D.config.mostrarGuiaCabecera !== false)}
                     </div>
                     <div class="grupo-opciones">
                         <div class="grupo-opciones-titulo"><i class="fas fa-bell"></i> Alertas inteligentes</div>
@@ -5566,6 +5732,7 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
                         document.getElementById('toggleSonidoAlertas').onchange = async e => { D.config.sonidoAlertas = e.target.checked; await saveConfig(); };
                         document.getElementById('toggleElegirSonido').onchange = async e => { D.config.usarSonidoInterno = e.target.checked; await saveConfig(); await notificarPrefServicio('usarSonidoInterno', e.target.checked); };
                         document.getElementById('toggleSilenciarNotif').onchange = async e => { D.config.silenciarNotif = e.target.checked; await saveConfig(); await notificarPrefServicio('silenciarNotif', e.target.checked); };
+                        document.getElementById('toggleGuiaCabecera').onchange = async e => { D.config.mostrarGuiaCabecera = e.target.checked; await saveConfig(); };
         const stockMinInp = document.getElementById('stockMinimoInput');
         if(stockMinInp){
             const aplicarStockMin = (v) => { const n = parseInt(v, 10); D.config.stockMinimo = isFinite(n) && n >= 0 ? n : 5; saveConfig(); verificarStockBajo(); };
@@ -5696,6 +5863,7 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
     function inyectarBotonAyudaModulo() {
         const header = document.querySelector('.module-header');
         if(!header) return;
+        if(D.config.mostrarGuiaCabecera === false) return;
         if(header.querySelector('.btn-ayuda-modulo')) return;
         const btn = document.createElement('button');
         btn.className = 'btn-ayuda-modulo';
@@ -5706,6 +5874,19 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
             if(g) iniciarTutorial(g.pasos, g.clave);
             else mostrarGuiaApp();
         };
+        // Posición: junto al botón «Volver» (botón home) en un grupo derecho, pegados.
+        const volver = header.querySelector('#btnVolverModule') || header.querySelector('.btn-back');
+        if(volver){
+            let der = header.querySelector('.module-header-der');
+            if(!der){
+                der = document.createElement('div');
+                der.className = 'module-header-der';
+                volver.parentNode.insertBefore(der, volver);
+                der.appendChild(volver);
+            }
+            der.insertBefore(btn, volver);
+            return;
+        }
         const titulo = header.querySelector('.module-title');
         if(titulo) {
             let grupo = header.querySelector('.module-header-izq');
