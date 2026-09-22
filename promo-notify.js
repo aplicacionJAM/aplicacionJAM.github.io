@@ -103,6 +103,64 @@
     }
   }
 
+  // ==================== CAPA QF: CONTROL REMOTO + INDICE + RECONOCIMIENTO ====================
+  // control.json (opcional, remoto via BASE) permite:
+  //   { "habilitado":false }                 -> SILENCIO TOTAL (promo apagada en remoto).
+  //   { "mensaje":"texto..." }               -> notificacion con ese texto exacto.
+  //   { "indice":["1.png",...] }             -> la cola la define el servidor (no la carpeta).
+  //   { "intervalo_min":30 }                 -> reprograma el intervalo.
+  // Sin control.json (o con error de red) la app funciona EXACTAMENTE como antes.
+  var CONTROL_REMOTO = null;                 // ultimo control.json leido (o null si no existe)
+  var CLAVE_VISTOS = "jampos_promo_vistos";  // reconocimiento de archivos ya vistos
+  var manejadorIntervalo = null;             // para reprogramar intervalo desde control.json
+
+  function leerControl() {
+    return fetch(BASE + "control.json", { cache: "no-store" }).then(function (r) {
+      if (!r.ok) throw new Error("sin-control");
+      return r.json();
+    }).catch(function () { return null; });
+  }
+
+  function aplicarControlRemoto(ctrl) {
+    if (!ctrl) return;
+    if (ctrl.intervalo_min && ctrl.intervalo_min > 0) {
+      var nuevoMs = ctrl.intervalo_min * 60 * 1000;
+      if (nuevoMs !== INTERVALO && manejadorIntervalo) {
+        INTERVALO = nuevoMs;
+        clearInterval(manejadorIntervalo);
+        manejadorIntervalo = setInterval(tick, INTERVALO);
+      }
+    }
+  }
+
+  function fueVisto(nombre) {
+    try {
+      var raw = localStorage.getItem(CLAVE_VISTOS);
+      var o = raw ? JSON.parse(raw) : {};
+      return !!o[nombre];
+    } catch (e) { return false; }
+  }
+
+  function marcarVisto(nombre) {
+    try {
+      var raw = localStorage.getItem(CLAVE_VISTOS);
+      var o = raw ? JSON.parse(raw) : {};
+      o[nombre] = 1;
+      localStorage.setItem(CLAVE_VISTOS, JSON.stringify(o));
+    } catch (e) {}
+  }
+
+  function aplicarAviso(lista) {
+    var idx = 0;
+    var e = estado();
+    if (e.nombre) {
+      var encontrado = -1;
+      for (var i = 0; i < lista.length; i++) if (lista[i] === e.nombre) { encontrado = i; break; }
+      idx = encontrado === -1 ? 0 : (encontrado + 1) % lista.length;
+    }
+    return lista[idx];
+  }
+
   function publicar(lista) {
     if (lista.length === 0) {
       guardarEstado({ nombre: "", repeticiones: 0 });
@@ -116,6 +174,8 @@
       idx = encontrado === -1 ? 0 : (encontrado + 1) % lista.length;
     }
     var actual = lista[idx];
+    var esNuevo = !fueVisto(actual);
+    marcarVisto(actual);
     var esTxt = (actual.split(".").pop() || "").toLowerCase() === "txt";
     var tag = "jampos-promo-" + actual;
     if (esTxt) {
@@ -131,8 +191,41 @@
   }
 
   function tick() {
-    leerLista().then(normalizar).then(publicar).catch(function () {
-      guardarEstado({ nombre: "", repeticiones: 0 });
+    leerControl().then(function (ctrl) {
+      CONTROL_REMOTO = ctrl;
+      aplicarControlRemoto(ctrl);
+      if (ctrl === null) {
+        // Sin control.json -> comportamiento clasico (sin ningun cambio).
+        return leerLista().then(normalizar).then(publicar).catch(function () {
+          guardarEstado({ nombre: "", repeticiones: 0 });
+        });
+      }
+      if (ctrl.habilitado === false) {
+        // Apagado remoto -> silencio total (no invasivo).
+        guardarEstado({ nombre: "", repeticiones: 0 });
+        return;
+      }
+      if (ctrl.mensaje && ctrl.mensaje.trim()) {
+        // Mensaje remoto directo: texto exacto publicado como promocion.
+        notificar("📢 Promoción", ctrl.mensaje.trim(), "jampos-promo-control");
+        guardarEstado({ nombre: "@control", repeticiones: 0 });
+        return;
+      }
+      if (Array.isArray(ctrl.indice) && ctrl.indice.length > 0) {
+        // Cola definida por el servidor (indice remoto autoritativo) + reconocimiento.
+        var soloValidas = ctrl.indice.filter(function (n) {
+          var ext = (n.split(".").pop() || "").toLowerCase();
+          return EXTENSIONES[ext] === 1;
+        });
+        if (soloValidas.length === 0) {
+          guardarEstado({ nombre: "", repeticiones: 0 });
+          return;
+        }
+        return publicar(soloValidas);
+      }
+      return leerLista().then(normalizar).then(publicar).catch(function () {
+        guardarEstado({ nombre: "", repeticiones: 0 });
+      });
     });
   }
 
@@ -141,6 +234,6 @@
   });
 
   setTimeout(tick, PRIMERA);
-  setInterval(tick, INTERVALO);
+  manejadorIntervalo = setInterval(tick, INTERVALO);
 
 })();

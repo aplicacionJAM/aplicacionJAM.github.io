@@ -28,7 +28,7 @@
     var APP_ARCHIVO = {
         web: '',
         apk: 'JAMPOS-1.1-estable-final.apk',
-        exe: 'JAM POS 1.1 estable final Setup 1.1.0.exe',
+        exe: 'JAM POS 1.1 estable final.exe',
         deb: 'JAM POS 1.1 estable final (Linux).deb'
     };
     var EXTENSION_INSTALABLE = { web: '', apk: '.apk', exe: '.exe', deb: '.deb' };

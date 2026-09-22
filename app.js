@@ -125,6 +125,21 @@
     function mostrarNotificacion(mensaje, tipo = 'info') { const notif = document.createElement('div'); notif.className = 'notificacion-flotante'; notif.style.backgroundColor = tipo === 'success' ? '#10b981' : (tipo === 'error' ? '#ef4444' : '#3b82f6'); notif.style.color = 'white'; const iconos = { success: 'fa-circle-check', error: 'fa-circle-xmark', info: 'fa-circle-info' }; const ic = document.createElement('i'); ic.className = 'fas ' + (iconos[tipo] || 'fa-circle-info'); notif.appendChild(ic); const txt = document.createElement('span'); nodosIconosFA(String(mensaje || '').replace(/^\s*(✅|❌|⚠️|ℹ️|❓)\s*/u, ''), txt); notif.appendChild(txt); document.body.appendChild(notif); setTimeout(() => notif.remove(), 3000); }
     async function puenteResultado(v){ return (v && typeof v.then === 'function') ? await v : v; }
     function mostrarNotificacionNativa(titulo, cuerpo, tag, opciones) {
+        // NATIVAS primero: si hay puente con canal real (Android notification /
+        // Electron OS notification) se usa ese; lo demas es solo web/PWA.
+        try {
+            var br = window.AndroidBridge;
+            if (br && typeof br.mostrarNotificacion === 'function') {
+                var t = String(tag || 'jampos');
+                var colorPromo = null;
+                try {
+                    var th = window.D && window.D.config && window.D.config.theme;
+                    if (t.indexOf('jampos-promo') === 0 && th) colorPromo = String(th);
+                } catch (e) {}
+                br.mostrarNotificacion(String(titulo || ''), String(cuerpo || ''), t, colorPromo);
+                return;
+            }
+        } catch (e) {}
         if (!('Notification' in window) || !('serviceWorker' in navigator)) return;
         const mensaje = () => { return { type: 'showNotification', title: titulo, body: cuerpo, tag: tag || 'jampos', image: opciones && opciones.image ? String(opciones.image) : undefined, icon: './icon-192.png', badge: './icon-192.png' }; };
         if (Notification.permission === 'granted') {
@@ -138,6 +153,21 @@
         }
     }
     
+    // Empuja una preferencia de alertas al servicio nativo (APK) para que suene
+    // o se calle la notif de cambio de tasa en segundo plano. En web/PWA solo
+    // se guarda en localStorage (los toggles mandan en el propio JS).
+    async function notificarPrefServicio(clave, valor) {
+        try {
+            if (window.AndroidBridge && typeof window.AndroidBridge.guardarPrefServicio === 'function') {
+                window.AndroidBridge.guardarPrefServicio(String(clave), Boolean(valor));
+            } else {
+                const prefs = JSON.parse(localStorage.getItem('jam_pos_prefs') || '{}');
+                prefs[clave] = Boolean(valor);
+                localStorage.setItem('jam_pos_prefs', JSON.stringify(prefs));
+            }
+        } catch (e) {}
+    }
+
     // ==================== DIÁLOGOS NATIVOS (reemplazan alert/confirm/prompt) ====================
     function jamDialogo(opciones) {
         return new Promise((resolve) => {
@@ -741,6 +771,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
             fuenteTasa: 'BCV',
             empresa: { nombre:'JAM POS', direccion:'', telefono:'', rif:'', logo:'' },
             alertaStockBajo: true, alertaTasa: true, sonidoAlertas: true,
+            usarSonidoInterno: true, silenciarNotif: false,
             stockMinimo: 5
         }
     };
@@ -751,6 +782,12 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
     function tasaAlmacenada(){
         if(D.config.tasaManual && D.config.tasaManualValue > 0) return D.config.tasaManualValue;
         if(D.config.dolarRate > 0) return D.config.dolarRate;
+        // Ancla persistente de la ULTIMA tasa real (escribe registrarCambioTasa):
+        // sobrevive el reinicio/relanzamiento aunque el resto de almacenes falle.
+        try {
+            const u = JSON.parse(localStorage.getItem('jam_pos_ultima_tasa') || 'null');
+            if (u && typeof u.tasa === 'number' && u.tasa > 0) return u.tasa;
+        } catch(e) {}
         const arr = (typeof cacheTasaDiaria !== 'undefined' && cacheTasaDiaria && cacheTasaDiaria.length) ? cacheTasaDiaria : (D.tasaDiaria && D.tasaDiaria.length ? D.tasaDiaria : null);
         if(arr && arr.length){ const u = arr[arr.length - 1]; if(u && u.tasa > 0) return u.tasa; }
         try { const h = cargarHistorialTasa(); if(h && h.length){ const u = h[h.length - 1]; if(u && u.tasa > 0) return u.tasa; } } catch(e) {}
@@ -800,26 +837,69 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
     try { kioscoVentas = localStorage.getItem(KIOSCO_KEY) === '1'; } catch(e) {}
         
     let carrito = [], tipoPago = 'pago_movil', clienteSeleccionadoId = null, clienteInputText = '', totalVenta = 0;
+    // Crédito del cliente en venta: abono inicial (pago parcial), método del abono y plazo acordado para pagar el restante.
+    let creditoAbono = 0, creditoAbonoMetodo = 'efectivo_bs', creditoPlazoDias = 7;
     let productosSeleccionados = new Set(), selectAllChecked = false;
     let pagosDivididos = [{ metodo: 'efectivo_bs', monto: 0 }];
     
     // ==================== PERSISTENCIA DE SESIÓN DE VENTA ====================
     function guardarSesionVenta() {
         saveToStorage(STORAGE_KEYS.session_cart, carrito);
-        saveToStorage(STORAGE_KEYS.session_meta, { tipoPago, clienteSeleccionadoId, clienteInputText });
+        saveToStorage(STORAGE_KEYS.session_meta, { tipoPago, clienteSeleccionadoId, clienteInputText, creditoAbono, creditoAbonoMetodo, creditoPlazoDias });
     }
     function cargarSesionVenta() {
         let savedCart = loadFromStorage(STORAGE_KEYS.session_cart, null);
         if(savedCart == null) { const viejo = loadFromStorage('undefined', null); if(viejo && Array.isArray(viejo)) savedCart = viejo; }
         if(savedCart && Array.isArray(savedCart)) carrito = savedCart;
         const savedMeta = loadFromStorage(STORAGE_KEYS.session_meta, null);
-        if(savedMeta) { tipoPago = savedMeta.tipoPago || 'pago_movil'; clienteSeleccionadoId = savedMeta.clienteSeleccionadoId || null; clienteInputText = savedMeta.clienteInputText || ''; }
+        if(savedMeta) {
+            tipoPago = savedMeta.tipoPago || 'pago_movil';
+            clienteSeleccionadoId = savedMeta.clienteSeleccionadoId || null;
+            clienteInputText = savedMeta.clienteInputText || '';
+            if(Number.isFinite(savedMeta.creditoAbono)) creditoAbono = savedMeta.creditoAbono;
+            if(savedMeta.creditoAbonoMetodo && PAGOS_TIPO[savedMeta.creditoAbonoMetodo]) creditoAbonoMetodo = savedMeta.creditoAbonoMetodo;
+            if([7,15,30].includes(Number(savedMeta.creditoPlazoDias))) creditoPlazoDias = Number(savedMeta.creditoPlazoDias);
+        }
     }
     function sincronizarUIVenta() {
         if(document.getElementById('clienteIdHidden')) document.getElementById('clienteIdHidden').value = clienteSeleccionadoId || '';
         if(document.getElementById('clienteInput')) document.getElementById('clienteInput').value = clienteInputText;
-        if(document.getElementById('tipoPago')) document.getElementById('tipoPago').value = tipoPago;
+        refrescarSelectorPago();
         actualizarCarritoUI();
+    }
+    function refrescarSelectorPago() {
+        const t = document.getElementById('tipoPagoText');
+        const ic = document.getElementById('tipoPagoIcon');
+        if(t) t.textContent = nombreTipoPago(tipoPago);
+        if(ic) ic.className = 'fas ' + iconoTipoPago(tipoPago);
+    }
+    function pintarTipoPagoContenedores() {
+        const cc = document.getElementById('cambioContainer');
+        if(cc) cc.style.display = tipoPago === 'efectivo_bs' ? 'block' : 'none';
+        const pd = document.getElementById('pagoDivididoContainer');
+        if(pd) pd.style.display = tipoPago === 'pago_dividido' ? 'block' : 'none';
+        const cr = document.getElementById('creditoContainer');
+        if(cr) cr.style.display = tipoPago === 'credito' ? 'block' : 'none';
+        if(tipoPago === 'credito') actualizarResumenCredito();
+    }
+    // Línea de corte para el ticket a crédito (fecha y hora límite para pagar el restante).
+    function textoFechaLimite(ms){
+        const d = new Date(ms);
+        if(isNaN(d.getTime())) return '';
+        return fmtFechaDisplay(msToDateStr(ms)) + ' ' + String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+    }
+    // Resumen del crédito en Ventas: abono ahora + restante + plazo + vence (fecha y hora).
+    function actualizarResumenCredito(){
+        const el = document.getElementById('creditoResumen');
+        if(!el) return;
+        const abono = Math.max(0, Math.round((parseBs(document.getElementById('creditoAbonoInput')?.value) || 0) * 100) / 100);
+        const restante = Math.max(0, Math.round((totalVenta - abono) * 100) / 100);
+        const vence = new Date(Date.now() + creditoPlazoDias * 86400000);
+        const venceStr = textoFechaLimite(vence.getTime());
+        const nomMetodo = nombreTipoPago(creditoAbonoMetodo);
+        el.innerHTML = `<div class="mb-1" style="display:flex;align-items:center;gap:4px"><span style="flex-shrink:0"><i class="fas fa-hand-holding-dollar" style="color:${D.config.theme};width:14px;text-align:center;font-size:.7rem"></i></span><span>Restante a crédito: <b>${fmtPrecio(restante)} Bs</b></span></div>
+            <div class="mb-1" style="display:flex;align-items:center;gap:4px"><span style="flex-shrink:0"><i class="fas fa-calendar-day" style="color:${D.config.theme};width:14px;text-align:center;font-size:.7rem"></i></span><span>Plazo acordado: <b>${creditoPlazoDias} días</b> · Vence: <b>${venceStr}</b></span></div>
+            ${abono > 0 ? `<div style="opacity:.8"><i class="fas fa-money-bill-transfer" style="width:14px;text-align:center;font-size:.7rem"></i> Abono ahora: <b>${fmtPrecio(abono)} Bs</b> por ${escapeHtml(nomMetodo)}</div>` : `<div style="opacity:.6"><i class="fas fa-info-circle" style="width:14px;text-align:center;font-size:.7rem"></i> Sin abono ahora = la venta completa queda a crédito</div>`}`;
     }
     
     async function loadAllData(){
@@ -885,6 +965,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         
         try { await migrarTasaDiaria(); } catch(e) { console.warn('tasa_diaria migrate', e); }
         refrescarCacheTasaDiaria();
+        try{ cargarTasasVivasCache(); }catch(e){}
         if(!(D.config.dolarRate > 0)){ const __t = tasaAlmacenada(); if(__t > 0) D.config.dolarRate = __t; }
         
         aplicarModoSistema();
@@ -1042,16 +1123,58 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
     // No altera D.config.dolarRate (la fuente elegida se aplica con actualizarTasa).
     // Ademas: si es APK envia las 3 al puente nativo (widget + notificacion +
     // sonido/popup de cambio); si es web/PWA notifica + suena al cambiar.
+    // ==================== TASAS VIVAS PERSISTENTES (cache offline) ====================
+    // Contenido maestro: misma logica para web/PWA/APK. No cambia interfaz ni formula
+    // visual: solo guarda las 3 tasas en localStorage al recibirlas y las repinta
+    // al instante en el arranque offline o tras reinicio.
+    const KEY_TASAS_VIVAS = 'jam_pos_tasas_vivas';
+    function cargarTasasVivasCache(){
+        try {
+            const c = JSON.parse(localStorage.getItem(KEY_TASAS_VIVAS) || 'null');
+            if(c && typeof c === 'object'){
+                if(!D.tasasVivas) D.tasasVivas = {};
+                let hay = false;
+                ['BCV','ALCB-BCV','ALCB-USDT'].forEach(k => {
+                    const v = Number(c[k]);
+                    if(v > 0){ D.tasasVivas[k] = v; hay = true; }
+                    else if(!(D.tasasVivas[k] > 0)){ D.tasasVivas[k] = null; }
+                });
+                if(hay){ try{ pintarTasasVivas(); }catch(e){} return true; }
+            }
+        } catch(e){}
+        return false;
+    }
+    function guardarTasasVivasCache(){
+        try{
+            const v = D.tasasVivas || {};
+            const b = Number(v['BCV']) > 0 ? Math.round(Number(v['BCV']) * 100) / 100 : null;
+            const a = Number(v['ALCB-BCV']) > 0 ? Math.round(Number(v['ALCB-BCV']) * 100) / 100 : null;
+            const u = Number(v['ALCB-USDT']) > 0 ? Math.round(Number(v['ALCB-USDT']) * 100) / 100 : null;
+            if(!(b > 0 || a > 0 || u > 0)) return false;
+            localStorage.setItem(KEY_TASAS_VIVAS, JSON.stringify({
+                'BCV': b, 'ALCB-BCV': a, 'ALCB-USDT': u,
+                fecha: new Date().toISOString().slice(0,10),
+                hora: new Date().toLocaleTimeString(),
+                lastUpdate: (D.config && D.config.lastUpdate) || ''
+            }));
+            return true;
+        }catch(e){ return false; }
+    }
     async function refrescarTasasVivas() {
         if(!D.tasasVivas) D.tasasVivas = {};
+        try{ cargarTasasVivasCache(); }catch(e){}
         const [bcv, alcBcv, alcUsdt] = await Promise.all([
             (async () => { try { return await obtenerTasaBcvVigente(); } catch(e){ return null; } })(),
             obtenerTasaAlCambioBcv(),
             obtenerTasaAlCambioUsdt()
         ]);
-        D.tasasVivas['BCV'] = bcv;
-        D.tasasVivas['ALCB-BCV'] = alcBcv;
-        D.tasasVivas['ALCB-USDT'] = alcUsdt;
+        if(bcv > 0) D.tasasVivas['BCV'] = bcv;
+        else if(!(D.tasasVivas['BCV'] > 0)) D.tasasVivas['BCV'] = bcv;
+        if(alcBcv > 0) D.tasasVivas['ALCB-BCV'] = alcBcv;
+        else if(!(D.tasasVivas['ALCB-BCV'] > 0)) D.tasasVivas['ALCB-BCV'] = alcBcv;
+        if(alcUsdt > 0) D.tasasVivas['ALCB-USDT'] = alcUsdt;
+        else if(!(D.tasasVivas['ALCB-USDT'] > 0)) D.tasasVivas['ALCB-USDT'] = alcUsdt;
+        try{ guardarTasasVivasCache(); }catch(e){}
         pintarTasasVivas();
         // Indicar al nativo cual es la fuente REGIDORA (la visible en el home)
         // para que la barra de fondo muestre SOLO las otras dos, sin repetir.
@@ -1074,8 +1197,9 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
                 }
             } catch(e) {}
         }
-        // En web/PWA (Windows/Linux): notificar + sonar si alguna tasa cambio.
-        if (window.AndroidBridge === undefined) {
+        // En web/PWA/html: notificar + sonar si alguna tasa cambio.
+        // Nativo real = bridge con enviarTasas (web-bridge emulado no lo tiene).
+        if (!(window.AndroidBridge && typeof window.AndroidBridge.enviarTasas === 'function')) {
             avisarCambioWeb();
         }
         return D.tasasVivas;
@@ -1084,6 +1208,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
     let __tasasPrevWeb = null;
     function avisarCambioWeb() {
         try {
+            if (D.config && D.config.silenciarNotif) return;
             const cur = { BCV: D.tasasVivas['BCV'], ALCB: D.tasasVivas['ALCB-BCV'], USDT: D.tasasVivas['ALCB-USDT'] };
             const ant = __tasasPrevWeb;
             if (ant) {
@@ -1191,7 +1316,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
     function tasasExtrasHtml(){
         return tasasExtras().map(k => `
             <div class="tv-item tv-extra">
-                <span class="tv-nombre">${__TASAS_LABEL[k]}</span>
+                <span class="tv-nombre"><img class="tv-logo" src="iconos/${k==='BCV'?'bcv':k==='ALCB-BCV'?'alcambio':'usdt'}-mini.png" alt="">${__TASAS_LABEL[k]}</span>
                 <span class="tv-valor" id="strip${k}">${tasaVivaTexto(k)}</span>
             </div>`).join('');
     }
@@ -1234,16 +1359,30 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
             return;
         }
         const tasaNueva = await obtenerTasaDesdeAPI();
-        if (tasaNueva !== null) {
+        if (tasaNueva !== null && tasaNueva > 0) {
             const tasaPrevia = D.config.dolarRate;
             D.config.dolarRate = tasaNueva;
             D.config.lastUpdate = new Date().toLocaleDateString() + " " + new Date().toLocaleTimeString();
             if (forzar && D.config.tasaManual) D.config.tasaManualValue = tasaNueva;
             registrarCambioTasa(D.config.dolarRate);
             saveConfig();
-            if(forzar) mostrarNotificacion(`Tasa actualizada: ${fmtDolar(tasaNueva)} Bs/USD`, 'success');
+            if(forzar && !(D.config && D.config.silenciarNotif)) mostrarNotificacion(`Tasa actualizada: ${fmtDolar(tasaNueva)} Bs/USD`, 'success');
             notificarTasaActualizada(tasaPrevia, tasaNueva);
-        } else { const __t = tasaAlmacenada(); if(__t > 0) D.config.dolarRate = __t; }
+        } else {
+            let __c = null;
+            try{
+                const clave = (typeof fuenteRegidoraClave === 'function') ? fuenteRegidoraClave() : ((D.config && D.config.fuenteTasa) || 'BCV');
+                const vc = D.tasasVivas && Number(D.tasasVivas[clave]);
+                if(vc > 0) __c = vc;
+                if(!(__c > 0)){
+                    const gc = JSON.parse(localStorage.getItem(KEY_TASAS_VIVAS) || 'null');
+                    const gv = gc && Number(gc[clave]);
+                    if(gv > 0){ __c = gv; if(!D.tasasVivas) D.tasasVivas = {}; D.tasasVivas[clave] = gv; try{ pintarTasasVivas(); }catch(e){} }
+                }
+            }catch(e){}
+            if(__c > 0){ D.config.dolarRate = __c; try{ saveConfig(); }catch(e){} }
+            else { const __t = tasaAlmacenada(); if(__t > 0) D.config.dolarRate = __t; }
+        }
         actualizarDisplayTasa();
         recalcularPreciosPorTasa();
     }
@@ -1383,6 +1522,33 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
     });
     
     // ==================== VENTAS ====================
+    // --- Métodos de pago: nombres + iconos FA reales (se ven en móvil, no como el select nativo) ---
+    const PAGOS_TIPO = {
+        efectivo_bs:    { icono: 'fa-money-bill-wave',      nombre: 'Efectivo (Bs)' },
+        dolares:        { icono: 'fa-dollar-sign',          nombre: 'Dólares (USD)' },
+        tarjeta_debito: { icono: 'fa-credit-card',          nombre: 'Tarjeta Débito' },
+        transferencia:  { icono: 'fa-building-columns',     nombre: 'Transferencia' },
+        pago_movil:     { icono: 'fa-mobile-screen-button', nombre: 'Pago Móvil' },
+        pago_dividido:  { icono: 'fa-money-bill-transfer',  nombre: 'Pago dividido' },
+        credito:        { icono: 'fa-hand-holding-dollar',  nombre: 'Crédito (saldo a favor del cliente)' }
+    };
+    const ORDEN_PAGOS = Object.keys(PAGOS_TIPO);
+    const PAGOS_SOLO_SPLIT = ['efectivo_bs','dolares','tarjeta_debito','transferencia','pago_movil'];
+    const PAGOS_SOLO_ABONO = ['efectivo_bs','pago_movil','transferencia','tarjeta_debito'];
+    function nombreTipoPago(v){ return (PAGOS_TIPO[v]||{}).nombre || v; }
+    function iconoTipoPago(v){ return (PAGOS_TIPO[v]||{}).icono || 'fa-money-bill'; }
+    function mostrarSelectorPago(actual, alElegir, solo){
+        const lista = (solo && solo.length) ? solo.filter(v => PAGOS_TIPO[v]) : ORDEN_PAGOS;
+        const modal = document.createElement('div'); modal.className = 'modal-form';
+        modal.innerHTML = `<div class="modal-form-content" style="max-width:340px"><h3 class="text-xl font-bold mb-1"><i class="fas fa-money-bill-transfer" style="color:var(--accent,#3b82f6)"></i> Tipo de pago</h3>
+            <p class="text-sm mb-3" style="opacity:.6">Selecciona el método de cobro</p>
+            ${lista.map(v => { const sel = v === actual; return `<button type="button" data-v="${v}" class="opcion-pago-fila" style="${sel ? 'border-color:var(--accent,#3b82f6);background:var(--accent,#3b82f6)1a' : ''}"><i class="fas ${iconoTipoPago(v)} opcion-pago-ic" style="color:var(--accent,#3b82f6)"></i><span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.9rem">${nombreTipoPago(v)}</span>${sel ? '<i class="fas fa-circle-check" style="color:var(--accent,#3b82f6);margin-left:auto;flex-shrink:0"></i>' : ''}</button>`; }).join('')}
+            <button type="button" id="cerrarSelectorPago" class="btn-redondeado w-full py-2 bg-gray-200">Cancelar</button></div>`;
+        document.body.appendChild(modal);
+        modal.onclick = e => { if(e.target === modal) modal.remove(); };
+        modal.querySelectorAll('.opcion-pago-fila').forEach(b => b.onclick = () => { const v = b.dataset.v; modal.remove(); alElegir(v); });
+        const cerrar = modal.querySelector('#cerrarSelectorPago'); if(cerrar) cerrar.onclick = () => modal.remove();
+    }
     async function renderVentas(){
         let bloqueado = volverBloqueado, accent = D.config.theme;
         // Pantalla única de Ventas (kiosco): sin Volver; candado rojo para salir.
@@ -1415,17 +1581,23 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
                 <div class="ventas-cart-scroll"><div id="carritoLista"></div></div>
                 <div class="ventas-bottom">
                     <div class="p-3 rounded-xl" style="background:rgba(0,0,0,0.05)"><div class="border-b pb-2 mb-2"><div class="ticket-line"><span>SUBTOTAL</span><span id="subtotal">0,00 Bs</span></div>${D.config.ivaActivo?`<div class="ticket-line"><span>IVA (${D.config.ivaPorcentaje}%)</span><span id="iva">0,00 Bs</span></div>`:''}<div class="ticket-line font-bold"><span>TOTAL</span><span id="total">0,00 Bs</span></div></div>
-                    <div class="mb-2"><label class="text-xs">Tipo de pago</label><select id="tipoPago" class="border rounded-xl p-2 w-full">
-                    <option value="efectivo_bs">\u{f53a} Efectivo (Bs)</option>
-                    <option value="dolares">\u{f0d6} Dólares (USD)</option>
-                    <option value="tarjeta_debito">\u{f09d} Tarjeta Débito</option>
-                    <option value="transferencia">\u{f19c} Transferencia</option>
-                    <option value="pago_movil">\u{f3cd} Pago Móvil</option>
-                    <option value="pago_dividido">\u{f074} Pago dividido</option>
-                    <option value="credito">\u{f4c0} Crédito (saldo a favor del cliente)</option>
-                    </select></div>
+                    <div class="mb-2"><label class="text-xs">Tipo de pago</label><button type="button" id="btnTipoPago" class="border rounded-xl p-2 w-full flex items-center justify-between" style="background:rgba(0,0,0,0.04);cursor:pointer;text-align:left"><span style="display:flex;align-items:center;gap:8px;min-width:0"><i id="tipoPagoIcon" class="fas ${iconoTipoPago(tipoPago)}" style="color:${accent};width:18px;text-align:center;flex-shrink:0"></i><span id="tipoPagoText" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;font-size:.9rem">${nombreTipoPago(tipoPago)}</span></span><span aria-hidden="true" style="flex-shrink:0;opacity:.55;font-size:.7rem">&#9662;</span></button></div>
                     <div id="cambioContainer" style="display:none"><div class="grid grid-cols-2 gap-2 mb-2"><input type="text" inputmode="decimal" id="montoPagado" placeholder="Monto recibido (Bs)" class="border rounded-xl p-2"><button id="calcularCambio" class="btn-azul-redondeado btn-redondeado py-2">Calcular cambio</button></div><div id="cambioMensaje" class="text-green-600 text-sm mb-2"></div></div>
                     <div id="pagoDivididoContainer" style="display:none"><div id="pagosDivididosLista"></div><button id="agregarPagoDividido" class="btn-add-split mt-1"><i class="fas fa-plus"></i> Agregar método</button><div id="splitTotalStatus" class="split-total-match mt-2"></div></div>
+                    <div id="creditoContainer" style="display:none">
+                        <div class="rounded-xl p-2 mb-2" style="background:rgba(0,0,0,0.04)">
+                            <div class="text-xs font-bold mb-1" style="opacity:.7"><i class="fas fa-hand-holding-dollar"></i> Abono del cliente (pago parcial hoy)</div>
+                            <div class="grid grid-cols-2 gap-2 mb-2">
+                                <input type="text" inputmode="decimal" id="creditoAbonoInput" placeholder="Abono ahora (Bs)" class="border rounded-xl p-2" ${creditoAbono > 0 ? `value="${fmtPrecio(creditoAbono)}"` : ''}>
+                                <button type="button" id="btnCreditoMetodo" class="border rounded-xl p-2 flex items-center justify-between" style="background:rgba(0,0,0,0.04);cursor:pointer;text-align:left"><span style="display:flex;align-items:center;gap:8px;min-width:0"><i id="creditoMetodoIcon" class="fas ${iconoTipoPago(creditoAbonoMetodo)}" style="color:var(--accent,#3b82f6);width:18px;text-align:center;flex-shrink:0"></i><span id="creditoMetodoText" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.8rem;font-weight:600">${nombreTipoPago(creditoAbonoMetodo)}</span></span><span aria-hidden="true" style="flex-shrink:0;opacity:.55;font-size:.7rem">&#9662;</span></button>
+                            </div>
+                            <div class="text-xs font-bold mb-1" style="opacity:.7"><i class="fas fa-calendar-day"></i> Lapso para pagar el restante</div>
+                            <div class="grid grid-cols-3 gap-2 mb-2" id="creditoPlazoChips">
+                                ${[7,15,30].map(d => `<button type="button" data-plazo="${d}" class="credito-plazo-chip border rounded-xl py-1 text-xs font-bold" style="${creditoPlazoDias === d ? 'background:var(--accent,#3b82f6);color:#fff;border-color:var(--accent,#3b82f6)' : 'background:rgba(0,0,0,0.04);color:inherit'};cursor:pointer">${d} días</button>`).join('')}
+                            </div>
+                            <div id="creditoResumen" class="text-xs"></div>
+                        </div>
+                    </div>
                     <button id="finalizarVenta" class="btn-finalizar-venta"><i class="fas fa-circle-check"></i> Finalizar Venta</button>
                 </div>
             </div>
@@ -1460,16 +1632,15 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         document.getElementById('finalizarVenta').onclick = () => finalizarVenta();
         const btnCaja = document.getElementById('btnIrCaja');
         if(btnCaja) btnCaja.onclick = () => renderCaja();
-        const tipoPagoSelect = document.getElementById('tipoPago');
-        tipoPagoSelect.value = tipoPago;
-        tipoPagoSelect.onchange = () => {
-            tipoPago = tipoPagoSelect.value;
-            document.getElementById('cambioContainer').style.display = tipoPago === 'efectivo_bs' ? 'block' : 'none';
-            document.getElementById('pagoDivididoContainer').style.display = tipoPago === 'pago_dividido' ? 'block' : 'none';
+        const btnTipoPago = document.getElementById('btnTipoPago');
+        if(btnTipoPago) btnTipoPago.onclick = () => mostrarSelectorPago(tipoPago, v => {
+            tipoPago = v;
+            refrescarSelectorPago();
+            pintarTipoPagoContenedores();
             guardarSesionVenta();
-        };
-        document.getElementById('cambioContainer').style.display = tipoPago === 'efectivo_bs' ? 'block' : 'none';
-        document.getElementById('pagoDivididoContainer').style.display = tipoPago === 'pago_dividido' ? 'block' : 'none';
+        });
+        refrescarSelectorPago();
+        pintarTipoPagoContenedores();
         if(document.getElementById('calcularCambio')) document.getElementById('calcularCambio').onclick = () => calcularCambio();
         const montoPagadoInput = document.getElementById('montoPagado');
         if(montoPagadoInput) aplicarMascaraBs(montoPagadoInput);
@@ -1478,6 +1649,35 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
             pagosDivididos.push({ metodo: 'efectivo_bs', monto: 0 });
             renderPagosDivididosUI();
         };
+        const credAbonoInp = document.getElementById('creditoAbonoInput');
+        if(credAbonoInp){
+            aplicarMascaraBs(credAbonoInp);
+            credAbonoInp.addEventListener('input', () => { creditoAbono = Math.max(0, parseBs(credAbonoInp.value) || 0); actualizarResumenCredito(); guardarSesionVenta(); });
+        }
+        const btnCredMet = document.getElementById('btnCreditoMetodo');
+        if(btnCredMet) btnCredMet.onclick = () => mostrarSelectorPago(creditoAbonoMetodo, v => {
+            creditoAbonoMetodo = v;
+            const icm = document.getElementById('creditoMetodoIcon');
+            if(icm) icm.className = 'fas ' + iconoTipoPago(v);
+            const txm = document.getElementById('creditoMetodoText');
+            if(txm) txm.textContent = nombreTipoPago(v);
+            actualizarResumenCredito();
+            guardarSesionVenta();
+        }, PAGOS_SOLO_ABONO);
+        document.querySelectorAll('#creditoPlazoChips .credito-plazo-chip').forEach(ch => {
+            ch.onclick = () => {
+                creditoPlazoDias = parseInt(ch.dataset.plazo, 10) || 7;
+                document.querySelectorAll('#creditoPlazoChips .credito-plazo-chip').forEach(c => {
+                    const sel = c === ch;
+                    c.style.backgroundColor = sel ? 'var(--accent,#3b82f6)' : 'rgba(0,0,0,0.04)';
+                    c.style.color = sel ? '#fff' : '';
+                    c.style.borderColor = sel ? 'var(--accent,#3b82f6)' : '';
+                });
+                actualizarResumenCredito();
+                guardarSesionVenta();
+            };
+        });
+        actualizarResumenCredito();
     }
     
     window.mostrarFormCrud = async function(store, id, campos, desdeVentas = false) {
@@ -1774,6 +1974,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         if(ivaSpan) ivaSpan.innerText = `${fmtPrecio(iva)} Bs`;
             if(tot) tot.innerText = `${fmtPrecio(total)} Bs`;
         totalVenta = total;
+        if(document.getElementById('creditoContainer') && document.getElementById('creditoContainer').style.display === 'block') actualizarResumenCredito();
         window.eliminarDelCarrito = i => { carrito.splice(i,1); actualizarCarritoUI(); guardarSesionVenta(); };
     }
     
@@ -1782,11 +1983,9 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         if(!cont) return;
         let suma = 0;
         cont.innerHTML = pagosDivididos.map((p,i) => {
-            let metodos = ['efectivo_bs','dolares','tarjeta_debito','transferencia','pago_movil'];
-            let etiquetas = {'efectivo_bs':'\u{f53a} Efectivo Bs','dolares':'\u{f0d6} Dólares','tarjeta_debito':'\u{f09d} Tarjeta Débito','transferencia':'\u{f19c} Transferencia','pago_movil':'\u{f3cd} Pago Móvil'};
             suma += parseFloat(p.monto) || 0;
             return `<div class="split-payment-row">
-                <select onchange="cambiarMetodoSplit(${i},this.value)">${metodos.map(m => `<option value="${m}" ${m===p.metodo?'selected':''}>${etiquetas[m]}</option>`).join('')}</select>
+                <button type="button" class="split-metodo-btn" onclick="abrirSelectorSplit(${i})"><i class="fas ${iconoTipoPago(p.metodo)} split-metodo-ic" style="color:var(--accent,#3b82f6)"></i><span class="split-metodo-txt">${nombreTipoPago(p.metodo)}</span><span class="split-metodo-caret" aria-hidden="true">&#9662;</span></button>
                 <input type="text" inputmode="decimal" data-i="${i}" value="${fmtPrecio(p.monto||0)}" placeholder="Monto Bs">
                 ${pagosDivididos.length > 1 ? `<button class="remove-split" onclick="eliminarSplit(${i})"><i class="fas fa-times"></i></button>` : ''}
             </div>`;
@@ -1804,6 +2003,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         status.innerHTML = `Total asignado: ${fmtPrecio(totalPagos)} Bs ${Math.abs(diff) < 0.01 ? '<i class="fas fa-circle-check"></i>' : `(faltan ${fmtPrecio(Math.abs(diff))} Bs)`}`;
     }
     window.cambiarMetodoSplit = (i, v) => { pagosDivididos[i].metodo = v; actualizarSplitStatus(pagosDivididos.reduce((s,p)=>s+(parseFloat(p.monto)||0),0)); };
+    window.abrirSelectorSplit = (i) => { mostrarSelectorPago(pagosDivididos[i].metodo, v => { pagosDivididos[i].metodo = v; renderPagosDivididosUI(); }, PAGOS_SOLO_SPLIT); };
     window.cambiarMontoSplit = (i, v) => { pagosDivididos[i].monto = (parseInt(String(v||'0').replace(/\D/g,''),10)||0) / 100; actualizarSplitStatus(pagosDivididos.reduce((s,p)=>s+(parseFloat(p.monto)||0),0)); };
     window.eliminarSplit = (i) => { if(pagosDivididos.length > 1) { pagosDivididos.splice(i,1); renderPagosDivididosUI(); } };
     
@@ -1816,8 +2016,14 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
     
     async function finalizarVenta(){
         if(carrito.length === 0) { alert("Carrito vacío"); return; }
-        if(!(await jamConfirm(`¿Desea finalizar la venta por ${fmtPrecio(totalVenta)} Bs?`))) return;
+        let confirmMsg = `¿Desea finalizar la venta por ${fmtPrecio(totalVenta)} Bs?`;
+        if(tipoPago === 'credito'){
+            const abonoPb = Math.max(0, Math.round((parseBs(document.getElementById('creditoAbonoInput')?.value) || 0) * 100) / 100);
+            if(abonoPb > 0 && abonoPb < totalVenta - 0.01) confirmMsg += `\nAbono ahora: ${fmtPrecio(abonoPb)} Bs · Crédito restante: ${fmtPrecio(Math.max(0, totalVenta - abonoPb))} Bs · Plazo: ${creditoPlazoDias} días`;
+        }
+        if(!(await jamConfirm(confirmMsg))) return;
         let pagado = totalVenta, detallePagos = null, esCredito = false, pagoUsd = 0, cambioUsd = 0;
+        let creditoRestante = 0, abonoMetodoUsado = 'efectivo_bs';
         if(tipoPago === 'efectivo_bs') {
             pagado = parseBs(document.getElementById('montoPagado')?.value);
             if(isNaN(pagado) || pagado < totalVenta) { alert("Monto insuficiente"); return; }
@@ -1835,8 +2041,31 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
             if(pagado < totalVenta - 0.01) { await jamAlert(`El monto en USD no cubre el total (equivalen a ${fmtPrecio(pagado)} Bs).`, 'error'); return; }
             cambioUsd = Math.round(((pagado - totalVenta) / rate) * 100) / 100;
         } else if(tipoPago === 'credito') {
-            if(!clienteSeleccionadoId) { await jamAlert('El crédito requiere seleccionar un cliente registrado (búscalo arriba)', 'error'); return; }
-            esCredito = true;
+            const cliCred = clienteSeleccionadoId ? D.clientes.find(c => c.id === clienteSeleccionadoId) : null;
+            if(!cliCred){ await jamAlert('❌ La venta a CRÉDITO no se puede hacer a "Cliente General". Debe seleccionar un cliente registrado (búscalo arriba y elígelo de la lista).', 'error'); return; }
+            // Crédito: el cliente debe tener TODOS sus datos completos; si faltan, la venta no se realiza.
+            const FALTAN_CREDITO = { nombre:'Nombre', cedula:'Cédula/RIF', telefono:'Teléfono', direccion:'Dirección' };
+            const faltanCred = Object.keys(FALTAN_CREDITO).filter(f => !(cliCred[f] && String(cliCred[f]).trim()));
+            if(faltanCred.length){
+                await jamAlert(`❌ La venta a CRÉDITO requiere un cliente con todos sus datos. Faltan: ${faltanCred.map(f => FALTAN_CREDITO[f]).join(', ')}.\n\nComplete los datos de "${escapeHtml(cliCred.nombre)}" desde el módulo Clientes y vuelva a intentar.`, 'error');
+                return;
+            }
+            abonoMetodoUsado = (PAGOS_SOLO_ABONO.includes(creditoAbonoMetodo)) ? creditoAbonoMetodo : 'efectivo_bs';
+            const abonoCr = Math.max(0, Math.round((parseBs(document.getElementById('creditoAbonoInput')?.value) || 0) * 100) / 100);
+            if(abonoCr > totalVenta + 0.01) { await jamAlert(`El abono (${fmtPrecio(abonoCr)} Bs) no puede superar el total (${fmtPrecio(totalVenta)} Bs)`, 'error'); return; }
+            const restanteCr = Math.max(0, Math.round((totalVenta - abonoCr) * 100) / 100);
+            if(restanteCr > 0){
+                // Abono (pago parcial) hoy + el restante queda a crédito con plazo acordado.
+                esCredito = true;
+                pagado = abonoCr;
+                creditoRestante = restanteCr;
+                creditoAbono = abonoCr;
+            } else {
+                // El cliente pagó todo con el abono: venta normal con el método elegido.
+                pagado = totalVenta;
+                tipoPago = abonoMetodoUsado;
+                esCredito = false;
+            }
         }
         for(let it of carrito){
             let prod = D.productos.find(p => p.id === it.id);
@@ -1887,19 +2116,29 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
             gananciaTotal: gananciaTotal, 
             dolarRate: D.config.dolarRate || 0,
             ivaPorcentaje: D.config.ivaPorcentaje,
-            pago: esCredito ? 0 : pagado, 
+            pago: pagado, 
             cambio: esCredito ? 0 : pagado - totalVenta, 
             pagoUsd: pagoUsd || undefined,
             cambioUsd: esCredito ? 0 : cambioUsd || undefined,
             tipoPago: tipoPago,
             credito: esCredito,
+            creditoRestante: esCredito ? creditoRestante : undefined,
+            creditoPlazoDias: esCredito ? creditoPlazoDias : undefined,
+            creditoFechaLimite: esCredito ? Date.now() + creditoPlazoDias * 86400000 : undefined,
+            abonoMetodo: esCredito ? abonoMetodoUsado : undefined,
             detallePagos: detallePagos
         };
         await saveItem('ventas', nuevaVenta);
         if(esCredito && clienteId){
             const cli = D.clientes.find(c => c.id === clienteId);
             if(cli){
-                cli.adeudo = Math.round(((parseFloat(cli.adeudo) || 0) + totalVenta) * 100) / 100;
+                // El restante (no el total) queda como adeudo del cliente.
+                cli.adeudo = Math.round(((parseFloat(cli.adeudo) || 0) + creditoRestante) * 100) / 100;
+                // El abono inicial queda registrado en la cartera del cliente (historial + cobrado).
+                if(pagado > 0){
+                    cli.abonos = cli.abonos || [];
+                    cli.abonos.push({ fecha: msToDateStr(Date.now()), monto: Math.round(pagado * 100) / 100, metodo: abonoMetodoUsado, nota: 'Abono inicial de la venta ' + nuevaVenta.id, timestamp: Date.now() });
+                }
                 await saveItem('clientes', cli);
                 D.clientes = await getAll('clientes');
             }
@@ -1910,10 +2149,13 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         clienteSeleccionadoId = null;
         clienteInputText = '';
         tipoPago = 'pago_movil';
+        creditoAbono = 0;
         pagosDivididos = [{ metodo: 'efectivo_bs', monto: 0 }];
         guardarSesionVenta();
         const montoPagadoEl = document.getElementById('montoPagado');
         if(montoPagadoEl) montoPagadoEl.value = '';
+        const credAbonoReset = document.getElementById('creditoAbonoInput');
+        if(credAbonoReset) credAbonoReset.value = '';
         const cambioMsg = document.getElementById('cambioMensaje');
         if(cambioMsg) cambioMsg.innerHTML = '';
         if(document.getElementById('clienteInput')) document.getElementById('clienteInput').value = '';
@@ -1985,8 +2227,20 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         if (venta.iva) t += padR('IVA (' + (venta.ivaPorcentaje != null ? venta.ivaPorcentaje : D.config.ivaPorcentaje) + '%)', W - 10) + padL(fmtPrecio(venta.iva) + ' Bs', 10) + '\n';
         t += padR('TOTAL', W - 10) + padL(fmtPrecio(venta.total) + ' Bs', 10) + '\n';
         t += gui + '\n';
-        t += (venta.credito ? padR('CREDITO', W - 10) : padR('PAGO', W - 10)) + padL(fmtPrecio(venta.credito ? venta.total : venta.pago) + ' Bs', 10) + '\n';
-        if (esPagoEfectivo(venta) && !venta.credito) t += padR('CAMBIO', W - 10) + padL(fmtPrecio(venta.cambio) + ' Bs', 10) + '\n';
+        if (venta.credito) {
+            const crPago = venta.pago || 0;
+            const crRest = (venta.creditoRestante != null) ? venta.creditoRestante : (venta.total || 0);
+            if (crPago > 0) {
+                t += padR('ABONO', W - 10) + padL(fmtPrecio(crPago) + ' Bs', 10) + '\n';
+                t += cen('ABONADO EL: ' + textoFechaLimite(venta.timestamp || venta.fecha)) + '\n';
+            }
+            t += padR('PENDIENTE', W - 10) + padL(fmtPrecio(crRest) + ' Bs', 10) + '\n';
+            if (venta.creditoPlazoDias) t += padR('PLAZO', W - 10) + padL(String(venta.creditoPlazoDias) + ' DIAS', 10) + '\n';
+            if (venta.creditoFechaLimite) t += cen('PAGAR ANTES DEL: ' + textoFechaLimite(venta.creditoFechaLimite)) + '\n';
+        } else {
+            t += padR('PAGO', W - 10) + padL(fmtPrecio(venta.pago) + ' Bs', 10) + '\n';
+            if (esPagoEfectivo(venta)) t += padR('CAMBIO', W - 10) + padL(fmtPrecio(venta.cambio) + ' Bs', 10) + '\n';
+        }
         if (venta.detallePagos) {
             t += padR('FORMA DE PAGO:', W - 10) + padL('DIVIDIDO', 10) + '\n';
             venta.detallePagos.forEach(d => {
@@ -2025,7 +2279,20 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
             let detalleHtml = venta.detallePagos.map(d => `<div class="ticket-line" style="font-size:9px"><span>${etiqMetodo[d.metodo]||d.metodo}</span><span>${fmtPrecio(d.monto)} Bs</span></div>`).join('');
             formaPagoHtml = `<div class="ticket-line" style="font-weight:bold"><span>FORMA DE PAGO</span><span>PAGO DIVIDIDO</span></div>${detalleHtml}`;
         }
-        const lineaPago = venta.credito ? `<div class="ticket-line"><span>CRÉDITO</span><span>${fmtPrecio(venta.total)} Bs</span></div>` : `<div class="ticket-line"><span>PAGO</span><span>${fmtPrecio(venta.pago)} Bs</span></div>${esPagoEfectivo(venta) ? `<div class="ticket-line"><span>CAMBIO</span><span>${fmtPrecio(venta.cambio)} Bs</span></div>` : ''}`;
+        let lineaPago = '';
+        if (venta.credito) {
+            const crPago = venta.pago || 0;
+            const crRest = (venta.creditoRestante != null) ? venta.creditoRestante : (venta.total || 0);
+            if (crPago > 0) {
+                lineaPago += `<div class="ticket-line"><span>ABONO</span><span>${fmtPrecio(crPago)} Bs</span></div>`;
+                lineaPago += `<div class="ticket-line" style="font-size:9px"><span>ABONADO EL</span><span>${textoFechaLimite(venta.timestamp || venta.fecha)}</span></div>`;
+            }
+            lineaPago += `<div class="ticket-line"><span>PENDIENTE (CRÉDITO)</span><span>${fmtPrecio(crRest)} Bs</span></div>`;
+            if (venta.creditoPlazoDias) lineaPago += `<div class="ticket-line"><span>PLAZO</span><span>${venta.creditoPlazoDias} días</span></div>`;
+            if (venta.creditoFechaLimite) lineaPago += `<div class="ticket-line" style="font-weight:bold;color:#ef4444"><span>PAGAR ANTES DEL</span><span>${textoFechaLimite(venta.creditoFechaLimite)}</span></div>`;
+        } else {
+            lineaPago = `<div class="ticket-line"><span>PAGO</span><span>${fmtPrecio(venta.pago)} Bs</span></div>${esPagoEfectivo(venta) ? `<div class="ticket-line"><span>CAMBIO</span><span>${fmtPrecio(venta.cambio)} Bs</span></div>` : ''}`;
+        }
         return `<div class="ticket-virtual" id="ticketParaImprimir">${logoHtml}<div class="header"><h3>${escapeHtml(D.config.empresa.nombre)}</h3>${D.config.empresa.direccion ? `<p>${escapeHtml(D.config.empresa.direccion)}</p>` : ''}${D.config.empresa.telefono ? `<p><i class="fas fa-phone"></i> ${escapeHtml(D.config.empresa.telefono)}</p>` : ''}${D.config.empresa.rif ? `<p>RIF: ${escapeHtml(D.config.empresa.rif)}</p>` : ''}<p>${textoFechaVenta(venta)}</p>${mostrarTasa && venta.dolarRate ? `<p>Tasa: 1 USD = ${fmtDolar(venta.dolarRate)} Bs</p>` : ''}<p>Ticket: ${venta.id}</p><p>Cliente: ${escapeHtml(venta.cliente)}${venta.clienteId ? (() => { const _cl = D.clientes.find(c => c.id === venta.clienteId); return _cl && _cl.cedula ? ` (${escapeHtml(_cl.cedula)})` : ''; })() : ''}</p></div><div class="items">${itemsHtml}</div><div class="ticket-line"><span>SUBTOTAL</span><span>${fmtPrecio(venta.subtotal)} Bs</span></div>${venta.iva ? `<div class="ticket-line"><span>IVA (${venta.ivaPorcentaje != null ? venta.ivaPorcentaje : D.config.ivaPorcentaje}%)</span><span>${fmtPrecio(venta.iva)} Bs</span></div>` : ''}<div class="ticket-line total"><span>TOTAL</span><span>${fmtPrecio(venta.total)} Bs</span></div>${lineaPago}${formaPagoHtml}<div class="footer"><p style="font-size:9px;opacity:0.6;margin-top:8px">Este documento no constituye factura fiscal</p><p>¡Gracias por su compra!</p><p>${D.config.empresa.nombre}</p></div></div>`;
     }
     function mostrarTicket(venta, mostrarTasa = false) {
@@ -2084,19 +2351,28 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
     const CAJA_KEY = 'jam_pos_caja';
     const METODOS_CAJA = ['efectivo_bs','dolares','tarjeta_debito','transferencia','pago_movil'];
     const ETIQUETAS_CAJA = {'efectivo_bs':'<i class="fas fa-money-bill-wave"></i> Efectivo Bs','dolares':'<i class="fas fa-money-bill-wave"></i> Dólares (Bs)','tarjeta_debito':'<i class="fas fa-credit-card"></i> Tarjeta Débito','transferencia':'<i class="fas fa-building-columns"></i> Transferencia','pago_movil':'<i class="fas fa-mobile-screen-button"></i> Pago Móvil'};
+    // Filtro ACTIVO del historial de cierres (registro diario consultable: hoy/ayer/
+    // últimos 7 días/este mes/mes pasado/día exacto/todo). Persiste mientras la app está abierta.
+    let filtroCaja = { modo: 'hoy', fecha: null };
     function cargarCaja(){ const d = loadFromStorage(CAJA_KEY, null); if(d && typeof d === 'object') return d; return { abierta: null, cierres: [], ultimoArqueo: null }; }
     function guardarCaja(c){ saveToStorage(CAJA_KEY, c); }
-    function ventasEsperadasCaja(ventas){
+    // Suma por método de pago. Sin rango: SOLO ventas/abonos de HOY (compatibilidad).
+    // Con rango [desde,hasta] en ms: suma los del TURNO (apertura → cierre), que es lo
+    // coherente con el arqueo: en la caja SOLO puede haber fondo inicial + lo cobrado
+    // mientras estuvo abierta (ni ventas hechas con la caja cerrada ni de otro día).
+    function ventasEsperadasCaja(ventas, desde, hasta){
         const hoy = msToDateStr(Date.now());
+        const enRango = typeof desde === 'number';
+        const ok = ft => enRango ? (ft >= desde && ft <= hasta) : (msToDateStr(ft) === hoy);
         const out = { efectivo_bs:0, dolares:0, tarjeta_debito:0, transferencia:0, pago_movil:0 };
         ventas.forEach(x => {
             if(x.anulada) return;
-            const f = msToDateStr(x.timestamp || new Date(x.fecha).getTime());
-            if(f !== hoy) return;
+            const ft = x.timestamp || new Date(x.fecha).getTime();
+            if(!ok(ft)) return;
             if(x.detallePagos && x.detallePagos.length){ x.detallePagos.forEach(d => { const k = d.metodo; if(out[k] !== undefined) out[k] += Number(d.monto) || 0; }); }
             else { const k = x.tipoPago; if(out[k] !== undefined) out[k] += Number(x.total) || 0; }
         });
-        (D.clientes || []).forEach(c => { (c.abonos || []).forEach(a => { const ft = a.timestamp ? a.timestamp : (a.fecha ? new Date(a.fecha).getTime() : 0); if(ft && msToDateStr(ft) === hoy && parseFloat(a.monto) > 0){ const k = a.metodo; if(out[k] !== undefined) out[k] += Number(a.monto) || 0; } }); });
+        (D.clientes || []).forEach(c => { (c.abonos || []).forEach(a => { const ft = a.timestamp ? a.timestamp : (a.fecha ? new Date(a.fecha).getTime() : 0); if(ft && ok(ft) && parseFloat(a.monto) > 0){ const k = a.metodo; if(out[k] !== undefined) out[k] += Number(a.monto) || 0; } }); });
         return out;
     }
     function formatoCajaContado(c){ const r = {}; METODOS_CAJA.forEach(m => { r[m] = (c && typeof c[m] === 'number') ? c[m] : 0; }); return r; }
@@ -2105,6 +2381,52 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         const bloqueado = volverBloqueado, accent = D.config.theme;
         const ventas = await getAll('ventas');
         const caja = cargarCaja();
+        // ---- Registro diario de cierres: filtro, tarjeta (apertura+cierre) y popup solo lectura ----
+        function predicadoFiltroCaja(){
+            const hoy = msToDateStr(Date.now());
+            const d0 = new Date(); d0.setHours(0,0,0,0);
+            const ayer = msToDateStr(d0.getTime() - 86400000);
+            const d7 = msToDateStr(d0.getTime() - 6*86400000);
+            const mIni = msToDateStr(new Date(d0.getFullYear(), d0.getMonth(), 1).getTime());
+            const pmIni = msToDateStr(new Date(d0.getFullYear(), d0.getMonth()-1, 1).getTime());
+            const pmFin = msToDateStr(new Date(d0.getFullYear(), d0.getMonth(), 0).getTime());
+            const f = filtroCaja;
+            return c => {
+                const fc = c.fecha || '';
+                if(f.modo === 'hoy') return fc === hoy;
+                if(f.modo === 'ayer') return fc === ayer;
+                if(f.modo === 'semana') return fc >= d7 && fc <= hoy;
+                if(f.modo === 'mes') return fc >= mIni && fc <= hoy;
+                if(f.modo === 'mespasado') return fc >= pmIni && fc <= pmFin;
+                if(f.modo === 'dia') return !!f.fecha && fc === f.fecha;
+                return true;
+            };
+        }
+        function cierreCardHTML(c, i, accent){
+            const dif = Math.round((Number(c.difTotal)||0)*100)/100;
+            const difcol = Math.abs(dif) < 0.005 ? '#10b981' : (dif > 0 ? '#3b82f6' : '#ef4444');
+            return `<div class="client-card" style="padding:8px 10px;margin-bottom:6px;cursor:pointer" title="Ver arqueo del cierre" onclick="verDetalleCierre(${i})">
+                <div class="flex justify-between items-center gap-2"><span class="font-bold text-sm" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><i class="fas fa-lock"></i> Cierre ${escapeHtml(c.fecha||'')} ${escapeHtml(c.hora||'')}</span><span class="text-xs font-bold" style="color:${difcol};white-space:nowrap">${fmtPrecio(dif)} Bs</span></div>
+                <div class="text-xs mt-1 flex flex-wrap gap-x-3 gap-y-0.5"><span><i class="fas fa-lock-open"></i> Apertura: ${c.aperturaFecha ? escapeHtml(c.aperturaFecha)+' '+escapeHtml(c.aperturaHora||'') : '—'}</span><span><i class="fas fa-lock"></i> Cierre: ${escapeHtml(c.fecha||'')} ${escapeHtml(c.hora||'')}</span></div>
+                <div class="text-xs mt-1 opacity-70"><i class="fas fa-coins"></i> Fondo ${fmtPrecio(c.aperturaBs||0)} Bs · Esperado ${fmtPrecio(c.totalEsperado||0)} · Contado ${fmtPrecio(c.totalContado||0)} · ${c.nVentas||0} venta(s)</div>
+                <div class="text-xs mt-1" style="color:${accent}"><i class="fas fa-eye"></i> Ver arqueo del cierre</div>
+            </div>`;
+        }
+        function seccionHistorialCaja(accent, caja){
+            const arr = caja.cierres || [];
+            const pred = predicadoFiltroCaja();
+            const items = arr.map((c,i)=>({c,i})).filter(o => pred(o.c)).reverse();
+            const chips = [['hoy','Hoy'],['ayer','Ayer'],['semana','7 días'],['mes','Este mes'],['mespasado','Mes pasado'],['todo','Todo']].map(([m,lab]) => {
+                const on = filtroCaja.modo === m;
+                return `<button type="button" data-filtro="${m}" style="padding:4px 10px;border-radius:999px;border:1.5px solid ${accent};background:${on ? accent : 'transparent'};color:${on ? '#fff' : accent};font-size:.7rem;font-weight:600;cursor:pointer">${lab}</button>`;
+            }).join('');
+            return `<div class="config-section">
+                <div class="config-section-title" style="font-size:.75rem;font-weight:700;opacity:.6;margin-bottom:8px"><i class="fas fa-clock"></i> Historial de cierres <span class="text-xs opacity-50">(${arr.length} cierre(s))</span></div>
+                <p class="text-xs opacity-70 mb-2">Registro diario consultable. Toca cualquier cierre para ver su arqueo completo (solo lectura).</p>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">${chips}<input type="date" id="filtroFechaCaja" aria-label="Día exacto" style="font-size:.7rem;padding:3px 8px;border:1.5px solid ${accent};border-radius:999px;background:transparent;color:${accent}" value="${filtroCaja.modo === 'dia' ? (filtroCaja.fecha||'') : ''}"></div>
+                <div id="listaCierres">${items.length ? items.map(x => cierreCardHTML(x.c, x.i, accent)).join('') : '<p class="text-xs opacity-60">Sin cierres registrados para este filtro</p>'}</div>
+            </div>`;
+        }
         document.getElementById('appRoot').innerHTML = `
             <div class="page-header-fixed"><div class="module-header"><div class="flex items-center" style="min-width:0"><span class="module-crumb" onclick="navigateTo('ventas')" title="Ir a Ventas">Ventas</span><span class="module-crumb-sep">/</span><h2 id="tituloModule" class="module-title ${bloqueado?'module-title-bloqueado':''}" style="color:${accent}" onmousedown="iniciarBloqueo(this,'Caja')" onmouseup="cancelarBloqueo()" onmouseleave="cancelarBloqueo()">Cierre</h2></div><div id="btnVolverModule" class="btn-back ${bloqueado?'btn-back-bloqueado':''}" onclick="${bloqueado?'':'backToHome()'}">${bloqueado?'<i class="fas fa-lock"></i> Bloqueado':'<i class="fas fa-arrow-left"></i> Volver'}</div></div></div>
             <div class="page-container">
@@ -2114,17 +2436,13 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
                     <p class="text-xs opacity-70 mb-2">Registra el fondo inicial en efectivo que queda en caja al iniciar el turno (puede ser 0).</p>
                     <div class="mb-2"><label class="opacity-70">Fondo inicial (Bs)</label><input type="text" id="cajaAperturaBs" inputmode="decimal" value="0" class="border rounded-xl p-2 w-full"></div>
                     <button id="btnAbrirCaja" class="btn-azul-redondeado btn-redondeado w-full py-2"><i class="fas fa-lock-open"></i> Abrir caja</button>
-                </div>
-                <div class="config-section">
-                    <div class="config-section-title" style="font-size:.75rem;font-weight:700;opacity:.6;margin-bottom:8px"><i class="fas fa-clock"></i> Historial de cierres</div>
-                    <div id="listaCierres">${caja.cierres.length === 0 ? '<p class="text-xs opacity-60">Sin cierres registrados</p>' : caja.cierres.slice().reverse().map(c => `<div class="client-card" style="padding:8px 10px;margin-bottom:6px"><div class="flex justify-between items-center"><span class="font-bold text-sm"><i class="fas fa-lock"></i> Cierre ${escapeHtml(c.fecha)} ${escapeHtml(c.hora || '')}</span><span class="text-xs">${fmtPrecio(c.difTotal||0)} Bs</span></div><div class="text-xs mt-1 flex justify-between"><span>Esperado: ${fmtPrecio(c.totalEsperado||0)} Bs</span><span>Contado: ${fmtPrecio(c.totalContado||0)} Bs</span></div></div>`).join('')}</div>
                 </div>` : `
                 <div class="config-section" style="margin-bottom:16px">
                     <div class="config-section-title" style="font-size:.75rem;font-weight:700;opacity:.6;margin-bottom:8px"><i class="fas fa-circle" style="color:#22c55e"></i> Caja abierta</div>
                     <div class="card-bcv" style="padding:10px"><div class="flex justify-between"><span class="text-xs opacity-70">Abierta desde</span><span class="text-xs font-bold">${escapeHtml(caja.abierta.fecha || '')} ${escapeHtml(caja.abierta.hora || '')}</span></div><div class="flex justify-between mt-1"><span class="text-xs opacity-70">Fondo inicial</span><span class="text-xs font-bold">${fmtPrecio(caja.abierta.aperturaBs||0)} Bs</span></div></div>
                 </div>
                 <div class="config-section" style="margin-bottom:16px">
-                    <div class="config-section-title" style="font-size:.75rem;font-weight:700;opacity:.6;margin-bottom:8px"><i class="fas fa-chart-column"></i> Ventas de hoy por forma de pago (esperado)</div>
+                    <div class="config-section-title" style="font-size:.75rem;font-weight:700;opacity:.6;margin-bottom:8px"><i class="fas fa-chart-column"></i> Ventas del turno por forma de pago (esperado)</div>
                     <div id="esperadoCaja"></div>
                 </div>
                 <div class="config-section" style="margin-bottom:16px">
@@ -2136,20 +2454,45 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
                     <button id="btnCerrarCaja" class="btn-azul-redondeado btn-redondeado w-full py-2" style="background:#dc2626"><i class="fas fa-lock"></i> Cerrar caja</button>
                     <div id="resumenArqueo" class="text-xs mt-2"></div>
                 </div>`}
+                ${seccionHistorialCaja(accent, caja)}
             </div>`;
         if(volverBloqueado) document.getElementById('btnVolverModule').onclick = () => mostrarOverlayBloqueo();
+        // ---- Filtros del historial (registro diario consultable) ----
+        const pintarHistorial = () => {
+            const cajaH = cargarCaja();
+            const pred = predicadoFiltroCaja();
+            const items = (cajaH.cierres || []).map((c,i)=>({c,i})).filter(o => pred(o.c)).reverse();
+            document.querySelectorAll('#appRoot [data-filtro]').forEach(b => {
+                const on = b.getAttribute('data-filtro') === filtroCaja.modo;
+                b.style.background = on ? accent : 'transparent';
+                b.style.color = on ? '#fff' : accent;
+            });
+            const fi = document.getElementById('filtroFechaCaja');
+            if(fi){ if(filtroCaja.modo === 'dia') fi.value = filtroCaja.fecha || ''; else fi.value = ''; }
+            const el = document.getElementById('listaCierres');
+            if(el) el.innerHTML = items.length ? items.map(x => cierreCardHTML(x.c, x.i, accent)).join('') : '<p class="text-xs opacity-60">Sin cierres registrados para este filtro</p>';
+        };
+        document.querySelectorAll('#appRoot [data-filtro]').forEach(b => {
+            b.onclick = () => { filtroCaja = { modo: b.getAttribute('data-filtro'), fecha: null }; pintarHistorial(); };
+        });
+        const fiC = document.getElementById('filtroFechaCaja');
+        if(fiC) fiC.onchange = () => { filtroCaja = { modo: 'dia', fecha: fiC.value || null }; pintarHistorial(); };
         if(!caja.abierta){
             aplicarMascaraBs(document.getElementById('cajaAperturaBs'));
             document.getElementById('btnAbrirCaja').onclick = () => {
                 const monto = parseBs(document.getElementById('cajaAperturaBs').value);
                 const ahora = new Date();
-                caja.abierta = { fecha: msToDateStr(ahora.getTime()), hora: ahora.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}), aperturaBs: Math.round(monto*100)/100 };
+                caja.abierta = { fecha: msToDateStr(ahora.getTime()), hora: ahora.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}), aperturaBs: Math.round(monto*100)/100, timestamp: ahora.getTime() };
                 guardarCaja(caja);
                 renderCaja();
             };
             return;
         }
-        const esperado = ventasEsperadasCaja(ventas);
+        // Esperado del TURNO (apertura → ahora), no "de hoy": lo único coherente con lo que
+        // hay físicamente en caja = fondo inicial + lo cobrado mientras estuvo abierta.
+        const desdeTurno = caja.abierta.timestamp || new Date(caja.abierta.fecha + 'T00:00:00').getTime();
+        const hastaTurno = Date.now();
+        const esperado = ventasEsperadasCaja(ventas, desdeTurno, hastaTurno);
         const esperadoEfect = esperado.efectivo_bs + (Number(caja.abierta.aperturaBs)||0);
         document.getElementById('esperadoCaja').innerHTML = `
             <div class="grid grid-cols-2 gap-2">
@@ -2200,10 +2543,27 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         };
         document.getElementById('btnCerrarCaja').onclick = async () => {
             const { contado, totalEsperado, totalContado, difTotal } = pintarResumen();
-            const ok = await jamConfirm(`¿CERRAR caja?\n\nEsperado: ${fmtPrecio(totalEsperado)} Bs\nContado: ${fmtPrecio(totalContado)} Bs\nDiferencia: ${fmtPrecio(difTotal)} Bs\n\nEl cierre quedará en el historial.`);
+            const ok = await jamConfirm(`¿CERRAR caja?\n\nApertura: ${caja.abierta.fecha} ${caja.abierta.hora}\nEsperado: ${fmtPrecio(totalEsperado)} Bs\nContado: ${fmtPrecio(totalContado)} Bs\nDiferencia: ${fmtPrecio(difTotal)} Bs\n\nEl cierre quedará en el historial (registro diario).`);
             if(!ok) return;
             const ahora = new Date();
-            caja.cierres.push({ fecha: msToDateStr(ahora.getTime()), hora: ahora.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}), aperturaBs: caja.abierta.aperturaBs||0, porMetodo: contado, totalEsperado: Math.round(totalEsperado*100)/100, totalContado: Math.round(totalContado*100)/100, difTotal: Math.round(difTotal*100)/100, nVentas: ventas.filter(v => !v.anulada && msToDateStr(v.timestamp || new Date(v.fecha).getTime()) === msToDateStr(ahora.getTime())).length });
+            const desdeCierre = caja.abierta.timestamp || new Date(caja.abierta.fecha + 'T00:00:00').getTime();
+            const hastaCierre = ahora.getTime();
+            caja.cierres.push({
+                id: 'cj_' + hastaCierre,
+                fecha: msToDateStr(hastaCierre),
+                hora: ahora.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}),
+                timestamp: hastaCierre,
+                aperturaFecha: caja.abierta.fecha,
+                aperturaHora: caja.abierta.hora,
+                aperturaTimestamp: caja.abierta.timestamp || null,
+                aperturaBs: caja.abierta.aperturaBs||0,
+                esperadoMetodo: esperadosConApertura(), // esperado del turno por método (con fondo en efectivo)
+                porMetodo: contado,                     // contado real por método
+                totalEsperado: Math.round(totalEsperado*100)/100,
+                totalContado: Math.round(totalContado*100)/100,
+                difTotal: Math.round(difTotal*100)/100,
+                nVentas: ventas.filter(v => !v.anulada && (v.timestamp || new Date(v.fecha).getTime()) >= desdeCierre && (v.timestamp || new Date(v.fecha).getTime()) <= hastaCierre).length
+            });
             caja.abierta = null;
             caja.ultimoArqueo = null;
             guardarCaja(caja);
@@ -2212,6 +2572,52 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         };
         inyectarBotonAyudaModulo();
     }
+    // Popup SOLO LECTURA con el arqueo completo de un cierre guardado (registro diario).
+    // No tiene ningún botón de edición: solo el ✕ para cerrar, para que jamás se modifique.
+    window.verDetalleCierre = (i) => {
+        const caja = cargarCaja();
+        const c = (caja.cierres || [])[i];
+        if(!c) { mostrarNotificacion('Registro de cierre no encontrado', 'error'); return; }
+        document.querySelectorAll('.kpi-popup-overlay').forEach(e => e.remove());
+        const accent = D.config.theme;
+        const overlay = document.createElement('div');
+        overlay.className = 'kpi-popup-overlay';
+        overlay.onclick = e => { if(e.target === overlay) overlay.remove(); };
+        const popup = document.createElement('div');
+        popup.className = 'kpi-popup';
+        popup.style.maxWidth = '430px';
+        popup.style.maxHeight = '92vh';
+        popup.style.overflowY = 'auto';
+        const dif = Math.round((Number(c.difTotal)||0)*100)/100;
+        const difcol = Math.abs(dif) < 0.005 ? '#10b981' : (dif > 0 ? '#3b82f6' : '#ef4444');
+        const filas = METODOS_CAJA.map(m => {
+            const e = (c.esperadoMetodo && typeof c.esperadoMetodo[m] === 'number') ? c.esperadoMetodo[m] : null;
+            const cc = (c.porMetodo && typeof c.porMetodo[m] === 'number') ? c.porMetodo[m] : 0;
+            const difm = e === null ? null : Math.round((cc - e)*100)/100;
+            const dmcol = difm === null ? '' : (Math.abs(difm) < 0.005 ? '#10b981' : (difm > 0 ? '#3b82f6' : '#ef4444'));
+            return `<div class="flex justify-between items-center py-1 gap-2" style="border-bottom:1px solid rgba(128,128,128,.12);font-size:.7rem">
+                <span>${ETIQUETAS_CAJA[m]}</span>
+                <span class="text-right" style="white-space:nowrap">${e === null ? `Contado <b>${fmtPrecio(cc)}</b>` : `${fmtPrecio(e)} → <b>${fmtPrecio(cc)}</b> <b style="color:${dmcol}">(${fmtPrecio(difm)})</b>`} Bs</span>
+            </div>`;
+        }).join('');
+        popup.innerHTML = `
+            <div class="kpi-popup-titulo" style="color:${accent}"><i class="fas fa-cash-register"></i> Arqueo — cierre ${escapeHtml(c.fecha||'')} ${escapeHtml(c.hora||'')} <button class="kpi-popup-cerrar" onclick="this.closest('.kpi-popup-overlay').remove()">✕</button></div>
+            <div class="kpi-popup-grid">
+                <div class="kpi-popup-card"><div class="kpi-popup-icon"><i class="fas fa-lock-open"></i></div><div class="kpi-popup-val" style="font-size:.68rem">${escapeHtml(c.aperturaFecha||'—')} ${escapeHtml(c.aperturaHora||'')}</div><div class="kpi-popup-lbl">Apertura</div></div>
+                <div class="kpi-popup-card"><div class="kpi-popup-icon"><i class="fas fa-lock"></i></div><div class="kpi-popup-val" style="font-size:.68rem">${escapeHtml(c.fecha||'—')} ${escapeHtml(c.hora||'')}</div><div class="kpi-popup-lbl">Cierre</div></div>
+                <div class="kpi-popup-card"><div class="kpi-popup-icon"><i class="fas fa-coins"></i></div><div class="kpi-popup-val">${fmtPrecio(c.aperturaBs||0)}</div><div class="kpi-popup-lbl">Fondo Bs</div></div>
+                <div class="kpi-popup-card"><div class="kpi-popup-icon"><i class="fas fa-receipt"></i></div><div class="kpi-popup-val">${c.nVentas||0}</div><div class="kpi-popup-lbl">Ventas</div></div>
+                <div class="kpi-popup-card"><div class="kpi-popup-icon"><i class="fas fa-calculator"></i></div><div class="kpi-popup-val">${fmtPrecio(c.totalEsperado||0)}</div><div class="kpi-popup-lbl">Esperado Bs</div></div>
+                <div class="kpi-popup-card"><div class="kpi-popup-icon"><i class="fas fa-hand-holding-dollar"></i></div><div class="kpi-popup-val" style="color:${difcol};font-weight:700">${fmtPrecio(dif)}</div><div class="kpi-popup-lbl">Diferencia Bs</div></div>
+            </div>
+            <div style="margin-top:8px;padding-top:6px;border-top:1px solid rgba(128,128,128,.15)">
+                <div class="text-xs font-bold" style="margin-bottom:4px"><i class="fas fa-chart-column"></i> Detalle por método (esperado → contado · diferencia)</div>
+                ${filas}
+            </div>
+            <div class="kpi-popup-totales"><span>Esperado: <b>${fmtPrecio(c.totalEsperado||0)} Bs</b></span><span>Contado: <b>${fmtPrecio(c.totalContado||0)} Bs</b></span><span>Diferencia: <b style="color:${difcol}">${fmtPrecio(dif)} Bs</b></span></div>`;
+        overlay.appendChild(popup);
+        document.body.appendChild(overlay);
+    };
     window.imprimirTicketDirecto = (ventaId) => {
         const venta = D.ventas.find(v => v.id === ventaId);
         if(!venta) return;
@@ -2235,7 +2641,20 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         venta.items.forEach(item => { mensaje += `${item.cantidad}x ${item.nombre} → ${fmtPrecio(item.subtotal)} Bs\n`; });
         mensaje += `━━━━━━━━━━━━━━━━━━━━\n💰 *SUBTOTAL:* ${fmtPrecio(venta.subtotal)} Bs\n`;
         if(venta.iva) mensaje += `📊 *IVA:* ${fmtPrecio(venta.iva)} Bs\n`;
-        mensaje += venta.credito ? `💵 *TOTAL:* ${fmtPrecio(venta.total)} Bs (CRÉDITO PENDIENTE)\n` : `💵 *TOTAL:* ${fmtPrecio(venta.total)} Bs\n💸 *PAGO:* ${fmtPrecio(venta.pago)} Bs\n${esPagoEfectivo(venta) ? `🔄 *CAMBIO:* ${fmtPrecio(venta.cambio)} Bs\n` : ''}`;
+        if (venta.credito) {
+            const crPago = venta.pago || 0;
+            const crRest = (venta.creditoRestante != null) ? venta.creditoRestante : (venta.total || 0);
+            mensaje += `💵 *TOTAL:* ${fmtPrecio(venta.total)} Bs\n`;
+            if (crPago > 0) {
+                mensaje += `💸 *ABONO:* ${fmtPrecio(crPago)} Bs\n`;
+                mensaje += `🗓️ *ABONADO EL:* ${textoFechaLimite(venta.timestamp || venta.fecha)}\n`;
+            }
+            mensaje += `⏳ *PENDIENTE:* ${fmtPrecio(crRest)} Bs\n`;
+            if (venta.creditoPlazoDias) mensaje += `📅 *PLAZO:* ${venta.creditoPlazoDias} días\n`;
+            if (venta.creditoFechaLimite) mensaje += `⏰ *PAGAR ANTES DEL:* ${textoFechaLimite(venta.creditoFechaLimite)}\n`;
+        } else {
+            mensaje += `💵 *TOTAL:* ${fmtPrecio(venta.total)} Bs\n💸 *PAGO:* ${fmtPrecio(venta.pago)} Bs\n${esPagoEfectivo(venta) ? `🔄 *CAMBIO:* ${fmtPrecio(venta.cambio)} Bs\n` : ''}`;
+        }
         if(venta.detallePagos) {
             venta.detallePagos.forEach(d => { mensaje += `└ ${etiqMetodo[d.metodo]||d.metodo}: ${fmtPrecio(d.monto)} Bs\n`; });
         } else {
@@ -2671,7 +3090,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
                             <span><i class="fas fa-boxes-stacked"></i> Stock: ${p.stock}</span>
                         </div>
                         ${ofG}
-                        <div class="flex gap-2 mt-2">
+                        <div class="card-btns">
                             <button onclick="event.stopPropagation();editarProductoDesdeBusqueda('${p.id}')" class="btn-editar-redondeado"><i class="fas fa-pen"></i> Editar</button>
                             <button onclick="event.stopPropagation();venderProductoDesdeBusqueda('${p.id}')" class="btn-verde-redondeado"><i class="fas fa-cart-shopping"></i> Vender</button>
                         </div>
@@ -2736,7 +3155,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         let cont = document.getElementById('listaProductos'); if(!cont) return;
         cont.innerHTML = filt.map(p => {
             let checked = productosSeleccionados.has(p.id);
-            return `<div class="product-card"><div class="flex items-start gap-2"><div class="flex-1"><div class="flex justify-between flex-wrap"><span class="font-bold">${escapeHtml(p.nombre)}</span><span class="text-xs">${escapeHtml(p.codigo||'')}</span></div><div class="text-sm"><i class="fas fa-sack-dollar"></i> ${fmtPrecio(preciosProducto(p).normalBs)} Bs / $${preciosProducto(p).normalUsd} | <i class="fas fa-boxes-stacked"></i> Stock: ${p.stock}</div>${tieneDescuentoProducto(p) ? `<div class="text-sm" style="color:#10b981"><i class="fas fa-tag"></i> Oferta: ${fmtPrecio(preciosProducto(p).desc.bs)} Bs / $${preciosProducto(p).desc.usd} <span class="text-xs">(-${typeof p.porcentajeDescuento === 'number' ? p.porcentajeDescuento : 0}%)</span></div>` : ''}${(p.descuentoProveedor && p.descuentoProveedor > 0) ? `<div class="text-xs" style="color:#f59e0b"><i class="fas fa-boxes-stacked"></i> Costo prov: $${fmtPrecio(preciosProducto(p).costoNetoUsd)} <span style="text-decoration:line-through;opacity:0.6">$${fmtPrecio(preciosProducto(p).costoUsd)}</span> (-${p.descuentoProveedor}%)</div>` : ''}<div class="text-xs break-words"><i class="fas fa-tag"></i> ${escapeHtml(p.categoria||'')} | <i class="fas fa-truck"></i> ${escapeHtml(p.proveedor||'—')}</div><div class="flex gap-2 mt-2"><button onclick="mostrarFormProducto('${p.id}')" class="btn-editar-redondeado"><i class="fas fa-pen"></i> Editar</button><button onclick="ajustarStock('${p.id}')" class="btn-redondeado" style="background:#f59e0b;color:#fff;padding:4px 10px;font-size:12px"><i class="fas fa-right-left"></i> Ajustar</button><button onclick="copiarProducto('${p.id}')" class="btn-redondeado" style="background:var(--accent,#3b82f6);color:#fff;padding:4px 10px;font-size:12px"><i class="fas fa-clipboard"></i> Copiar</button><button onclick="eliminarProducto('${p.id}')" class="btn-eliminar-redondeado"><i class="fas fa-trash"></i> Eliminar</button></div></div><input type="checkbox" class="product-checkbox mt-1" data-id="${p.id}" ${checked?'checked':''} onchange="toggleProductoSeleccionado('${p.id}',this.checked)"></div></div>`;
+            return `<div class="product-card"><div class="flex flex-wrap items-start gap-2"><div class="flex-1"><div class="flex justify-between flex-wrap"><span class="font-bold">${escapeHtml(p.nombre)}</span><span class="text-xs">${escapeHtml(p.codigo||'')}</span></div><div class="text-sm"><i class="fas fa-sack-dollar"></i> ${fmtPrecio(preciosProducto(p).normalBs)} Bs / $${preciosProducto(p).normalUsd} | <i class="fas fa-boxes-stacked"></i> Stock: ${p.stock}</div>${tieneDescuentoProducto(p) ? `<div class="text-sm" style="color:#10b981"><i class="fas fa-tag"></i> Oferta: ${fmtPrecio(preciosProducto(p).desc.bs)} Bs / $${preciosProducto(p).desc.usd} <span class="text-xs">(-${typeof p.porcentajeDescuento === 'number' ? p.porcentajeDescuento : 0}%)</span></div>` : ''}${(p.descuentoProveedor && p.descuentoProveedor > 0) ? `<div class="text-xs" style="color:#f59e0b"><i class="fas fa-boxes-stacked"></i> Costo prov: $${fmtPrecio(preciosProducto(p).costoNetoUsd)} <span style="text-decoration:line-through;opacity:0.6">$${fmtPrecio(preciosProducto(p).costoUsd)}</span> (-${p.descuentoProveedor}%)</div>` : ''}<div class="text-xs break-words"><i class="fas fa-tag"></i> ${escapeHtml(p.categoria||'')} | <i class="fas fa-truck"></i> ${escapeHtml(p.proveedor||'—')}</div><div class="card-btns"><button onclick="mostrarFormProducto('${p.id}')" class="btn-editar-redondeado"><i class="fas fa-pen"></i> Editar</button><button onclick="ajustarStock('${p.id}')" class="btn-redondeado" style="background:#f59e0b;color:#fff"><i class="fas fa-right-left"></i> Ajustar</button><button onclick="copiarProducto('${p.id}')" class="btn-redondeado" style="background:var(--accent,#3b82f6);color:#fff"><i class="fas fa-clipboard"></i> Copiar</button><button onclick="eliminarProducto('${p.id}')" class="btn-eliminar-redondeado"><i class="fas fa-trash"></i> Eliminar</button></div></div><input type="checkbox" class="product-checkbox mt-1" data-id="${p.id}" ${checked?'checked':''} onchange="toggleProductoSeleccionado('${p.id}',this.checked)"></div></div>`;
         }).join('');
         actualizarToolbarBatch();
     }
@@ -3086,7 +3505,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
                 else if(store === 'gastos') detalles = `<div class="text-xs text-gray-500 mt-1"><i class="fas fa-sack-dollar"></i> ${fmtPrecio(i.montoBs||0)} Bs | <i class="fas fa-calendar-days"></i> ${escapeHtml(fmtFechaDisplay(i.fecha)||'')}</div>`;
                 else if(store === 'empleados') detalles = `<div class="text-xs text-gray-500 mt-1"><i class="fas fa-briefcase"></i> ${escapeHtml(i.cargo||'')} | <i class="fas fa-money-bill-wave"></i> ${fmtPrecio(i.salarioBs||0)} Bs${i.diaPago ? ` | <i class="fas fa-calendar-days"></i> Día de pago: ${escapeHtml(i.diaPago)}` : ''}${i.fechaPago ? ` | <i class="fas fa-circle-check"></i> Pagado: ${escapeHtml(fmtFechaDisplay(i.fechaPago)||'')}` : ''}</div>`;
                 let nombreTarjeta = (i.nombre && String(i.nombre).trim()) ? i.nombre : (i[campos[0]] || 'Sin nombre');
-                return `<div class="client-card" data-id="${i.id}"><div class="font-bold break-words">${escapeHtml(String(nombreTarjeta))}</div>${detalles}<div class="flex gap-2 mt-2"><button class="btn-editar-item btn-editar-redondeado"><i class="fas fa-pen"></i> Editar</button>${store === 'empleados' ? `<button class="btn-pagar-empleado btn-verde-redondeado"><i class="fas fa-sack-dollar"></i> Pagar</button>` : ''}${store === 'clientes' ? `<button class="btn-abono-cliente btn-verde-redondeado"><i class="fas fa-money-bill-wave"></i> Abono</button>` : ''}<button class="btn-eliminar-item btn-eliminar-redondeado"><i class="fas fa-trash"></i> Eliminar</button></div></div>`;
+                return `<div class="client-card" data-id="${i.id}"><div class="font-bold break-words">${escapeHtml(String(nombreTarjeta))}</div>${detalles}<div class="card-btns"><button class="btn-editar-item btn-editar-redondeado"><i class="fas fa-pen"></i> Editar</button>${store === 'empleados' ? `<button class="btn-pagar-empleado btn-verde-redondeado"><i class="fas fa-sack-dollar"></i> Pagar</button>` : ''}${store === 'clientes' ? `<button class="btn-abono-cliente btn-verde-redondeado"><i class="fas fa-money-bill-wave"></i> Abono</button>` : ''}<button class="btn-eliminar-item btn-eliminar-redondeado"><i class="fas fa-trash"></i> Eliminar</button></div></div>`;
             }).join('');
             document.querySelectorAll('.btn-editar-item').forEach((btn, idx) => { let it = filt[idx]; btn.onclick = () => window.mostrarFormCrud(store, it.id, campos, false); });
             document.querySelectorAll('.btn-eliminar-item').forEach((btn, idx) => { let it = filt[idx]; btn.onclick = () => eliminarItemCrud(store, it.id); });
@@ -3199,7 +3618,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
                 <div class="flex justify-between items-start"><div class="font-bold break-words">${escapeHtml(e.proveedor||'Proveedor')} — ${escapeHtml(e.producto||'')}</div>${estadoEntregaBadge(e)}</div>
                 <div class="text-xs text-gray-500 mt-1"><i class="fas fa-calendar-days"></i> Entrega: ${escapeHtml(fmtFechaDisplay(e.fecha)||'')}${e.hora ? ' ' + escapeHtml(e.hora) : ''} | <i class="fas fa-stopwatch"></i> Lapso: ${e.lapsoDias ? escapeHtml(e.lapsoDias) + ' día(s)' : '—'} | <i class="fas fa-calendar-days"></i> Vence: ${escapeHtml(fmtFechaDisplay(e.fechaVencimiento)||'—')} | <i class="fas fa-boxes-stacked"></i> ${parseInt(e.cantidad)||0} u.</div>
                 ${e.notas ? `<div class="text-xs mt-1" style="color:#f59e0b"><i class="fas fa-pen"></i> ${escapeHtml(e.notas)}</div>` : ''}
-                <div class="flex gap-2 mt-2"><button class="btn-editar-entrega btn-editar-redondeado"><i class="fas fa-pen"></i> Editar</button><button class="btn-estado-entrega btn-verde-redondeado">↻ Estado</button><button class="btn-eliminar-entrega btn-eliminar-redondeado"><i class="fas fa-trash"></i></button></div>
+                <div class="card-btns"><button class="btn-editar-entrega btn-editar-redondeado"><i class="fas fa-pen"></i> Editar</button><button class="btn-estado-entrega btn-verde-redondeado"><i class="fas fa-rotate"></i> Estado</button><button class="btn-eliminar-entrega btn-eliminar-redondeado"><i class="fas fa-trash"></i> Eliminar</button></div>
             </div>`).join('');
         document.querySelectorAll('.btn-editar-entrega').forEach((btn, idx) => { btn.onclick = () => mostrarFormEntrega(filtro[idx].id); });
         document.querySelectorAll('.btn-estado-entrega').forEach((btn, idx) => { const e = filtro[idx]; btn.onclick = () => cicloEstadoEntrega(e); });
@@ -3352,6 +3771,13 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
     function horaActual(){ return new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }); }
     function registrarCambioTasa(tasa){
         if(!(tasa > 0)) return false;
+        try {
+            localStorage.setItem('jam_pos_ultima_tasa', JSON.stringify({
+                tasa: Math.round(tasa * 100) / 100,
+                fecha: msToDateStr(Date.now()),
+                hora: horaActual()
+            }));
+        } catch (e) {}
         let arr = cargarHistorialTasa();
         let ultimo = arr.length ? arr[arr.length - 1] : null;
         const hoy = msToDateStr(Date.now());
@@ -3930,7 +4356,7 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
             const empDir = (D.config.empresa && D.config.empresa.direccion) || '';
             const empTel = (D.config.empresa && D.config.empresa.telefono) || '';
             const formas = { 'efectivo_bs':'EFECTIVO Bs','pago_movil':'PAGO MÓVIL','transferencia':'TRANSFERENCIA','tarjeta_debito':'TARJETA DÉBITO','dolares':'DÓLARES','pago_dividido':'PAGO DIVIDIDO','credito':'CRÉDITO' };
-            const filasVentas = ventasPer.length ? ventasPer.slice().reverse().map(v => `<tr><td>${escapeHtml(v.id)}</td><td>${escapeHtml(fmtFechaDisplay(v.fecha)||'')}</td><td>${escapeHtml(v.hora || '')}</td><td>${escapeHtml(v.cliente || 'General')}</td><td style="text-align:right">${escapeHtml((v.items||[]).map(i=>i.nombre + (i.cantidad>1?' x'+i.cantidad:'')).join(', '))}</td><td style="text-align:right">${fmtPrecio(v.total)}</td><td style="text-align:right">${fmtDolar(v.dolarRate||0)}</td><td style="text-align:right">${fmtPrecio(v.gananciaTotal||0)}</td><td>${formas[v.tipoPago] || escapeHtml(v.tipoPago||'')}</td></tr>`).join('') : '<tr><td colspan="9" style="text-align:center;opacity:.6">Sin ventas en el período</td></tr>';
+            const filasVentas = ventasPer.length ? ventasPer.slice().reverse().map(v => { const esCrV = v.credito && !v.anulada; const pendV = esCrV ? (v.creditoRestante != null ? v.creditoRestante : v.total) : '—'; const abonoV = esCrV && Number(v.pago) > 0 ? v.pago : '—'; const vencV = esCrV && v.creditoFechaLimite ? escapeHtml(textoFechaLimite(v.creditoFechaLimite)) : '—'; return `<tr><td>${escapeHtml(v.id)}</td><td>${escapeHtml(fmtFechaDisplay(v.fecha)||'')}</td><td>${escapeHtml(v.hora || '')}</td><td>${escapeHtml(v.cliente || 'General')}</td><td style="text-align:right">${escapeHtml((v.items||[]).map(i=>i.nombre + (i.cantidad>1?' x'+i.cantidad:'')).join(', '))}</td><td style="text-align:right">${fmtPrecio(v.total)}</td><td style="text-align:right">${abonoV === '—' ? '—' : fmtPrecio(abonoV)}</td><td style="text-align:right">${pendV === '—' ? '—' : fmtPrecio(pendV)}</td><td style="text-align:right">${vencV}</td><td style="text-align:right">${fmtDolar(v.dolarRate||0)}</td><td style="text-align:right">${fmtPrecio(v.gananciaTotal||0)}</td><td>${formas[v.tipoPago] || escapeHtml(v.tipoPago||'')}</td></tr>`; }).join('') : '<tr><td colspan="12" style="text-align:center;opacity:.6">Sin ventas en el período</td></tr>';
             const filasGastos = gastosPer.length ? gastosPer.slice().reverse().map(g => `<tr><td>${escapeHtml(fmtFechaDisplay(g.fecha)||'')}</td><td>${escapeHtml(g.concepto||'')}</td><td>${escapeHtml(g.categoria||'')}</td><td style="text-align:right">${fmtPrecio(g.montoBs||0)}</td></tr>`).join('') : '<tr><td colspan="4" style="text-align:center;opacity:.6">Sin gastos en el período</td></tr>';
             const filasNomina = empleados.filter(e => (parseFloat(e.salarioBs)||0) > 0).length ? empleados.filter(e => (parseFloat(e.salarioBs)||0) > 0).map(e => { const pag = e.fechaPagoTs || (e.fechaPago ? tsFechaISO(e.fechaPago) : 0); const pm = pag && new Date(pag).getFullYear() === new Date().getFullYear() && new Date(pag).getMonth() === new Date().getMonth(); return `<tr><td>${escapeHtml(e.nombre)}</td><td>${escapeHtml(e.cargo||'')}</td><td>${e.diaPago ? 'Día ' + escapeHtml(e.diaPago) : '—'}</td><td style="text-align:right">${fmtPrecio(e.salarioBs)}</td><td style="text-align:center">${pm ? '<i class="fas fa-circle-check"></i> Pagado' : '⏳ Pendiente'}</td></tr>`; }).join('') : '<tr><td colspan="5" style="text-align:center;opacity:.6">Sin empleados con salario registrado</td></tr>';
             const filasEntregas = entregas.length ? entregas.slice().sort((a,b)=>String(a.fecha).localeCompare(String(b.fecha))).map(e => `<tr><td>${escapeHtml(fmtFechaDisplay(e.fecha)||'')}</td><td>${escapeHtml(e.hora||'')}</td><td>${escapeHtml(e.proveedor||'')}</td><td>${escapeHtml(e.producto||'')}</td><td style="text-align:right">${parseInt(e.cantidad)||0}</td><td style="text-align:right">${e.lapsoDias||0}</td><td>${escapeHtml(fmtFechaDisplay(e.fechaVencimiento)||'')}</td><td style="text-align:center">${e.estado==='recibido'?'Recibida':e.estado==='salida'?'Salida':'Pendiente'}</td><td>${escapeHtml(e.notas||'')}</td></tr>`).join('') : '<tr><td colspan="9" style="text-align:center;opacity:.6">Sin entregas registradas</td></tr>';
@@ -3983,7 +4409,7 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
                 '<div class="sub">Período: ' + rp.ini + ' a ' + rp.fin + ' · Generado: ' + escapeHtml(fechaGen) + ' · Tasa: 1 USD = ' + fmtDolar(tasaHoy) + ' Bs</div></div>' +
                 resTbl +
                 '<h2>Ventas del período (' + ventasPer.length + ')</h2>' +
-                '<table><thead><tr><th>Ticket</th><th>Fecha</th><th>Hora</th><th>Cliente</th><th>Artículos</th><th class="r">Total Bs</th><th class="r">Tasa</th><th class="r">Ganancia</th><th>Forma de pago</th></tr></thead><tbody>' + filasVentas + '</tbody></table>' +
+                '<table><thead><tr><th>Ticket</th><th>Fecha</th><th>Hora</th><th>Cliente</th><th>Artículos</th><th class="r">Total Bs</th><th class="r">Abono</th><th class="r">Pendiente</th><th class="r">Vence</th><th class="r">Tasa</th><th class="r">Ganancia</th><th>Forma de pago</th></tr></thead><tbody>' + filasVentas + '</tbody></table>' +
                 '<h2>Ventas por forma de pago</h2>' +
                 '<table><thead><tr><th>Forma</th><th class="r">Total Bs</th><th class="r">% del período</th></tr></thead><tbody>' + filasFormas + '</tbody></table>' +
                 '<h2>Gastos del período</h2>' +
@@ -4026,12 +4452,18 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
                         ['Ganancia a crédito', totGanCredito]
                     ]},
                     { nombre: 'Ventas', filas: [
-                        ['Ticket', 'Fecha', 'Hora', 'Cliente', 'Artículos', 'Total (Bs)', 'Tasa', 'Ganancia (Bs)', 'Forma de pago']
-                    ].concat(ventasPer.length ? ventasPer.slice().reverse().map(v => [
+                        ['Ticket', 'Fecha', 'Hora', 'Cliente', 'Artículos', 'Total (Bs)', 'Abono (Bs)', 'Pendiente (Bs)', 'Vence', 'Tasa', 'Ganancia (Bs)', 'Forma de pago']
+                    ].concat(ventasPer.length ? ventasPer.slice().reverse().map(v => {
+                        const esCrX = v.credito && !v.anulada;
+                        return [
                         v.id, fmtFechaDisplay(v.fecha) || '', v.hora || '', v.cliente || 'General',
                         (v.items||[]).map(i => i.nombre + (i.cantidad > 1 ? ' x' + i.cantidad : '')).join(', '),
-                        v.total || 0, v.dolarRate || 0, v.gananciaTotal || 0, formasLabel[v.tipoPago] || v.tipoPago || ''
-                    ]) : [['Sin ventas en el período']])},
+                        v.total || 0,
+                        esCrX && Number(v.pago) > 0 ? v.pago : '—',
+                        esCrX ? (v.creditoRestante != null ? v.creditoRestante : v.total) : '—',
+                        esCrX && v.creditoFechaLimite ? textoFechaLimite(v.creditoFechaLimite) : '—',
+                        v.dolarRate || 0, v.gananciaTotal || 0, formasLabel[v.tipoPago] || v.tipoPago || ''
+                    ]; }) : [['Sin ventas en el período']])},
                     { nombre: 'Ventas por forma', filas: [
                         ['Forma', 'Total (Bs)', '% del período']
                     ].concat(Object.keys(porForma).length ? Object.keys(porForma).map(k => [
@@ -4320,7 +4752,11 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
         if (!cliente) return;
         const adeudo = parseFloat(cliente.adeudo) || 0;
         const modal = document.createElement('div'); modal.className = 'modal-form';
-        modal.innerHTML = `<div class="modal-form-content"><h3 class="text-xl font-bold mb-4">Detalles del Cliente</h3><div class="mb-2"><strong>Nombre:</strong> ${escapeHtml(cliente.nombre)}</div><div class="mb-2"><strong>Cédula/RIF:</strong> ${escapeHtml(cliente.cedula || 'N/A')}</div><div class="mb-2"><strong>Teléfono:</strong> ${escapeHtml(cliente.telefono || 'N/A')}</div><div class="mb-2"><strong>Dirección:</strong> ${escapeHtml(cliente.direccion || 'N/A')}</div><div class="mb-2"><strong>Email:</strong> ${escapeHtml(cliente.email || 'N/A')}</div><div class="mb-3 rounded-xl p-3" style="background:rgba(128,128,128,0.07)"><span class="text-sm font-bold" style="color:${adeudo > 0 ? '#ef4444' : '#10b981'}"><i class="fas fa-credit-card"></i> Saldo: ${fmtPrecio(adeudo)} Bs</span></div>${(cliente.abonos && cliente.abonos.length) ? `<div class="mb-3 text-xs"><i class="fas fa-scroll"></i> Abonos registrados:<br>${cliente.abonos.slice().reverse().map(a => `&nbsp;• ${escapeHtml(fmtFechaDisplay(a.fecha)||a.fecha)}: ${fmtPrecio(a.monto)} Bs${a.nota ? ' (' + escapeHtml(a.nota) + ')' : ''}`).join('<br>')}</div>` : ''}<div class="flex gap-3 mt-4"><button id="btnAbonoDetalle" class="btn-azul-redondeado btn-redondeado flex-1 py-2"><i class="fas fa-money-bill-wave"></i> Registrar abono</button><button id="closeDetalle" class="btn-redondeado flex-1 py-2 bg-gray-200">Cerrar</button></div></div>`;
+        // Ventas a crédito con saldo pendiente de este cliente (avecindan en Carmen: ticket + plazo + vencimiento).
+        const pendientes = ((D.ventas)||[]).filter(v => v.credito && !v.anulada && v.clienteId === clienteId && ((v.creditoRestante != null ? v.creditoRestante : v.total) > 0));
+        const pendientesHtml = pendientes.length ? `<div class="mb-3 text-xs"><div class="font-bold mb-1" style="opacity:.7"><i class="fas fa-hand-holding-dollar"></i> Ventas a crédito pendientes:</div>${pendientes.slice().reverse().map(v => { const rest = (v.creditoRestante != null) ? v.creditoRestante : v.total; return `&nbsp;• <b>${escapeHtml(v.id)}</b> ${escapeHtml(textoFechaVenta(v))}<br>&nbsp;&nbsp;Pendiente: <b>${fmtPrecio(rest)} Bs</b>${v.creditoPlazoDias ? ' · Plazo: ' + v.creditoPlazoDias + ' días' : ''}${v.creditoFechaLimite ? ' · Vence: ' + escapeHtml(textoFechaLimite(v.creditoFechaLimite)) : ''}`; }).join('<br>')}</div>` : '';
+        const abonosHtml = (cliente.abonos && cliente.abonos.length) ? `<div class="mb-3 text-xs"><div class="font-bold mb-1" style="opacity:.7"><i class="fas fa-scroll"></i> Abonos registrados:</div>${cliente.abonos.slice().reverse().map(a => `&nbsp;• ${escapeHtml(textoFechaLimite(a.timestamp || a.fecha))}: <b>${fmtPrecio(a.monto)} Bs</b>${a.nota ? ' (' + escapeHtml(a.nota) + ')' : ''}`).join('<br>')}</div>` : '';
+        modal.innerHTML = `<div class="modal-form-content"><h3 class="text-xl font-bold mb-4">Detalles del Cliente</h3><div class="mb-2"><strong>Nombre:</strong> ${escapeHtml(cliente.nombre)}</div><div class="mb-2"><strong>Cédula/RIF:</strong> ${escapeHtml(cliente.cedula || 'N/A')}</div><div class="mb-2"><strong>Teléfono:</strong> ${escapeHtml(cliente.telefono || 'N/A')}</div><div class="mb-2"><strong>Dirección:</strong> ${escapeHtml(cliente.direccion || 'N/A')}</div><div class="mb-2"><strong>Email:</strong> ${escapeHtml(cliente.email || 'N/A')}</div><div class="mb-3 rounded-xl p-3" style="background:rgba(128,128,128,0.07)"><span class="text-sm font-bold" style="color:${adeudo > 0 ? '#ef4444' : '#10b981'}"><i class="fas fa-credit-card"></i> Saldo: ${fmtPrecio(adeudo)} Bs</span></div>${pendientesHtml}${abonosHtml}<div class="flex gap-3 mt-4"><button id="btnAbonoDetalle" class="btn-azul-redondeado btn-redondeado flex-1 py-2"><i class="fas fa-money-bill-wave"></i> Registrar abono</button><button id="closeDetalle" class="btn-redondeado flex-1 py-2 bg-gray-200">Cerrar</button></div></div>`;
         document.body.appendChild(modal);
         document.getElementById('closeDetalle').onclick = () => modal.remove();
         document.getElementById('btnAbonoDetalle').onclick = () => { modal.remove(); registrarAbono(clienteId); };
@@ -4370,6 +4806,9 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
     }
     function renderListaCartera(norm){
         const todos = D.clientes || [];
+        // Ventas a crédito pendientes de un cliente y su vencimiento más próximo (sirve para "Vence:" en la tarjeta).
+        const ventasCreditoPendientes = (clienteId) => ((D.ventas)||[]).filter(v => v.credito && !v.anulada && v.clienteId === clienteId && ((v.creditoRestante != null ? v.creditoRestante : v.total) > 0));
+        const vencimientoCliente = (clienteId) => { let mejor = null; ventasCreditoPendientes(clienteId).forEach(v => { const m = Number(v.creditoFechaLimite) || 0; if(m && (mejor === null || m < mejor)) mejor = m; }); return mejor ? { ms: mejor, txt: textoFechaLimite(mejor) } : null; };
         let filt = todos.map(c => ({ c, adeudo: parseFloat(c.adeudo) || 0 }))
             .filter(x => _filtroCartera === 'todos' || x.adeudo > 0)
             .filter(x => {
@@ -4379,14 +4818,19 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
             .sort((a,b) => b.adeudo - a.adeudo);
         const cont = document.getElementById('listaCartera'); if(!cont) return;
         if(!filt.length){ cont.innerHTML = '<div class="text-center py-4 text-gray-500">' + (_filtroCartera==='deuda' ? 'Sin clientes con deuda <i class="fas fa-heart"></i>' : 'No hay clientes registrados') + '</div>'; return; }
-        cont.innerHTML = filt.map(x => `
-            <div class="client-card" data-id="${x.c.id}">
-                <div class="font-bold break-words">${escapeHtml(String(x.c.nombre || 'Sin nombre'))}</div>
+        cont.innerHTML = filt.map(x => {
+            const venc = vencimientoCliente(x.c.id);
+            const ultAbono = (x.c.abonos && x.c.abonos.length) ? x.c.abonos[x.c.abonos.length-1] : null;
+            const esDeudor = x.adeudo > 0;
+            return `
+            <div class="client-card" data-id="${x.c.id}" style="${esDeudor ? 'background:rgba(239,68,68,0.14)!important;border-color:rgba(239,68,68,0.7)!important' : ''}">
+                <div class="font-bold break-words">${esDeudor ? '<i class="fas fa-circle-exclamation" style="color:#ef4444;margin-right:4px"></i>' : ''}${escapeHtml(String(x.c.nombre || 'Sin nombre'))} ${esDeudor ? '<span style="font-size:9px;font-weight:800;color:#fff;background:#ef4444;border-radius:999px;padding:1px 6px;vertical-align:middle">DEUDOR</span>' : ''}</div>
                 <div class="text-xs text-gray-500 mt-1"><i class="fas fa-id-card"></i> ${escapeHtml(x.c.cedula || 'N/A')} | <i class="fas fa-phone"></i> ${escapeHtml(x.c.telefono || '—')}</div>
                 <div class="flex justify-between items-center mt-1"><span class="text-xs" style="opacity:.7">Saldo</span><span class="text-sm font-bold" style="color:${x.adeudo > 0 ? '#ef4444' : '#10b981'}">${fmtPrecio(x.adeudo)} Bs</span></div>
-                ${(x.c.abonos && x.c.abonos.length) ? `<div class="text-xs mt-1" style="opacity:.6"><i class="fas fa-scroll"></i> Último abono: ${escapeHtml(fmtFechaDisplay(x.c.abonos[x.c.abonos.length-1].fecha)||'')} · ${fmtPrecio(x.c.abonos[x.c.abonos.length-1].monto)} Bs</div>` : ''}
-                <div class="flex gap-2 mt-2"><button class="btn-abono-cartera btn-verde-redondeado"><i class="fas fa-money-bill-wave"></i> Abono</button><button class="btn-detalle-cartera btn-editar-redondeado"><i class="fas fa-user"></i> Detalle</button></div>
-            </div>`).join('');
+                ${venc ? `<div class="text-xs mt-1" style="opacity:.8;color:${venc.ms < Date.now() ? '#ef4444' : 'inherit'}"><i class="fas fa-calendar-day"></i> ${venc.ms < Date.now() ? 'Vencido:' : 'Vence:'} ${venc.txt}</div>` : ''}
+                ${ultAbono ? `<div class="text-xs mt-1" style="opacity:.6"><i class="fas fa-scroll"></i> Último abono: ${escapeHtml(textoFechaLimite(ultAbono.timestamp || ultAbono.fecha))} · ${fmtPrecio(ultAbono.monto)} Bs</div>` : ''}
+                <div class="card-btns"><button class="btn-abono-cartera btn-verde-redondeado"><i class="fas fa-money-bill-wave"></i> Abono</button><button class="btn-detalle-cartera btn-editar-redondeado"><i class="fas fa-user"></i> Detalle</button></div>
+            </div>`; }).join('');
         document.querySelectorAll('.btn-abono-cartera').forEach((btn, idx) => { btn.onclick = () => registrarAbono(filt[idx].c.id); });
         document.querySelectorAll('.btn-detalle-cartera').forEach((btn, idx) => { btn.onclick = () => mostrarDetalleCliente(filt[idx].c.id); });
     }
@@ -4406,11 +4850,19 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
         modal.innerHTML = `<div class="modal-form-content" style="max-width:400px"><h3 class="text-xl font-bold mb-2"><i class="fas fa-money-bill-wave"></i> Abono de ${escapeHtml(cli.nombre)}</h3>
             <div class="text-sm mb-3" style="opacity:.7">Adeudo actual: <b style="color:#ef4444">${fmtPrecio(adeudo)} Bs</b></div>
             <div class="mb-3"><label>Monto del abono (Bs)</label><input type="text" id="abonoMonto" inputmode="decimal" value="${adeudo > 0 ? fmtPrecio(adeudo) : ''}" class="border rounded-xl p-2 w-full"></div>
-            <div class="mb-3"><label>Método de cobro</label><select id="abonoMetodo" class="border rounded-xl p-2 w-full"><option value="efectivo_bs">\u{f53a} Efectivo Bs</option><option value="pago_movil">\u{f3cd} Pago Móvil</option><option value="transferencia">\u{f19c} Transferencia</option><option value="tarjeta_debito">\u{f09d} Tarjeta Débito</option></select></div>
+            <div class="mb-3"><label>Método de cobro</label><input type="hidden" id="abonoMetodo" value="efectivo_bs"><button type="button" id="btnAbonoMetodo" class="border rounded-xl p-2 w-full flex items-center justify-between" style="background:rgba(0,0,0,0.04);cursor:pointer;text-align:left"><span style="display:flex;align-items:center;gap:8px;min-width:0"><i id="abonoMetodoIcon" class="fas fa-money-bill-wave" style="color:var(--accent,#3b82f6);width:18px;text-align:center;flex-shrink:0"></i><span id="abonoMetodoText" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;font-size:.9rem">Efectivo (Bs)</span></span><span aria-hidden="true" style="flex-shrink:0;opacity:.55;font-size:.7rem">&#9662;</span></button></div>
             <div class="mb-3"><label>Nota (opcional)</label><input type="text" id="abonoNota" placeholder="Ej: primer corte" class="border rounded-xl p-2 w-full"></div>
             <div class="flex gap-3 mt-4"><button id="guardarAbono" class="btn-azul-redondeado btn-redondeado flex-1 py-2 font-bold">Registrar abono</button><button id="cancelarAbono" class="btn-redondeado flex-1 py-2 bg-gray-200">Cancelar</button></div></div>`;
         document.body.appendChild(modal);
         aplicarMascaraBs(document.getElementById('abonoMonto'));
+        const pintarAbonoMetodo = (v) => {
+            const inp = document.getElementById('abonoMetodo'); if(inp) inp.value = v;
+            const txt = document.getElementById('abonoMetodoText'); if(txt) txt.textContent = nombreTipoPago(v);
+            const ic = document.getElementById('abonoMetodoIcon'); if(ic) ic.className = 'fas ' + iconoTipoPago(v);
+        };
+        const btnAbonoMetodo = document.getElementById('btnAbonoMetodo');
+        if(btnAbonoMetodo) btnAbonoMetodo.onclick = () => mostrarSelectorPago(document.getElementById('abonoMetodo').value, v => pintarAbonoMetodo(v), PAGOS_SOLO_ABONO);
+        pintarAbonoMetodo(document.getElementById('abonoMetodo').value);
         document.getElementById('cancelarAbono').onclick = () => modal.remove();
         modal.onclick = e => { if(e.target === modal) modal.remove(); };
         document.getElementById('guardarAbono').onclick = async () => {
@@ -4822,6 +5274,7 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
     }
     function verificarStockBajo(){
         if(!D.config.alertaStockBajo) return;
+        if(D.config.silenciarNotif) return;
         const minStock = (D.config.stockMinimo > 0) ? D.config.stockMinimo : 5;
         let bajos = D.productos.filter(p => p.stock < minStock);
         if(bajos.length > 0){
@@ -4834,6 +5287,7 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
     }
     function notificarTasaActualizada(tasaAnterior, tasaNueva){
         if(!D.config.alertaTasa) return;
+        if(D.config.silenciarNotif) return;
         let diff = Math.abs(tasaNueva - tasaAnterior);
         if(diff > 0.5){
             mostrarNotificacion(`💱 La tasa USD cambió: ${fmtDolar(tasaAnterior)} → ${fmtDolar(tasaNueva)} Bs`, 'info');
@@ -4866,9 +5320,9 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
                             <div class="mt-2">
                                 <div class="text-xs font-semibold opacity-70 mb-1">Cambiar fuente de referencia (toca la deseada):</div>
                                 <div class="flex flex-col gap-1.5">
-                                    <button data-fuente="BCV" class="fuente-opcion ${(D.config.fuenteTasa || 'BCV')==='BCV' ? 'fuente-opcion-activa' : ''}"><span class="fuente-titulo"><span><i class="fas fa-book"></i> Tasa BCV</span><span class="fuente-vivo" id="tvBCV">${tasaVivaNumero('BCV')}</span></span><span class="text-xs opacity-60">(oficial · por defecto)</span></button>
-                                    <button data-fuente="ALCB-BCV" class="fuente-opcion ${(D.config.fuenteTasa || 'BCV')==='ALCB-BCV' ? 'fuente-opcion-activa' : ''}"><span class="fuente-titulo"><span><i class="fas fa-globe"></i> Tasa Al Cambio BCV</span><span class="fuente-vivo" id="tvALCB-BCV">${tasaVivaNumero('ALCB-BCV')}</span></span><span class="text-xs opacity-60">(BCV vía API Al Cambio)</span></button>
-                                    <button data-fuente="ALCB-USDT" class="fuente-opcion ${(D.config.fuenteTasa || 'BCV')==='ALCB-USDT' ? 'fuente-opcion-activa' : ''}"><span class="fuente-titulo"><span><i class="fas fa-coins"></i> Tasa Al Cambio USDT</span><span class="fuente-vivo" id="tvALCB-USDT">${tasaVivaNumero('ALCB-USDT')}</span></span><span class="text-xs opacity-60">(USDT vía API Al Cambio)</span></button>
+                                    <button data-fuente="BCV" class="fuente-opcion ${(D.config.fuenteTasa || 'BCV')==='BCV' ? 'fuente-opcion-activa' : ''}"><span class="fuente-titulo"><span><img class="fuente-logo" src="iconos/bcv-mini.png" alt=""> Tasa BCV</span><span class="fuente-vivo" id="tvBCV">${tasaVivaNumero('BCV')}</span></span><span class="text-xs opacity-60">(oficial · por defecto)</span></button>
+                                    <button data-fuente="ALCB-BCV" class="fuente-opcion ${(D.config.fuenteTasa || 'BCV')==='ALCB-BCV' ? 'fuente-opcion-activa' : ''}"><span class="fuente-titulo"><span><img class="fuente-logo" src="iconos/alcambio-mini.png" alt=""> Tasa Al Cambio BCV</span><span class="fuente-vivo" id="tvALCB-BCV">${tasaVivaNumero('ALCB-BCV')}</span></span><span class="text-xs opacity-60">(BCV vía API Al Cambio)</span></button>
+                                    <button data-fuente="ALCB-USDT" class="fuente-opcion ${(D.config.fuenteTasa || 'BCV')==='ALCB-USDT' ? 'fuente-opcion-activa' : ''}"><span class="fuente-titulo"><span><img class="fuente-logo" src="iconos/usdt-mini.png" alt=""> Tasa Al Cambio USDT</span><span class="fuente-vivo" id="tvALCB-USDT">${tasaVivaNumero('ALCB-USDT')}</span></span><span class="text-xs opacity-60">(USDT vía API Al Cambio)</span></button>
                                 </div>
                             </div>
                             <div class="flex justify-between items-center mt-2">
@@ -4914,6 +5368,8 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
                         ${filaOpcion('<i class="fas fa-boxes-stacked"></i>','Stock bajo', 'Notificar cuando hay productos con stock bajo', 'toggleAlertaStock', D.config.alertaStockBajo)}
                         ${filaOpcion('<i class="fas fa-money-bill-transfer"></i>','Cambio de tasa USD', 'Notificar cuando cambia la tasa del dólar', 'toggleAlertaTasa', D.config.alertaTasa)}
                         ${filaOpcion('<i class="fas fa-volume-high"></i>','Sonido', 'Reproducir sonido cuando se emite una alerta', 'toggleSonidoAlertas', D.config.sonidoAlertas)}
+                        ${filaOpcion('<i class="fas fa-music"></i>','Elegir sonido', 'Usar el sonido interno propio del app (2.mp3) en las alertas, en lugar del del sistema', 'toggleElegirSonido', D.config.usarSonidoInterno)}
+                        ${filaOpcion('<i class="fas fa-volume-xmark"></i>','Silenciar notificaciones', 'No mostrar el aviso ni sonar cuando cambia una tasa', 'toggleSilenciarNotif', D.config.silenciarNotif)}
                     </div>
                     <div class="mb-2"><label class="text-xs opacity-70">Umbral de stock mínimo</label><input type="number" id="stockMinimoInput" min="0" value="${D.config.stockMinimo > 0 ? D.config.stockMinimo : 5}" class="border rounded-xl p-2 w-full"></div>
                     <p class="text-xs text-center mt-3 opacity-60">Las alertas aparecen como notificaciones al iniciar y al realizar acciones clave</p>
@@ -5107,7 +5563,9 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
         };
         document.getElementById('toggleAlertaStock').onchange = async e => { D.config.alertaStockBajo = e.target.checked; await saveConfig(); };
         document.getElementById('toggleAlertaTasa').onchange = async e => { D.config.alertaTasa = e.target.checked; await saveConfig(); };
-        document.getElementById('toggleSonidoAlertas').onchange = async e => { D.config.sonidoAlertas = e.target.checked; await saveConfig(); };
+                        document.getElementById('toggleSonidoAlertas').onchange = async e => { D.config.sonidoAlertas = e.target.checked; await saveConfig(); };
+                        document.getElementById('toggleElegirSonido').onchange = async e => { D.config.usarSonidoInterno = e.target.checked; await saveConfig(); await notificarPrefServicio('usarSonidoInterno', e.target.checked); };
+                        document.getElementById('toggleSilenciarNotif').onchange = async e => { D.config.silenciarNotif = e.target.checked; await saveConfig(); await notificarPrefServicio('silenciarNotif', e.target.checked); };
         const stockMinInp = document.getElementById('stockMinimoInput');
         if(stockMinInp){
             const aplicarStockMin = (v) => { const n = parseInt(v, 10); D.config.stockMinimo = isFinite(n) && n >= 0 ? n : 5; saveConfig(); verificarStockBajo(); };

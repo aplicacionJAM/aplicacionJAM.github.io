@@ -9,19 +9,22 @@
         .btn-redondeado{border-radius:8px!important;padding:4px 12px!important;font-size:.8rem!important;font-weight:600!important;cursor:pointer!important;border:none!important}
         .btn-redondeado:active{transform:scale(.96)}
         .btn-editar-redondeado, .btn-eliminar-redondeado, .btn-verde-redondeado {
-            padding: 4px 10px !important;
-            font-size: 0.7rem !important;
-            font-weight: 500 !important;
+            padding: 4px 12px !important;
+            font-size: 0.8rem !important;
+            font-weight: 600 !important;
             border-radius: 8px !important;
             display: inline-flex !important;
             align-items: center !important;
-            gap: 4px !important;
+            gap: 5px !important;
+            white-space: nowrap !important;
         }
-        .btn-editar-redondeado i, .btn-eliminar-redondeado i, .btn-verde-redondeado i { font-size: 0.65rem !important; }
+        .btn-editar-redondeado i, .btn-eliminar-redondeado i, .btn-verde-redondeado i { font-size: 0.75rem !important; }
         .btn-editar-redondeado{background:#f97316!important;color:#fff!important}
         .btn-eliminar-redondeado{background:#ef4444!important;color:#fff!important}
         .btn-verde-redondeado{background:#10b981!important;color:#fff!important}
-        .product-card .flex.gap-2.mt-2 button{padding:4px 10px!important;font-size:.7rem!important;font-weight:500!important;border-radius:8px!important;display:inline-flex!important;align-items:center!important;gap:4px!important;height:auto!important;line-height:1.2!important}
+        .card-btns{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:8px}
+        .card-btns button{padding:4px 5px!important;font-size:.68rem!important;font-weight:600!important;border-radius:8px!important;display:flex!important;align-items:center!important;justify-content:center!important;gap:3px!important;height:auto!important;line-height:1.2!important;white-space:nowrap!important;flex:1 1 0!important;min-width:0!important;max-width:88px!important}
+        .card-btns button i{font-size:.62rem!important}
         .btn-azul-redondeado{background:var(--accent)!important;color:#fff!important;padding:4px 12px!important;font-size:.8rem!important;font-weight:600!important;border-radius:8px!important}
         body.light-mode .config-section > .btn-azul-redondeado{color:#fff!important}
         body.dark-mode .config-section > .btn-azul-redondeado{color:#000!important}
@@ -93,6 +96,11 @@
         body.dark-mode .kpi-popup input:not([type=range]):not([type=checkbox]), body.dark-mode .kpi-popup select, body.dark-mode .kpi-popup textarea{background:#000!important}
         body.dark-mode .backup-popup input:not([type=range]):not([type=checkbox]), body.dark-mode .backup-popup select, body.dark-mode .backup-popup textarea{background:#000!important}
         body.dark-mode .backup-popup{background:#1f1f1f!important;color:#e0e0e0!important;border:2px solid #3a3a3a!important}
+        /* Selector propio de método de pago (iconos FA reales, visibles en móvil) */
+        .opcion-pago-fila{display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;margin-bottom:8px;border:2px solid rgba(0,0,0,.08);border-radius:14px;background:transparent;cursor:pointer;font-size:.9rem;font-weight:600;color:inherit;text-align:left;color:#111}
+        .opcion-pago-fila:active{transform:scale(.98)}
+        .opcion-pago-fila .opcion-pago-ic{width:20px;text-align:center;flex-shrink:0;font-size:1rem}
+        body.dark-mode .opcion-pago-fila{border-color:rgba(255,255,255,.14);color:#e0e0e0}
         /* Barra deslizante de % ganancia (bloqueada por defecto, se desbloquea al mantener 2s) */
         .gan-range{cursor:not-allowed;opacity:.45;transition:opacity .2s ease}
         .gan-range:not(.gan-bloqueada){cursor:pointer;opacity:1;accent-color:var(--accent,#3b82f6)}
@@ -138,6 +146,8 @@
         .config-section{border:2px solid var(--accent);border-radius:20px;padding:12px;margin-bottom:20px}
         .config-inner{padding:0 8px}
 .fuente-titulo{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%}
+.fuente-logo{width:18px;height:18px;border-radius:50%;object-fit:contain;background:#fff;padding:1px;margin-right:6px;vertical-align:-4px;display:inline-block}
+.tv-logo{width:14px;height:14px;border-radius:50%;object-fit:contain;background:#fff;padding:1px;margin-right:5px;vertical-align:-2px;display:inline-block}
 .fuente-opcion{display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:8px 10px;border-radius:12px;border:2px solid rgba(128,128,128,.25);background:transparent;color:inherit;text-align:left;font-size:.85rem;cursor:pointer;user-select:none;touch-action:manipulation;width:100%}
 .fuente-opcion:active{transform:scale(.98)}
 .fuente-opcion-activa{border-color:var(--accent);background:rgba(59,130,246,.12);font-weight:700}
@@ -341,7 +351,12 @@ body.has-sidebar .tasas-extras{max-width:450px;margin-left:auto;margin-right:aut
         
         /* ===== PAGO DIVIDIDO ===== */
         .split-payment-row{display:flex;gap:8px;align-items:center;margin-bottom:8px}
-        .split-payment-row select{flex:0 0 140px}
+        .split-payment-row .split-metodo-btn{flex:0 0 165px;display:flex;align-items:center;gap:6px;min-width:0;border:none;background:rgba(0,0,0,.06);border-radius:10px;padding:7px 8px;font-size:.75rem;font-weight:600;cursor:pointer;color:inherit;text-align:left}
+        .split-payment-row .split-metodo-btn:active{transform:scale(.97)}
+        .split-metodo-ic{flex-shrink:0;width:14px;text-align:center;font-size:.8rem}
+        .split-metodo-txt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
+        .split-metodo-caret{flex-shrink:0;font-size:.6rem;opacity:.55}
+        body.dark-mode .split-payment-row .split-metodo-btn{background:rgba(255,255,255,.08)}
         .split-payment-row input{flex:1;min-width:0}
         .split-payment-row .remove-split{flex-shrink:0;width:32px;height:32px;border-radius:50%;border:none;background:#ef4444;color:#fff;cursor:pointer;font-size:1rem;display:flex;align-items:center;justify-content:center}
         .split-payment-row .remove-split:active{transform:scale(.92)}
@@ -511,7 +526,6 @@ body.has-sidebar .tasas-extras{max-width:450px;margin-left:auto;margin-right:aut
         .backup-popup-btn-secundario{background:rgba(59,130,246,.1);color:#3b82f6;border:1px solid rgba(59,130,246,.3)}
         .backup-popup-btn-texto{background:none;color:#999;font-size:.8rem;font-weight:400}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
-#tipoPago, #tipoPago option, #abonoMetodo, #abonoMetodo option, .split-payment-row select, .split-payment-row select option { font-family:'FontAwesome', system-ui, sans-serif; }
 .panel-tasa{background:rgba(0,0,0,.04);border:1px solid rgba(128,128,128,.2)}
 body.dark-mode .panel-tasa{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.12)}
 

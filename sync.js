@@ -609,14 +609,12 @@
     var tieneCirculo = !!est.circle;
     var esHub = tieneCirculo && est.circle.soyHub;
     root.innerHTML = `
-      <div class="page-header-fixed">
-        <div class="module-header">
-          <div class="flex items-center" style="gap:10px">
-            <button class="btn-back-module" onclick="backToHome()"><i class="fas fa-arrow-left"></i></button>
-            <h2 class="text-xl font-bold" style="color:${accent};margin:0"><i class="fas fa-sync-alt" style="color:${accent}"></i> Sincronizar</h2>
-          </div>
+      <div class="page-header-fixed"><div class="module-header">
+        <div class="flex items-center" style="min-width:0">
+          <h2 id="tituloModule" class="module-title" style="color:${accent}" onmousedown="iniciarBloqueo(this,'Sincronizar')" onmouseup="cancelarBloqueo()" onmouseleave="cancelarBloqueo()">Sincronizar</h2>
         </div>
-      </div>
+        <div id="btnVolverModule" class="btn-back" onclick="backToHome()"><i class="fas fa-arrow-left"></i> Volver</div>
+      </div></div>
       <div class="max-w-xl mx-auto pt-4" style="padding-bottom:120px">
         <div class="rounded-2xl p-4 mb-3" style="border:1px solid ${accent}33;background:${accent}0d">
           <div class="flex items-center justify-between">
