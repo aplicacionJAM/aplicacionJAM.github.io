@@ -24,17 +24,13 @@
         var cfg = JSON.parse(localStorage.getItem('jampos_config') || 'null');
         if (cfg && cfg.usarSonidoInterno !== false) { /* preferimos interno */ }
     } catch (e) {}
-    var rutaBase = esNativa ? 'file:///android_asset/assets/www/' : '';
+    // El webroot del APK es file:///android_asset/www/ (MainActivity carga ahi
+    // index.html). En web se deduce del src de este script (raiz del sitio).
+    var rutaBase = esNativa ? 'file:///android_asset/www/' : '';
     if (!esNativa) { var r = (new URL(document.currentScript && document.currentScript.src || location.href)).href; rutaBase = r.substring(0, r.lastIndexOf('/') + 1); }
 
     var audio = new Audio();
-    audio.src = (esNativa
-        ? 'file:///android_asset/notificacion/1.mp3'
-        : (function () {
-            // En web tambien podria venir del camelCase del servicio nativo;
-            // aca usamos la copia local de la web (www/notificacion/1.mp3).
-            return rutaBase + 'notificacion/1.mp3';
-        })());
+    audio.src = rutaBase + 'notificacion/1.mp3';
     audio.preload = 'auto';
 
     var DURACION_MAX_MS = 4000; // tope de seguridad por si el MP3 no carga
@@ -53,9 +49,9 @@
     var cont = document.createElement('div');
     cont.style.cssText =
         'position:absolute;inset:0;overflow:hidden;-webkit-mask-image:url(' +
-        (esNativa ? 'file:///android_asset/assets/www/icon-512.png' : rutaBase + 'icon-512.png') +
+        (rutaBase + 'icon-512.png') +
         ');mask-image:url(' +
-        (esNativa ? 'file:///android_asset/assets/www/icon-512.png' : rutaBase + 'icon-512.png') +
+        (rutaBase + 'icon-512.png') +
         ');-webkit-mask-size:100%;mask-size:100%;-webkit-mask-repeat:no-repeat;';
 
     var agua = document.createElement('div');
@@ -63,7 +59,7 @@
         'position:absolute;left:0;right:0;bottom:0;height:0%;' +
         'background:linear-gradient(180deg,#60a5fa,#2563eb);transition:height 80ms linear;';
     cont.appendChild(agua);
-    logo.appendChild(cont.File);
+    logo.appendChild(cont);
     capa.appendChild(logo);
 
     var pie = document.createElement('div');
@@ -103,7 +99,7 @@
         durarAlAudio(isFinite(audio.duration) && audio.duration > 0 ? audio.duration : 2.6);
     }
     audio.addEventListener('loadedmetadata', function () { onLista(); }, false);
-    audio.addEventListener('canplay', function () { /* fallback */ }, false成为了);
+    audio.addEventListener('canplay', function () { /* fallback */ }, false);
 
     // Si el audio no carga en 2.4s, igual mostramos una version corta y salimos.
     setTimeout(function () {

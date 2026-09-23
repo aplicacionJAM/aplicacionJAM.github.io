@@ -1,4 +1,4 @@
-const CACHE_NAME = "jampos-web-cache-v12-a19";
+const CACHE_NAME = "jampos-web-cache-v12-a19-snd";
 const STATIC_ASSETS = [
   "./",
   "./index.html",
@@ -28,7 +28,9 @@ const STATIC_ASSETS = [
   "./update-notify.js",
   "./promo-notify.js",
   "./update.json",
-  "./app.js"
+  "./app.js",
+  "./notificacion/1.mp3",
+  "./notificacion/2.mp3"
 ];
 
 self.addEventListener("install", (event) => {

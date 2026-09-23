@@ -101,6 +101,9 @@
     if (window.mostrarNotificacionNativa) {
       window.mostrarNotificacionNativa(titulo, cuerpo, tag || "jampos-promo", image ? { image: image } : undefined);
     }
+    if (typeof window.reproducirSonidoAlerta === 'function' && window.__promoPermiteSonido !== false) {
+      try { window.reproducirSonidoAlerta(); } catch (e) {}
+    }
   }
 
   // ==================== CAPA QF: CONTROL REMOTO + INDICE + RECONOCIMIENTO ====================

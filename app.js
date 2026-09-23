@@ -772,6 +772,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
             empresa: { nombre:'JAM POS', direccion:'', telefono:'', rif:'', logo:'' },
             alertaStockBajo: true, alertaTasa: true, sonidoAlertas: true,
             usarSonidoInterno: true, silenciarNotif: false,
+            sonidoNotif: { nombre: '2.mp3', audio: null },
             stockMinimo: 5
         }
     };
@@ -1236,6 +1237,10 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
     }
     function reproducirSonidoCambio() {
         try {
+            var elegido = D.config && D.config.sonidoNotif && D.config.sonidoNotif.audio;
+            var usarInterno = !D.config || D.config.usarSonidoInterno !== false;
+            var usarNuevo = elegido || usarInterno;
+            if (usarNuevo) { reproducirSonidoAlerta(); return; }
             if (!D.__audioCtx) D.__audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             const ctx = D.__audioCtx;
             const reanudar = (ctx.resume && ctx.resume()) || Promise.resolve();
@@ -5430,12 +5435,105 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
     function reproducirSonidoAlerta(){
         if(!D.config.sonidoAlertas) return;
         try {
+            var elegido = D.config.sonidoNotif && D.config.sonidoNotif.audio;
+            var usarInterno = D.config.usarSonidoInterno !== false;
+            if (elegido) {
+                if (D.__audioAlerta && D.__audioAlerta.src !== elegido) { try { D.__audioAlerta.pause(); } catch(e){} D.__audioAlerta = null; }
+                if (!D.__audioAlerta) { D.__audioAlerta = new Audio(elegido); }
+                D.__audioAlerta.volume = 1;
+                var p1 = D.__audioAlerta.play(); if (p1 && p1.catch) p1.catch(function(){});
+                return;
+            }
+            if (usarInterno) {
+                var ruta = sonidoRuta('notificacion/2.mp3');
+                if (D.__audioAlerta && D.__audioAlerta.src !== ruta) { try { D.__audioAlerta.pause(); } catch(e){} D.__audioAlerta = null; }
+                if (!D.__audioAlerta) { D.__audioAlerta = new Audio(ruta); }
+                D.__audioAlerta.volume = 1;
+                var p2 = D.__audioAlerta.play(); if (p2 && p2.catch) p2.catch(function(){});
+                return;
+            }
             let ctx = new (window.AudioContext || window.webkitAudioContext)();
             let osc = ctx.createOscillator(); osc.type = 'sine'; osc.frequency.value = 800;
             let gain = ctx.createGain(); gain.gain.value = 0.3;
             osc.connect(gain); gain.connect(ctx.destination);
             osc.start(); setTimeout(() => { osc.stop(); ctx.close(); }, 200);
         } catch(e) { /* fallo silencioso */ }
+    }
+    function sonidoRuta(rel){
+        var nat = typeof window.AndroidBridge !== 'undefined' && !!window.AndroidBridge;
+        return nat ? 'file:///android_asset/www/' + rel : rel;
+    }
+    function abrirSelectorSonido(){
+        var modal = document.createElement('div');
+        modal.style.cssText = 'position:fixed;inset:0;z-index:2147483600;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.55);font-family:sans-serif;';
+        var nombreActual = (D.config.sonidoNotif && D.config.sonidoNotif.nombre) || '2.mp3';
+        var usaInterno = D.config.usarSonidoInterno !== false;
+        var caja = document.createElement('div');
+        caja.style.maxWidth = '420px';
+        caja.style.width = '92%';
+        caja.style.background = (D.config.backgroundMode === 'dark' ? '#1e293b' : '#fff');
+        caja.style.color = (D.config.backgroundMode === 'dark' ? '#e2e8f0' : '#0f172a');
+        caja.style.borderRadius = '18px';
+        caja.style.padding = '20px';
+        caja.style.boxShadow = '0 20px 60px rgba(0,0,0,.35)';
+        caja.innerHTML =
+            '<h3 style="margin:0 0 4px;font-size:17px;font-weight:800"><i class="fas fa-music"></i> Sonido de notificaciones</h3>' +
+            '<p style="margin:0 0 14px;font-size:12px;opacity:.65">Se usa en alertas de stock, tasa USD y promociones.</p>' +
+            '<div id="selSonidoInterno" style="display:flex;align-items:center;justify-content:space-between;gap:8px;border:1px solid rgba(128,128,128,.35);border-radius:12px;padding:10px 12px;margin-bottom:8px;cursor:pointer">' +
+            '<div><div style="font-weight:700;font-size:13px"><i class="fas fa-volume-high"></i> Sonido interno (' + nombreActual + ')</div><div style="font-size:11px;opacity:.6">Por defecto del app</div></div>' +
+            '<span id="iconSelInt" style="font-size:18px">' + (usaInterno && !D.config.sonidoNotif.audio ? '&#10003;' : '&#10003;') + '</span></div>' +
+            '<label for="audioArchivoInput" style="display:flex;align-items:center;justify-content:space-between;gap:8px;border:1px solid rgba(128,128,128,.35);border-radius:12px;padding:10px 12px;margin-bottom:14px;cursor:pointer;background:rgba(59,130,246,.12)">' +
+            '<div><div style="font-weight:700;font-size:13px"><i class="fas fa-folder-open"></i> Elegir del sistema</div><div style="font-size:11px;opacity:.6">MP3 · WAV · OGG · M4A (Android / Windows / Linux...)</div></div>' +
+            '<span style="font-size:18px">&#11014;</span></label>' +
+            '<input type="file" id="audioArchivoInput" accept="audio/*,.mp3,.wav,.ogg,.m4a" style="display:none">' +
+            '<span id="selSonidoPrueba" style="background:#3b82f6;color:#fff;border:none;border-radius:10px;padding:9px 12px;font-size:13px;font-weight:700;margin-bottom:10px;display:inline-block;cursor:pointer"><i class="fas fa-play"></i> Probar sonido</span>' +
+            '<span id="selSonidoLimpiar" style="background:rgba(239,68,68,.15);color:#ef4444;border:none;border-radius:10px;padding:9px 12px;font-size:13px;font-weight:700;margin-bottom:10px;display:inline-block;cursor:pointer"><i class="fas fa-rotate-left"></i> Restaurar 2.mp3</span>' +
+            '<div style="display:flex;gap:8px;margin-top:6px">' +
+            '<span id="selSonidoGuardar" style="flex:1;background:#10b981;color:#fff;border:none;border-radius:12px;padding:11px;font-size:14px;font-weight:800;text-align:center;cursor:pointer"><i class="fas fa-check"></i> Aplicar</span>' +
+            '<span id="selSonidoCancelar" style="flex:1;background:rgba(128,128,128,.18);color:inherit;border:none;border-radius:12px;padding:11px;font-size:14px;font-weight:700;text-align:center;cursor:pointer">Cancelar</span>' +
+            '</div>';
+        modal.appendChild(caja);
+        document.documentElement.appendChild(modal);
+        var pendiente = null;
+        (function(){
+            var iv = document.getElementById('selSonidoInterno');
+            var ic = document.getElementById('iconSelInt');
+            var input = document.getElementById('audioArchivoInput');
+            var prueba = document.getElementById('selSonidoPrueba');
+            var limpiar = document.getElementById('selSonidoLimpiar');
+            var guardar = document.getElementById('selSonidoGuardar');
+            var cancelar = document.getElementById('selSonidoCancelar');
+            if (iv) iv.onclick = function(){ pendiente = null; ic.innerHTML = '&#10003;'; };
+            if (input) input.onchange = function(){
+                var f = input.files && input.files[0];
+                if (!f) return;
+                var lector = new FileReader();
+                lector.onload = function(){ pendiente = { nombre: f.name, audio: lector.result }; ic.innerHTML = '&#10003;'; };
+                lector.readAsDataURL(f);
+            };
+            if (prueba) prueba.onclick = function(){
+                var src = pendiente ? pendiente.audio : sonidoRuta('notificacion/2.mp3');
+                try { var t = new Audio(src); t.volume = 1; var p = t.play(); if (p && p.catch) p.catch(function(){}); } catch(e){}
+            };
+            if (limpiar) limpiar.onclick = function(){ pendiente = { nombre: '2.mp3', audio: null }; ic.innerHTML = '&#10003;'; };
+            if (guardar) guardar.onclick = async function(){
+                if (pendiente === null) {
+                    if (!D.config.sonidoNotif) D.config.sonidoNotif = {};
+                    D.config.sonidoNotif.nombre = nombreActual;
+                    D.config.usarSonidoInterno = true;
+                    await saveConfig(); await notificarPrefServicio('usarSonidoInterno', true);
+                } else {
+                    if (!D.config.sonidoNotif) D.config.sonidoNotif = {};
+                    D.config.sonidoNotif.nombre = pendiente.nombre;
+                    D.config.sonidoNotif.audio = pendiente.audio;
+                    D.config.usarSonidoInterno = pendiente.audio ? false : true;
+                    await saveConfig(); await notificarPrefServicio('usarSonidoInterno', !!pendiente.audio);
+                }
+                try { modal.parentNode.removeChild(modal); } catch(e){}
+                mostrarNotificacion('Sonido de notificaciones actualizado', 'success');
+            };
+            if (cancelar) cancelar.onclick = function(){ try { modal.parentNode.removeChild(modal); } catch(e){} };
+        })();
     }
     function verificarStockBajo(){
         if(!D.config.alertaStockBajo) return;
@@ -5534,7 +5632,10 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
                         ${filaOpcion('<i class="fas fa-boxes-stacked"></i>','Stock bajo', 'Notificar cuando hay productos con stock bajo', 'toggleAlertaStock', D.config.alertaStockBajo)}
                         ${filaOpcion('<i class="fas fa-money-bill-transfer"></i>','Cambio de tasa USD', 'Notificar cuando cambia la tasa del dólar', 'toggleAlertaTasa', D.config.alertaTasa)}
                         ${filaOpcion('<i class="fas fa-volume-high"></i>','Sonido', 'Reproducir sonido cuando se emite una alerta', 'toggleSonidoAlertas', D.config.sonidoAlertas)}
-                        ${filaOpcion('<i class="fas fa-music"></i>','Elegir sonido', 'Usar el sonido interno propio del app (2.mp3) en las alertas, en lugar del del sistema', 'toggleElegirSonido', D.config.usarSonidoInterno)}
+                        <div class="opcion-fila">
+                            <span class="opcion-izq"><span class="opcion-icono"><i class="fas fa-music"></i></span><span class="opcion-nombre">Elegir sonido<span class="opcion-desc">Sonido de las notificaciones (tasa, promociones y alertas). Toca para escoger del sistema.</span></span></span>
+                            <button id="btnElegirSonido" type="button" class="btn-redondeado py-1 px-3 text-xs" style="background:${accent};color:#fff"><i class="fas fa-upload"></i> Elegir</button>
+                        </div>
                         ${filaOpcion('<i class="fas fa-volume-xmark"></i>','Silenciar notificaciones', 'No mostrar el aviso ni sonar cuando cambia una tasa', 'toggleSilenciarNotif', D.config.silenciarNotif)}
                     </div>
                     <div class="mb-2"><label class="text-xs opacity-70">Umbral de stock mínimo</label><input type="number" id="stockMinimoInput" min="0" value="${D.config.stockMinimo > 0 ? D.config.stockMinimo : 5}" class="border rounded-xl p-2 w-full"></div>
@@ -5730,7 +5831,7 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
         document.getElementById('toggleAlertaStock').onchange = async e => { D.config.alertaStockBajo = e.target.checked; await saveConfig(); };
         document.getElementById('toggleAlertaTasa').onchange = async e => { D.config.alertaTasa = e.target.checked; await saveConfig(); };
                         document.getElementById('toggleSonidoAlertas').onchange = async e => { D.config.sonidoAlertas = e.target.checked; await saveConfig(); };
-                        document.getElementById('toggleElegirSonido').onchange = async e => { D.config.usarSonidoInterno = e.target.checked; await saveConfig(); await notificarPrefServicio('usarSonidoInterno', e.target.checked); };
+                        document.getElementById('btnElegirSonido').onclick = () => { abrirSelectorSonido(); };
                         document.getElementById('toggleSilenciarNotif').onchange = async e => { D.config.silenciarNotif = e.target.checked; await saveConfig(); await notificarPrefServicio('silenciarNotif', e.target.checked); };
                         document.getElementById('toggleGuiaCabecera').onchange = async e => { D.config.mostrarGuiaCabecera = e.target.checked; await saveConfig(); };
         const stockMinInp = document.getElementById('stockMinimoInput');
