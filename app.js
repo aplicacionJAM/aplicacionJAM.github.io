@@ -417,6 +417,33 @@
         setTimeout(() => { document.body.style.transform = ''; }, 100);
     }
     
+    // ==================== VENTANA ESCRITORIO (frameless, sin menú) ====================
+    // En escritorio (Electron) la clase desktop-window activa la barra propia
+    // tintada del fondo del tema. Debe reaplicarse tras cada applyTheme porque
+    // ese método resetea body.className.
+    function esEscritorio() {
+        try { return !!(window.AndroidBridge && AndroidBridge.esEscritorio === true); } catch(e) { return false; }
+    }
+    function initDesktopWindow() {
+        if (!esEscritorio()) return;
+        document.body.classList.add('desktop-window');
+        const min = document.getElementById('dbtnMin');
+        const max = document.getElementById('dbtnMax');
+        const close = document.getElementById('dbtnClose');
+        if (min && max && close && !window.__jamBarraEscritorioOk) {
+            window.__jamBarraEscritorioOk = true;
+            min.addEventListener('click', (e) => { e.preventDefault(); try { AndroidBridge.minimizarVentana(); } catch(_){} });
+            max.addEventListener('click', (e) => { e.preventDefault(); try { AndroidBridge.maximizarVentana(); } catch(_){} });
+            close.addEventListener('click', (e) => { e.preventDefault(); try { AndroidBridge.cerrarVentana(); } catch(_){} });
+            // Doble clic en la zona de arrastre: maximizar/restaurar
+            const barra = document.getElementById('desktopTitlebar');
+            if (barra) barra.addEventListener('dblclick', (e) => {
+                if (e.target.closest && e.target.closest('#desktopTitlebarBtns')) return;
+                try { AndroidBridge.maximizarVentana(); } catch(_){}
+            });
+        }
+    }
+
     // ==================== STORAGE KEYS ====================
     const DATA_STORES = ['productos', 'clientes', 'proveedores', 'gastos', 'empleados', 'ventas', 'tasa_diaria', 'tickets', 'entregas'];
     const STORAGE_KEYS = {
@@ -1001,6 +1028,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         document.body.classList.add(`${modo}-mode`);
         if (temaOscuro) document.body.classList.add('accent-oscuro');
         actualizarModoLayout();
+        initDesktopWindow();
         
         const navBarColor = modo === 'dark' ? '#000000' : '#ffffff';
         
@@ -1959,7 +1987,7 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
             let precioU = (it.precioUsadoBs != null && it.precioUsadoBs > 0) ? it.precioUsadoBs : it.precioVentaBs;
             let subit = precioU * it.cantidad;
             suma += subit;
-            html += `<div class="carrito-item" data-i="${i}" style="position:relative;overflow:hidden;cursor:pointer"><div style="position:absolute;left:0;top:0;bottom:0;width:0;background:var(--accent,#3b82f6);opacity:0.15;transition:width 2s linear" class="lp-bar"></div><div class="flex justify-between text-sm py-1" style="position:relative;z-index:1"><div>${escapeHtml(it.nombre)} x${it.cantidad}${it.precioOferta ? ' <span class="text-xs" style="color:#10b981">(Oferta)</span>' : ''}</div><div>${fmtPrecio(subit)} Bs <button onclick="event.stopPropagation();eliminarDelCarrito(${i})" class="text-red-500 ml-2"><i class="fas fa-trash"></i></button></div></div></div>`;
+            html += `<div class="carrito-item" data-i="${i}" style="position:relative;overflow:hidden;cursor:pointer"><div style="position:absolute;left:0;top:0;bottom:0;width:0;background:var(--accent,#3b82f6);opacity:0.15;transition:width 2s linear" class="lp-bar"></div><div style="position:relative;z-index:1;display:flex;justify-content:space-between;align-items:center;gap:8px" class="text-sm py-1"><div style="flex:1;min-width:0;text-align:left">${escapeHtml(it.nombre)} x${it.cantidad}${it.precioOferta ? ' <span class="text-xs" style="color:#10b981">(Oferta)</span>' : ''}</div><div style="flex-shrink:0;text-align:right;white-space:nowrap">${fmtPrecio(subit)} Bs <button onclick="event.stopPropagation();eliminarDelCarrito(${i})" class="text-red-500 ml-2"><i class="fas fa-trash"></i></button></div></div></div>`;
         });
         cont.innerHTML = html;
         cont.querySelectorAll('.carrito-item').forEach(el => {

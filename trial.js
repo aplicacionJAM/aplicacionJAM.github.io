@@ -352,6 +352,7 @@
     }
 
     function bloquearInmediato() {
+        if (!CANDADO_ACTIVO) return false;   // candado apagado -> el sistema Ultimate nunca bloquea
         var est = estadoActual();
         if (est && est.bloqueada) { mostrarBloqueo(); return true; }
         var n = estadoNativo();

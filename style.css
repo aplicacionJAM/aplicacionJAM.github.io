@@ -545,3 +545,23 @@ body.dark-mode .recorte-pie{color:#9ca3af}
 .recorte-boton-cancelar{background:#f3f4f6;color:#374151}
 body.dark-mode .recorte-boton-cancelar{background:rgba(255,255,255,.08);color:#e5e7eb}
 .recorte-boton-ok{background:linear-gradient(135deg,#2563eb,#3b82f6);color:#fff}
+
+
+/* ==================== VENTANA ESCRITORIO (frameless, sin menu) ==================== */
+#desktopTitlebar{display:none}
+body.desktop-window #desktopTitlebar{display:flex;position:fixed;top:0;left:0;right:0;height:38px;z-index:2147483500;align-items:center;justify-content:space-between;-webkit-app-region:drag;app-region:drag;user-select:none;border-bottom:1px solid rgba(128,128,128,.22)}
+#desktopTitlebarTitulo{font-size:13px;font-weight:700;padding-left:14px;letter-spacing:.2px;opacity:.9;pointer-events:none}
+#desktopTitlebarBtns{display:flex;-webkit-app-region:no-drag;app-region:no-drag}
+.dbtn{width:46px;height:38px;display:flex;align-items:center;justify-content:center;border:0;background:transparent;cursor:pointer;outline:none;-webkit-app-region:no-drag;app-region:no-drag}
+.dbtn svg{width:12px;height:12px}
+.dbtn:hover{background:rgba(128,128,128,.22)}
+.dbtn-close:hover{background:#e81123}
+.dbtn-close:hover svg{color:#fff}
+/* Tinte: claro -> barra blanca, oscuro -> barra negra */
+body.desktop-window.light-mode #desktopTitlebar{background:#ffffff;color:#1e1e1e}
+body.desktop-window.dark-mode #desktopTitlebar{background:#0a0a0a;color:#e0e0e0}
+/* Ajuste de contenido para que no quede bajo la barra */
+body.desktop-window .sidebar{top:38px;bottom:0}
+body.desktop-window .main-container, body.desktop-window .home-container{padding-top:38px}
+body.desktop-window .page-header-fixed{top:38px}
+@media(max-width:1023px){body.desktop-window .main-container, body.desktop-window .home-container{padding-top:38px}}
