@@ -1242,12 +1242,16 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
             const ant = __tasasPrevWeb;
             if (ant) {
                 const cambios = [];
-                if (ant.BCV && cur.BCV && Math.abs(cur.BCV - ant.BCV) > 0.001) cambios.push('BCV');
-                if (ant.ALCB && cur.ALCB && Math.abs(cur.ALCB - ant.ALCB) > 0.001) cambios.push('Al Cambio BCV');
-                if (ant.USDT && cur.USDT && Math.abs(cur.USDT - ant.USDT) > 0.001) cambios.push('Al Cambio USDT');
+                if (ant.BCV && cur.BCV && Math.abs(cur.BCV - ant.BCV) > 0.5) cambios.push('BCV');
+                if (ant.ALCB && cur.ALCB && Math.abs(cur.ALCB - ant.ALCB) > 0.5) cambios.push('Al Cambio BCV');
+                if (ant.USDT && cur.USDT && Math.abs(cur.USDT - ant.USDT) > 0.5) cambios.push('Al Cambio USDT');
                 if (cambios.length > 0) {
-                    emitirNotificacionWeb('Tasa actualizada', 'Cambio en: ' + cambios.join(', ') + ' · JAM POS v1.1 By @felinuxs');
-                    reproducirSonidoCambio();
+                    const tasaWebAnterior = ant.BCV || ant.ALCB || ant.USDT;
+                    const tasaWebNueva = cur.BCV || cur.ALCB || cur.USDT;
+                    if (puedeAlertarTasa(tasaWebAnterior, tasaWebNueva)) {
+                        emitirNotificacionWeb('Tasa actualizada', 'Cambio en: ' + cambios.join(', ') + ' · JAM POS v1.1 By @felinuxs');
+                        reproducirSonidoCambio();
+                    }
                 }
             }
             __tasasPrevWeb = cur;
@@ -5576,15 +5580,30 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
             if(D.config.sonidoAlertas) reproducirSonidoAlerta();
         }
     }
+    const KEY_ULTIMA_ALERTA_TASA = 'jam_pos_ultima_alerta_tasa';
+    const INTERVALO_ALERTA_TASA_MS = 30 * 60 * 1000;
+
+    function puedeAlertarTasa(tasaAnterior, tasaNueva){
+        const anterior = Number(tasaAnterior);
+        const nueva = Number(tasaNueva);
+        if(!(anterior > 0) || !(nueva > 0)) return false;
+        if(Math.abs(nueva - anterior) <= 0.5) return false;
+        try {
+            const ultimo = JSON.parse(localStorage.getItem(KEY_ULTIMA_ALERTA_TASA) || 'null');
+            if(ultimo && Number(ultimo.tasa) === nueva && (Date.now() - Number(ultimo.ts)) < INTERVALO_ALERTA_TASA_MS) return false;
+            if(ultimo && (Date.now() - Number(ultimo.ts)) < INTERVALO_ALERTA_TASA_MS) return false;
+            localStorage.setItem(KEY_ULTIMA_ALERTA_TASA, JSON.stringify({ ts: Date.now(), tasa: nueva }));
+        } catch(e) {}
+        return true;
+    }
+
     function notificarTasaActualizada(tasaAnterior, tasaNueva){
         if(!D.config.alertaTasa) return;
         if(D.config.silenciarNotif) return;
-        let diff = Math.abs(tasaNueva - tasaAnterior);
-        if(diff > 0.5){
-            mostrarNotificacion(`💱 La tasa USD cambió: ${fmtDolar(tasaAnterior)} → ${fmtDolar(tasaNueva)} Bs`, 'info');
-            mostrarNotificacionNativa('Tasa USD actualizada', `${fmtDolar(tasaAnterior)} → ${fmtDolar(tasaNueva)} Bs · JAM POS v1.1 By @felinuxs`, 'tasa');
-            if(D.config.sonidoAlertas) reproducirSonidoAlerta();
-        }
+        if(!puedeAlertarTasa(tasaAnterior, tasaNueva)) return;
+        mostrarNotificacion(`💱 La tasa USD cambió: ${fmtDolar(tasaAnterior)} → ${fmtDolar(tasaNueva)} Bs`, 'info');
+        mostrarNotificacionNativa('Tasa USD actualizada', `${fmtDolar(tasaAnterior)} → ${fmtDolar(tasaNueva)} Bs · JAM POS v1.1 By @felinuxs`, 'tasa');
+        if(D.config.sonidoAlertas) reproducirSonidoAlerta();
     }
 
     

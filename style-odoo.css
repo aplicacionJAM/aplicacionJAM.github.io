@@ -243,6 +243,35 @@ body.odoo-desktop .ventas-layout {
   box-shadow: 0 1px 3px rgba(15,23,42,.05); padding: 14px;
 }
 
+/* ------------------------------------------------------- CARRITO DE VENTAS
+   El layout de ventas conserva el ancho y márgenes originales (max-width 600px,
+   margin auto), pero en escritorio la columna del carrito se quedaba con el
+   ancho de su contenido (38px con "Vacío"), así el nombre y el precio se
+   acumulaban al centro. Se estira al 100% del ancho disponible, respetando el
+   padding original: nombre a la izquierda, precios a la derecha. */
+body.odoo-desktop .ventas-layout > * { align-self: stretch; width: 100%; }
+body.odoo-desktop .ventas-cart-scroll { width: 100%; align-self: stretch; }
+body.odoo-desktop .ventas-cart-scroll > #carritoLista { width: 100%; }
+body.odoo-desktop .carrito-item { width: 100%; }
+body.odoo-desktop .carrito-item > div { min-width: 0; }
+body.odoo-desktop .carrito-item > div > div:first-child {
+  flex: 1 1 auto; min-width: 0; text-align: left; overflow-wrap: break-word;
+}
+body.odoo-desktop .carrito-item > div > div:last-child {
+  flex: 0 0 auto; text-align: right; white-space: nowrap;
+}
+
+/* --------------------------------------------------- SCROLL DE LOS MÓDULOS
+   En escritorio el raíz es overflow:hidden, y los módulos que NO traen una
+   lista interna con scroll (Configuración, Reportes) quedaban recortados sin
+   forma de bajar. Aquí el .page-container hace el scroll.
+   Se excluye .ventas-layout porque ya scrollea su propio carrito. */
+body.odoo-desktop .page-container:not(.ventas-layout) {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden;
+  -webkit-overflow-scrolling: touch; padding-bottom: 24px;
+}
+body.odoo-desktop .page-header-fixed { flex-shrink: 0; }
+
 /* ---------------------------------------------------- RESULTADOS DE BÚSQUEDA */
 body.odoo-desktop .odoo-search-results {
   position: absolute; top: calc(100% + 6px); left: 0; right: 0;

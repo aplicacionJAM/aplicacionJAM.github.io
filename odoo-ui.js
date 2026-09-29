@@ -6,8 +6,9 @@
    window.mostrarConvertidor. No modifica app.js.
    - Un MutationObserver sobre #appRoot sustituye el home original por la piel
      Odoo siempre que apaezca (inicio, backToHome, resize, resume...).
-   - Se activa solo con width >= 1024px (misma regla que esDesktop de app.js).
-   - En móvil no se aplica nada.
+    - En EXE/DEB se activa SIEMPRE (aunque la ventana baje de 1024px); en la web
+      solo con width >= 1024px.
+    - En móvil (APK) no se aplica nada.
    ========================================================================== */
 (function () {
   'use strict';
@@ -32,10 +33,19 @@
 
   let topbarEl = null, launcherEl = null, searchEl = null, resultsEl = null;
 
-  /* ¿Es una PC real? Ancho amplio + mouse o trackpad (puntero fino).
-     Así los efectos y colores de la piel solo se ven en PC y NO en
-     smartphones/tablets, aunque el ancho de la ventana supere 1024px. */
+  /* ¿Es la app de escritorio (EXE/DEB)? Entonces la interfaz de escritorio
+     queda SIEMPRE activa, aunque se encoja la ventana por debajo de 1024px. */
+  function esEscritorio() {
+    try {
+      return /Electron/i.test(navigator.userAgent) ||
+        window.__JAMPOS_ESCRITORIO__ === true;
+    } catch (e) { return false; }
+  }
+
+  /* ¿Es una PC real? En EXE/DEB siempreTrue; en la web, ancho amplio + puntero fino,
+     así los efectos y colores de la piel no se ven en móviles/tablets. */
   function esPC() {
+    if (esEscritorio()) return true;
     return window.innerWidth >= 1024 &&
       window.matchMedia('(hover: hover) and (pointer: fine)').matches;
   }
