@@ -136,7 +136,12 @@
                     var th = window.D && window.D.config && window.D.config.theme;
                     if (t.indexOf('jampos-promo') === 0 && th) colorPromo = String(th);
                 } catch (e) {}
-                br.mostrarNotificacion(String(titulo || ''), String(cuerpo || ''), t, colorPromo);
+                var img = (opciones && opciones.image) ? String(opciones.image) : '';
+                // Se manda la imagen por el mismo metodo: el puente nativo
+                // decide si su sistema la puede pintar (APK si, Electron solo
+                // en Linux). En ambos casos la tarjeta HTML de la promo
+                // (mostrarPromocionImagen) muestra el dibujo siempre.
+                br.mostrarNotificacion(String(titulo || ''), String(cuerpo || ''), t, colorPromo, img);
                 return;
             }
         } catch (e) {}
@@ -151,6 +156,59 @@
                 }
             });
         }
+    }
+
+    // ===== PROMOCION CON IMAGEN: igual en web/PWA, APK, EXE y DEB =====
+    // La notificacion del sistema no admite imagen en todas las plataformas
+    // (Electron/Windows y DEB no la pintan), asi que la promo se muestra
+    // SIEMPRE en una tarjeta dentro de la app, que es HTML y se ve igual en
+    // todas. Ademas se sigue mandando la notificacion nativa, que en la PWA
+    // (service worker) y en el APK ya reciben la imagen.
+    function mostrarPromocionImagen(titulo, cuerpo, tag, imagenUrl) {
+        try {
+            var url = imagenUrl ? String(imagenUrl) : '';
+            // Notificacion nativa con la imagen (PWA via service worker, APK
+            // via bridge). En Electron cae al SO sin imagen, y la tarjeta de
+            // abajo cubre ese caso.
+            try { mostrarNotificacionNativa(titulo, cuerpo, tag || 'jampos-promo', url ? { image: url } : undefined); } catch (e) {}
+
+            if (!document.body) return;
+            var card = document.createElement('div');
+            card.className = 'notificacion-promo';
+            card.setAttribute('role', 'alert');
+
+            if (url) {
+                var img = document.createElement('img');
+                img.className = 'notificacion-promo-img';
+                img.alt = '';
+                img.decoding = 'async';
+                img.addEventListener('error', function () { if (img.parentNode) img.parentNode.removeChild(img); });
+                img.src = url;
+                card.appendChild(img);
+            }
+
+            var txt = document.createElement('div');
+            txt.className = 'notificacion-promo-txt';
+            var strong = document.createElement('strong');
+            strong.textContent = String(titulo || 'Promoción');
+            txt.appendChild(strong);
+            var span = document.createElement('span');
+            nodosIconosFA(String(cuerpo == null ? '' : cuerpo), span);
+            txt.appendChild(span);
+            card.appendChild(txt);
+
+            var cerrar = document.createElement('button');
+            cerrar.className = 'notificacion-promo-cerrar';
+            cerrar.type = 'button';
+            cerrar.setAttribute('aria-label', 'Cerrar');
+            cerrar.textContent = '×';
+            cerrar.addEventListener('click', function () { if (card.parentNode) card.parentNode.removeChild(card); });
+            card.appendChild(cerrar);
+
+            var cerrarYa = function () { if (card.parentNode) card.parentNode.removeChild(card); };
+            document.body.appendChild(card);
+            setTimeout(cerrarYa, 12000);
+        } catch (e) {}
     }
     
     // Empuja una preferencia de alertas al servicio nativo (APK) para que suene
@@ -1189,7 +1247,22 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
             return true;
         }catch(e){ return false; }
     }
-    async function refrescarTasasVivas() {
+    // ==================== TASAS - SUB-PROCESO 1: VERIFICACION ====================
+    // Solo consulta y actualiza valores. NO notifica nada.
+    // Tiene su propio ritmo (cada 15 min) y es independiente de la interfaz:
+    // abrir, minimizar, expandir o re-renderizar NO dispara consultas fuera de
+    // hora. El boton de "actualizar" de Configuracion usa forzar=true.
+    const VERIFICACION_TASA_MS = 15 * 60 * 1000;
+    let __ultimaVerificacionTasa = 0;
+
+    function tocaVerificarTasas() {
+        if (!__ultimaVerificacionTasa) return true;                 // aun no se ha verificado
+        return (Date.now() - __ultimaVerificacionTasa) >= VERIFICACION_TASA_MS;
+    }
+
+    async function refrescarTasasVivas(forzar = false) {
+        if (!forzar && !tocaVerificarTasas()) return D.tasasVivas;   // ya se consulto hace poco
+        __ultimaVerificacionTasa = Date.now();
         if(!D.tasasVivas) D.tasasVivas = {};
         try{ cargarTasasVivasCache(); }catch(e){}
         const [bcv, alcBcv, alcUsdt] = await Promise.all([
@@ -1226,35 +1299,37 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
                 }
             } catch(e) {}
         }
-        // En web/PWA/html: notificar + sonar si alguna tasa cambio.
-        // Nativo real = bridge con enviarTasas (web-bridge emulado no lo tiene).
-        if (!(window.AndroidBridge && typeof window.AndroidBridge.enviarTasas === 'function')) {
-            avisarCambioWeb();
-        }
+        // Entrega al sub-proceso 2 (notificacion). Este sub-proceso no decide si
+        // avisa: solo le pasa los valores que acaba de leer.
+        avisarCambiosTasa();
         return D.tasasVivas;
     }
-    // En web/PWA: detecta cambio y emite Web Notification + sonido del sistema.
-    let __tasasPrevWeb = null;
-    function avisarCambioWeb() {
+    // ==================== TASAS - SUB-PROCESO 2: NOTIFICACION ====================
+    // Unica salida de avisos de tasa. No consulta nada: recibe valores y decide
+    // si son un cambio REAL comparando contra la ultima tasa avisada de cada
+    // serie. Gracias a eso abrir/cerrar/minimizar la app NO puede generar un
+    // aviso, y un cambio real suena una sola vez llegue por el arranque, por el
+    // ciclo de verificacion o por un refresh manual.
+    function emitirAvisoTasa(texto) {
+        mostrarNotificacion(`💱 ${texto}`, 'info');
+        mostrarNotificacionNativa('Tasas actualizadas', texto + ' · JAM POS v1.1 By @felinuxs', 'tasa');
+        if (D.config.sonidoAlertas) reproducirSonidoAlerta();
+    }
+
+    function avisarCambiosTasa() {
         try {
             if (D.config && D.config.silenciarNotif) return;
-            const cur = { BCV: D.tasasVivas['BCV'], ALCB: D.tasasVivas['ALCB-BCV'], USDT: D.tasasVivas['ALCB-USDT'] };
-            const ant = __tasasPrevWeb;
-            if (ant) {
-                const cambios = [];
-                if (ant.BCV && cur.BCV && Math.abs(cur.BCV - ant.BCV) > 0.5) cambios.push('BCV');
-                if (ant.ALCB && cur.ALCB && Math.abs(cur.ALCB - ant.ALCB) > 0.5) cambios.push('Al Cambio BCV');
-                if (ant.USDT && cur.USDT && Math.abs(cur.USDT - ant.USDT) > 0.5) cambios.push('Al Cambio USDT');
-                if (cambios.length > 0) {
-                    const tasaWebAnterior = ant.BCV || ant.ALCB || ant.USDT;
-                    const tasaWebNueva = cur.BCV || cur.ALCB || cur.USDT;
-                    if (puedeAlertarTasa(tasaWebAnterior, tasaWebNueva)) {
-                        emitirNotificacionWeb('Tasa actualizada', 'Cambio en: ' + cambios.join(', ') + ' · JAM POS v1.1 By @felinuxs');
-                        reproducirSonidoCambio();
-                    }
-                }
-            }
-            __tasasPrevWeb = cur;
+            if (D.config && D.config.alertaTasa === false) return;
+            const cur = D.tasasVivas || {};
+            const cambios = [];
+            const revisar = (serie, etiqueta, valor) => {
+                const c = cambioRealTasa(serie, valor);
+                if (c) cambios.push(etiqueta + ' ' + fmtDolar(c.desde) + ' → ' + fmtDolar(c.hasta));
+            };
+            revisar('BCV', 'BCV', cur['BCV']);
+            revisar('ALCB-BCV', 'Al Cambio BCV', cur['ALCB-BCV']);
+            revisar('ALCB-USDT', 'Al Cambio USDT', cur['ALCB-USDT']);
+            if (cambios.length > 0) emitirAvisoTasa(cambios.join(' · '));
         } catch(e) {}
     }
     function emitirNotificacionWeb(titulo, cuerpo) {
@@ -1357,33 +1432,52 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
                 <span class="tv-valor" id="strip${k}">${tasaVivaTexto(k)}</span>
             </div>`).join('');
     }
-    async function obtenerTasaBcvVigente() {
-        // API 1 (PRIMARIA): exchangerate-api -> rates.VES (refleja la portada BCV)
-        const p1 = await (async () => {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 8000);
-            try {
-                const response = await fetch('https://api.exchangerate-api.com/v4/latest/USD', { signal: controller.signal });
-                if (!response.ok) throw new Error();
-                const data = await response.json();
-                if (data && data.rates && data.rates.VES) return parseFloat(data.rates.VES.toFixed(2));
-                throw new Error();
-            } catch(e) { return null; }
-            finally { clearTimeout(timeoutId); }
-        })();
-        if (p1 !== null) return p1;
-        // API 2 (RESPALDO): ve.dolarapi.com -> fuente 'oficial' (promedio del dia)
+    // Proveedor BCV "pegajoso". exchangerate (rates.VES) y dolarapi (oficial)
+    // devuelven valores DISTINTOS entre si. Si se consulta uno y, al fallar, se
+    // usa el otro, la serie va y vuelve entre ambos valores y cada consulta
+    // parece un cambio -> la app aventa sola al abrir/minimizar. Por eso se
+    // recuerda el proveedor que funciono y, si falla, se reutiliza su ultimo
+    // valor bueno en vez de mezclarlos. Solo se cambia de proveedor cuando aun
+    // no hay ningun valor de referencia del preferido.
+    let __tasaProvPreferido = 'exchangerate';
+    const __tasaProvUltimoValor = {};
+
+    async function consultarTasaProveedor(nombre) {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 8000);
         try {
-            const response = await fetch('https://ve.dolarapi.com/v1/dolares', { signal: controller.signal });
-            if (!response.ok) throw new Error();
-            const data = await response.json();
-            const oficial = Array.isArray(data) ? data.find(d => d.fuente === 'oficial' && d.moneda === 'USD') : null;
-            if (oficial && oficial.promedio > 0) return parseFloat(oficial.promedio.toFixed(2));
-            throw new Error();
+            let v = null;
+            if (nombre === 'exchangerate') {
+                const response = await fetch('https://api.exchangerate-api.com/v4/latest/USD', { signal: controller.signal });
+                if (!response.ok) throw new Error();
+                const data = await response.json();
+                if (data && data.rates && data.rates.VES) v = parseFloat(data.rates.VES.toFixed(2));
+            } else {
+                const response = await fetch('https://ve.dolarapi.com/v1/dolares', { signal: controller.signal });
+                if (!response.ok) throw new Error();
+                const data = await response.json();
+                const oficial = Array.isArray(data) ? data.find(d => d.fuente === 'oficial' && d.moneda === 'USD') : null;
+                if (oficial && oficial.promedio > 0) v = parseFloat(oficial.promedio.toFixed(2));
+            }
+            if (!(v > 0)) return null;
+            __tasaProvUltimoValor[nombre] = v;
+            return v;
         } catch(e) { return null; }
         finally { clearTimeout(timeoutId); }
+    }
+
+    async function obtenerTasaBcvVigente() {
+        const preferido = __tasaProvPreferido;
+        const propio = await consultarTasaProveedor(preferido);
+        if (propio !== null) return propio;
+        // El preferido fallo: se reutiliza su ultimo valor bueno en lugar de
+        // mezclar con el otro proveedor, porque mezclar haria que cada consulta
+        // pareciera un cambio y la app se pondra a sonar sola.
+        if (__tasaProvUltimoValor[preferido] > 0) return __tasaProvUltimoValor[preferido];
+        const otro = preferido === 'dolarapi' ? 'exchangerate' : 'dolarapi';
+        const alternativa = await consultarTasaProveedor(otro);
+        if (alternativa !== null) { __tasaProvPreferido = otro; return alternativa; }
+        return null;
     }
     
     async function actualizarTasa(forzar = false) {
@@ -1403,7 +1497,6 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
             if (forzar && D.config.tasaManual) D.config.tasaManualValue = tasaNueva;
             registrarCambioTasa(D.config.dolarRate);
             saveConfig();
-            if(forzar && !(D.config && D.config.silenciarNotif)) mostrarNotificacion(`Tasa actualizada: ${fmtDolar(tasaNueva)} Bs/USD`, 'success');
             notificarTasaActualizada(tasaPrevia, tasaNueva);
         } else {
             let __c = null;
@@ -4360,153 +4453,140 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         }
         return { nominaUso, nominaLbl };
     }
-    let _xlsxCrcTbl = null;
-    function xlsxCrc32(bin){
-        if(!_xlsxCrcTbl){
-            _xlsxCrcTbl = [];
-            for(let n=0;n<256;n++){
-                let c = n;
-                for(let k=0;k<8;k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
-                _xlsxCrcTbl.push(c >>> 0);
-            }
+    // ==================== EXCEL PROFESIONAL ====================
+    const EXCEL_COLOR = '1F4E78';
+    const EXCEL_CAMPOS = {
+        id:'ID interno', nombre:'Nombre', marca:'Marca', codigo:'Código de barras', categoria:'Categoría', tipo:'Tipo', proveedor:'Proveedor', stock:'Existencia', stockMinimo:'Stock mínimo',
+        precioVentaBs:'Precio de venta (Bs)', precioVentaUsd:'Precio de venta (USD)', costoRealBs:'Costo de compra (Bs)', costoRealUsd:'Costo de compra (USD)',
+        costoNetoBs:'Costo neto (Bs)', costoNetoUsd:'Costo neto (USD)', descuentoProveedor:'Descuento proveedor (%)', porcentajeGanancia:'Ganancia (%)', porcentajeDescuento:'Descuento (%)',
+        precioDescuentoBs:'Precio con descuento (Bs)', precioDescuentoUsd:'Precio con descuento (USD)', tasaRegistro:'Tasa de registro', fecha:'Fecha', hora:'Hora', timestamp:'Fecha y hora (timestamp)',
+        cliente:'Cliente', cedula:'Cédula / RIF', telefono:'Teléfono', direccion:'Dirección', email:'Correo electrónico', adeudo:'Saldo pendiente (Bs)', concepto:'Concepto', montoBs:'Monto (Bs)',
+        empleado:'Empleado', cargo:'Cargo', diaPago:'Día de pago', salarioBs:'Salario (Bs)', fechaPago:'Último pago', producto:'Producto', cantidad:'Cantidad', lapsoDias:'Lapso (días)',
+        fechaVencimiento:'Fecha de vencimiento', estado:'Estado', notas:'Notas', total:'Total (Bs)', gananciaTotal:'Ganancia (Bs)', tipoPago:'Forma de pago', pago:'Abono (Bs)', cambio:'Cambio (Bs)',
+        credito:'Venta a crédito', creditoRestante:'Saldo del crédito (Bs)', creditoFechaLimite:'Vencimiento del crédito', dolarRate:'Tasa USD / Bs', tasa:'Tasa USD / Bs', fijada:'Tasa fijada',
+        items:'Artículos (datos internos)', detallePagos:'Pagos (datos internos)', updatedAt:'Última actualización', vendedor:'Vendedor', anulada:'Anulada', iva:'IVA (Bs)', ivaPorcentaje:'IVA (%)',
+        _detalleLegible:'Detalle de artículos', _pagosLegibles:'Detalle de pagos'
+    };
+    const EXCEL_ORDEN = {
+        productos:['codigo','nombre','marca','categoria','tipo','proveedor','stock','stockMinimo','precioVentaBs','precioVentaUsd','costoRealBs','costoRealUsd','costoNetoBs','costoNetoUsd','porcentajeGanancia','porcentajeDescuento','precioDescuentoBs','precioDescuentoUsd','tasaRegistro','id'],
+        clientes:['nombre','cedula','telefono','email','direccion','adeudo','id'], proveedores:['nombre','cedula','telefono','email','direccion','id'],
+        gastos:['fecha','concepto','categoria','montoBs','notas','id'], empleados:['nombre','cedula','cargo','telefono','salarioBs','diaPago','fechaPago','id'],
+        ventas:['id','fecha','hora','cliente','_detalleLegible','total','pago','creditoRestante','creditoFechaLimite','gananciaTotal','tipoPago','_pagosLegibles','dolarRate','items','detallePagos'],
+        entregas:['fecha','hora','proveedor','producto','cantidad','lapsoDias','fechaVencimiento','estado','notas','id'],
+        historialTasa:['fecha','hora','tasa'], tasaDiaria:['fecha','hora','tasa','fijada']
+    };
+    function excelValorTexto(v){
+        if(v == null) return '';
+        if(v instanceof Date) return v.toISOString();
+        if(typeof v === 'object'){
+            if(v.richText) return v.richText.map(x => x.text).join('');
+            if(v.text != null) return String(v.text);
+            if(v.result != null) return String(v.result);
+            if(v.formula != null) return String(v.result || '');
+            try { return JSON.stringify(v); } catch(e) { return String(v); }
         }
-        let crc = 0xFFFFFFFF;
-        for(let i=0;i<bin.length;i++) crc = (_xlsxCrcTbl[(crc ^ bin[i]) & 0xFF] ^ (crc >>> 8)) >>> 0;
-        return (crc ^ 0xFFFFFFFF) >>> 0;
+        return String(v);
     }
-    function xlsxStr(s){
-        return String(s).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g,'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    function excelEtiqueta(campo){
+        if(EXCEL_CAMPOS[campo]) return EXCEL_CAMPOS[campo];
+        const limpio = campo.replace(/^_/,'').replace(/([A-Z])/g, ' $1').replace(/_/g,' ').trim();
+        return limpio.charAt(0).toUpperCase() + limpio.slice(1);
     }
-    function xlsxCol(n){ let s=''; n++; while(n>0){ const m = (n-1) % 26; s = String.fromCharCode(65+m) + s; n = Math.floor((n-1)/26); } return s; }
-    function xlsxZip(files){
-        const enc = new TextEncoder();
-        const parts = [], centrals = [];
-        let offset = 0;
-        const now = new Date();
-        const dosTime = (now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1);
-        const dosDate = ((now.getFullYear()-1980) << 9) | ((now.getMonth()+1) << 5) | now.getDate();
-        for(const f of files){
-            const nbU8 = enc.encode(f.nombre);
-            const crc = xlsxCrc32(f.data);
-            const lh = new DataView(new ArrayBuffer(30 + nbU8.length));
-            lh.setUint32(0, 0x04034b50, true);
-            lh.setUint16(4, 20, true);
-            lh.setUint16(6, 0x0800, true);
-            lh.setUint16(8, 0, true);
-            lh.setUint16(10, dosTime, true);
-            lh.setUint16(12, dosDate, true);
-            lh.setUint32(14, crc, true);
-            lh.setUint32(18, f.data.length, true);
-            lh.setUint32(22, f.data.length, true);
-            lh.setUint16(26, nbU8.length, true);
-            lh.setUint16(28, 0, true);
-            nbU8.forEach((b,i) => lh.setUint8(30+i, b));
-            const lhArr = new Uint8Array(lh.buffer);
-            parts.push(lhArr, f.data);
-            const ch = new DataView(new ArrayBuffer(46 + nbU8.length));
-            ch.setUint32(0, 0x02014b50, true);
-            ch.setUint16(4, 20, true);
-            ch.setUint16(6, 20, true);
-            ch.setUint16(8, 0x0800, true);
-            ch.setUint16(10, 0, true);
-            ch.setUint16(12, dosTime, true);
-            ch.setUint16(14, dosDate, true);
-            ch.setUint32(16, crc, true);
-            ch.setUint32(20, f.data.length, true);
-            ch.setUint32(24, f.data.length, true);
-            ch.setUint16(28, nbU8.length, true);
-            ch.setUint16(30, 0, true);
-            ch.setUint16(32, 0, true);
-            ch.setUint16(34, 0, true);
-            ch.setUint16(36, 0, true);
-            ch.setUint32(38, 0, true);
-            ch.setUint32(42, offset, true);
-            nbU8.forEach((b,i) => ch.setUint8(46+i, b));
-            centrals.push(new Uint8Array(ch.buffer));
-            offset += lhArr.length + f.data.length;
-        }
-        const cdLen = centrals.reduce((a,c) => a + c.length, 0);
-        const eocd = new DataView(new ArrayBuffer(22));
-        eocd.setUint32(0, 0x06054b50, true);
-        eocd.setUint16(4, 0, true);
-        eocd.setUint16(6, 0, true);
-        eocd.setUint16(8, files.length, true);
-        eocd.setUint16(10, files.length, true);
-        eocd.setUint32(12, cdLen, true);
-        eocd.setUint32(16, offset, true);
-        eocd.setUint16(20, 0, true);
-        const out = new Uint8Array(offset + cdLen + 22);
-        let p = 0;
-        for(const x of parts){ out.set(x, p); p += x.length; }
-        for(const c of centrals){ out.set(c, p); p += c.length; }
-        out.set(new Uint8Array(eocd.buffer), p);
-        return out;
+    function excelFormatoColumna(campo, etiqueta){
+        const t = (campo + ' ' + etiqueta).toLowerCase();
+        if(/porcentaje|%/.test(t)) return '0.00"%"';
+        if(/tasa/.test(t)) return '#,##0.0000';
+        if(/usd|dolar|dólar/.test(t)) return '$#,##0.00';
+        if(/\(bs\)|monto|precio|costo|saldo|total|ganancia|salario|abono|cambio|adeudo|iva/.test(t)) return '#,##0.00';
+        if(/stock|cantidad|existencia|día de pago|lapso/.test(t)) return '#,##0';
+        return 'General';
     }
-    function xlsxHoja(nombre, filas){
-        const body = [];
-        let maxC = 0, widths = {};
-        for(let r=1;r<filas.length;r++){
-            const fila = filas[r] || [];
-            if(fila.length > maxC) maxC = fila.length;
-            let cells = '';
-            for(let c=0;c<fila.length;c++){
-                const v = fila[c];
-                if(v === null || v === undefined) continue;
-                const ref = xlsxCol(c) + (r+1);
-                if(typeof v === 'number' && isFinite(v)){
-                    cells += '<c r="'+ref+'" s="1"><v>'+v+'</v></c>';
-                    if(!widths[c] || widths[c] < 12) widths[c] = 12;
-                } else {
-                    const t = xlsxStr(v);
-                    cells += '<c r="'+ref+'" t="inlineStr"><is><t>'+t+'</t></is></c>';
-                    const l = String(v).length;
-                    widths[c] = Math.max(widths[c] || 10, l > 40 ? 40 : l + 2);
-                }
-            }
-            body.push('<row r="'+(r+1)+'">'+cells+'</row>');
-        }
-        let hdr = '';
-        const hf = filas[0] || [];
-        for(let c=0;c<hf.length;c++){
-            const v = hf[c];
-            if(v === null || v === undefined) continue;
-            hdr += '<c r="'+xlsxCol(c)+'1" t="inlineStr" s="2"><is><t>'+xlsxStr(v)+'</t></is></c>';
-        }
-        if(hf.length > maxC) maxC = hf.length;
-        let cols = '';
-        if(maxC > 0){
-            cols = '<cols>';
-            for(let i=0;i<maxC;i++){ const w = widths[i] || 12; cols += '<col min="'+(i+1)+'" max="'+(i+1)+'" width="'+w+'" customWidth="1"/>'; }
-            cols += '</cols>';
-        }
-        return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
-            '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0"/></sheetViews>' +
-            '<sheetFormatPr defaultRowHeight="15"/>' + cols + '<sheetData><row r="1">'+hdr+'</row>' + body.join('') + '</sheetData></worksheet>';
-    }
-    function construirXlsx(hojas){
-        const enc = s => new TextEncoder().encode(s);
-        const files = [];
-        let types = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>';
-        let wbRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">';
-        let wb = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>';
-        hojas.forEach((h, i) => {
-            const n = 'sheet' + (i+1);
-            types += '<Override PartName="/xl/worksheets/'+n+'.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>';
-            wbRels += '<Relationship Id="rId'+i+'" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/'+n+'.xml"/>';
-            wb += '<sheet name="'+xlsxStr(h.nombre)+'" sheetId="'+(i+1)+'" r:id="rId'+i+'"/>';
-            files.push({ nombre: 'xl/worksheets/'+n+'.xml', data: enc(xlsxHoja(h.nombre, h.filas)) });
+    function excelEstilizarHoja(ws, titulo, subtitulo, etiquetas, filas, campos, ocultos){
+        const total = Math.max(etiquetas.length, 2);
+        ws.mergeCells(1,1,1,total);
+        ws.getCell(1,1).value = titulo;
+        ws.getCell(1,1).font = {name:'Calibri',size:18,bold:true,color:{argb:'FFFFFFFF'}};
+        ws.getCell(1,1).fill = {type:'pattern',pattern:'solid',fgColor:{argb:'FF'+EXCEL_COLOR}};
+        ws.getCell(1,1).alignment = {vertical:'middle',horizontal:'left'};
+        ws.getRow(1).height = 32;
+        ws.mergeCells(2,1,2,total);
+        ws.getCell(2,1).value = subtitulo;
+        ws.getCell(2,1).font = {name:'Calibri',size:10,color:{argb:'FF52606D'}};
+        ws.getRow(2).height = 22;
+        ws.getRow(3).values = campos || [];
+        ws.getRow(3).hidden = true;
+        ws.getRow(4).values = etiquetas;
+        ws.getRow(4).height = 30;
+        ws.getRow(4).eachCell(cell => {
+            cell.font = {name:'Calibri',size:10,bold:true,color:{argb:'FFFFFFFF'}};
+            cell.fill = {type:'pattern',pattern:'solid',fgColor:{argb:'FF'+EXCEL_COLOR}};
+            cell.alignment = {vertical:'middle',horizontal:'center',wrapText:true};
+            cell.border = {bottom:{style:'medium',color:{argb:'FF17365D'}}};
         });
-        types += '</Types>';
-        wbRels += '<Relationship Id="rIdS" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>';
-        wb += '</sheets></workbook>';
-        files.unshift(
-            { nombre: '[Content_Types].xml', data: enc(types) },
-            { nombre: '_rels/.rels', data: enc('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>') },
-            { nombre: 'xl/workbook.xml', data: enc(wb) },
-            { nombre: 'xl/_rels/workbook.xml.rels', data: enc(wbRels) },
-            { nombre: 'xl/styles.xml', data: enc('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="1"><numFmt numFmtId="164" formatCode="#,##0.00"/></numFmts><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFDDEBF7"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="0" fontId="1" fillId="1" borderId="0" xfId="0" applyFont="1" applyFill="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>')}
-        );
-        return xlsxZip(files);
+        filas.forEach((fila, idx) => {
+            const row = ws.getRow(idx+5);
+            row.values = fila;
+            row.height = 21;
+            row.eachCell({includeEmpty:true}, (cell, col) => {
+                cell.font = {name:'Calibri',size:10,color:{argb:'FF1F2933'}};
+                cell.alignment = {vertical:'top',horizontal:typeof cell.value === 'number' ? 'right' : 'left',wrapText:String(cell.value || '').length > 45};
+                if(idx % 2) cell.fill = {type:'pattern',pattern:'solid',fgColor:{argb:'FFF4F8FB'}};
+                cell.border = {bottom:{style:'hair',color:{argb:'FFD9E2EC'}}};
+                const campo = campos && campos[col-1] || '';
+                cell.numFmt = excelFormatoColumna(campo, etiquetas[col-1] || '');
+            });
+        });
+        ws.columns = etiquetas.map((etiqueta, i) => {
+            const campo = campos && campos[i] || '';
+            let ancho = String(etiqueta).length + 3;
+            filas.slice(0,150).forEach(f => { ancho = Math.max(ancho, Math.min(46, excelValorTexto(f[i]).length + 2)); });
+            return {width:Math.max(11,Math.min(46,ancho)),hidden:!!(ocultos && ocultos.has(campo))};
+        });
+        ws.views = [{state:'frozen',ySplit:4,showGridLines:false}];
+        ws.autoFilter = {from:{row:4,column:1},to:{row:Math.max(5,filas.length+4),column:etiquetas.length}};
+        ws.properties.tabColor = {argb:'FF'+EXCEL_COLOR};
+        ws.pageSetup = {orientation:'landscape',fitToPage:true,fitToWidth:1,fitToHeight:0,paperSize:9,printTitlesRow:'1:4',margins:{left:0.25,right:0.25,top:0.5,bottom:0.5,header:0.2,footer:0.2}};
+        ws.headerFooter.oddFooter = '&LJAM POS&C&P de &N&R&D';
+    }
+    function excelWorkbookBase(){
+        if(typeof ExcelJS === 'undefined') throw new Error('No se pudo cargar el módulo Excel. Reinicie la aplicación e inténtelo de nuevo.');
+        const wb = new ExcelJS.Workbook();
+        wb.creator = 'JAM POS'; wb.lastModifiedBy = 'JAM POS'; wb.created = new Date(); wb.modified = new Date();
+        wb.calcProperties.fullCalcOnLoad = true;
+        return wb;
+    }
+    async function construirReporteExcelProfesional(hojas){
+        const wb = excelWorkbookBase();
+        hojas.forEach(h => {
+            const etiquetas = h.filas[0] || [];
+            const ws = wb.addWorksheet(h.nombre.slice(0,31));
+            const titulo = h.nombre === 'Resumen' ? 'RESUMEN EJECUTIVO' : h.nombre.toUpperCase();
+            excelEstilizarHoja(ws, titulo, 'JAM POS · Documento generado el ' + new Date().toLocaleString('es-ES'), etiquetas, h.filas.slice(1), etiquetas, new Set());
+            if(h.nombre === 'Resumen'){
+                ws.autoFilter = null;
+                ws.getColumn(1).width = 34; ws.getColumn(2).width = 26;
+                for(let r=5;r<=ws.rowCount;r++) ws.getCell(r,1).font = {name:'Calibri',size:10,bold:true,color:{argb:'FF1F2933'}};
+            }
+        });
+        return wb.xlsx.writeBuffer();
+    }
+    async function descargarBytesXlsx(nombre, buffer, mensaje){
+        const bytes = new Uint8Array(buffer);
+        if(esAppNativa()){
+            asegurarCarpetaNativa(async () => {
+                try {
+                    const res = await puenteResultado(AndroidBridge.guardarArchivo(nombre, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', bytesToBase64Xlsx(bytes)));
+                    if(res && res.startsWith('ok')) mostrarNotificacion('✅ Excel guardado en ' + (carpetaNativa ? carpetaNativa.nombre : 'carpeta') + '/JAMPOS/' + nombre, 'success');
+                    else mostrarNotificacion('❌ No se pudo guardar el Excel: ' + (res || 'error desconocido'), 'error');
+                } catch(e) { mostrarNotificacion('❌ Error al guardar el Excel: ' + e.message, 'error'); }
+            });
+            return;
+        }
+        const blob = new Blob([bytes], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+        const url = URL.createObjectURL(blob), a = document.createElement('a');
+        a.href = url; a.download = nombre; document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+        mostrarNotificacion('✅ ' + (mensaje || 'Excel generado correctamente'), 'success');
     }
     function bytesToBase64Xlsx(bytes){
         let bin = '';
@@ -4514,24 +4594,8 @@ productos: [], clientes: [], proveedores: [], gastos: [], empleados: [], ventas:
         return btoa(bin);
     }
     async function descargarXlsx(nombre, hojas){
-        const bytes = construirXlsx(hojas);
-        if (esAppNativa()) {
-            asegurarCarpetaNativa(async () => {
-                try {
-                    const res = await puenteResultado(AndroidBridge.guardarArchivo(nombre, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', bytesToBase64Xlsx(bytes)));
-                    if (res && res.startsWith('ok')) mostrarNotificacion('✅ Excel guardado en ' + (carpetaNativa ? carpetaNativa.nombre : 'carpeta') + '/JAMPOS/' + nombre, 'success');
-                    else mostrarNotificacion('❌ No se pudo guardar el Excel: ' + (res || 'error desconocido'), 'error');
-                } catch (e) { mostrarNotificacion('❌ Error al guardar el Excel: ' + e.message, 'error'); }
-            });
-            return;
-        }
-        const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url; a.download = nombre;
-        document.body.appendChild(a); a.click(); a.remove();
-        setTimeout(() => URL.revokeObjectURL(url), 4000);
-        mostrarNotificacion('✅ Reporte Excel generado', 'success');
+        const buffer = await construirReporteExcelProfesional(hojas);
+        await descargarBytesXlsx(nombre, buffer, 'Reporte Excel profesional generado');
     }
     async function generarReporteDocumento(per, modo){
         try {
@@ -5185,62 +5249,98 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
         if(str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) str = '"' + str.replace(/"/g, '""') + '"';
         return str;
     }
-    async function exportarBackupCSV(){
-        let data = await obtenerTodosLosDatos();
-        let csvLines = ['\uFEFF# JAM POS - Exportación CSV', `# Generado: ${data.timestamp}`, ''];
-        let stores = ['productos','clientes','proveedores','gastos','empleados','ventas','entregas'];
-        stores.forEach(s => {
-            if(data[s].length === 0) return;
-            let headersSet = new Set();
-            data[s].forEach(item => Object.keys(item).forEach(k => headersSet.add(k)));
-            let headers = Array.from(headersSet);
-            csvLines.push(`# === ${s.toUpperCase()} ===`);
-            csvLines.push(headers.join(','));
-            data[s].forEach(item => {
-                csvLines.push(headers.map(h => celdaCSV(item[h])).join(','));
-            });
-            csvLines.push('');
+    const EXCEL_HOJAS_RESPALDO = {
+        productos:'Productos', clientes:'Clientes', proveedores:'Proveedores', gastos:'Gastos', empleados:'Empleados', ventas:'Ventas', entregas:'Entregas', historialTasa:'Historial tasas', tasaDiaria:'Tasa diaria'
+    };
+    function excelCamposOrdenados(registros, store){
+        const campos = new Set();
+        registros.forEach(item => Object.keys(item || {}).forEach(k => campos.add(k)));
+        if(store === 'ventas'){ campos.add('_detalleLegible'); campos.add('_pagosLegibles'); }
+        const orden = EXCEL_ORDEN[store] || [];
+        return Array.from(campos).sort((a,b) => {
+            const ia = orden.indexOf(a), ib = orden.indexOf(b);
+            return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib) || excelEtiqueta(a).localeCompare(excelEtiqueta(b),'es');
         });
-        let historialTasa = cargarHistorialTasa();
-        if(historialTasa.length){
-            csvLines.push('# === HISTORIALTASA ===');
-            csvLines.push('fecha,hora,tasa');
-            historialTasa.forEach(h => { csvLines.push(celdaCSV(h.fecha) + ',' + celdaCSV(h.hora) + ',' + celdaCSV(h.tasa)); });
-            csvLines.push('');
+    }
+    function excelDetalleVenta(v){
+        return (v.items || []).map(i => `${i.nombre || i.producto || 'Artículo'} × ${i.cantidad || 1}`).join('; ');
+    }
+    function excelDetallePagos(v){
+        return (v.detallePagos || []).map(p => `${p.metodo || 'Pago'}: ${Number(p.monto || 0).toFixed(2)} Bs`).join('; ');
+    }
+    function excelOcultosRespaldo(campos, registros, store){
+        const ocultos = new Set(['updatedAt','timestamp','imagen','imagenes','foto','fotoBase64','syncPending','sincronizado']);
+        campos.forEach(c => {
+            if(/^(items|detallePagos|.*Id|.*Ts)$/.test(c) || (c === 'id' && store !== 'ventas')) ocultos.add(c);
+            if(registros.some(r => r && r[c] && typeof r[c] === 'object')) ocultos.add(c);
+        });
+        return ocultos;
+    }
+    function excelValorRespaldo(v){
+        if(v == null) return '';
+        let salida = (typeof v === 'object') ? JSON.stringify(v) : v;
+        if(typeof salida === 'string' && salida.length > 30000) return '';
+        return salida;
+    }
+    function agregarHojaRespaldoExcel(wb, store, registros){
+        if(!registros.length) return;
+        const campos = excelCamposOrdenados(registros, store), ocultos = excelOcultosRespaldo(campos, registros, store);
+        const filas = registros.map(item => campos.map(c => {
+            if(c === '_detalleLegible') return excelDetalleVenta(item);
+            if(c === '_pagosLegibles') return excelDetallePagos(item);
+            return excelValorRespaldo(item[c]);
+        }));
+        const ws = wb.addWorksheet(EXCEL_HOJAS_RESPALDO[store]);
+        excelEstilizarHoja(ws, EXCEL_HOJAS_RESPALDO[store].toUpperCase(), `${registros.length} registro(s) · Edite solo las columnas visibles que necesite`, campos.map(excelEtiqueta), filas, campos, ocultos);
+    }
+    function agregarGuiaExcel(wb, data){
+        const ws = wb.addWorksheet('Guía');
+        const filas = [
+            ['Propósito','Respaldo integral y editable de la información de JAM POS.'],
+            ['Importar','Abra Configuración > Copia de seguridad > Importar desde Excel / CSV. Los registros se integran sin borrar los datos actuales.'],
+            ['Editar','Puede corregir valores en las hojas visibles. No cambie los nombres de las hojas ni elimine las filas ocultas.'],
+            ['Duplicados','Los registros se identifican por su ID interno, código de barras o nombre, según corresponda.'],
+            ['Columnas ocultas','Contienen información técnica necesaria para conservar la integridad del respaldo; no es necesario revisarlas.'],
+            ['Formatos','Los importes, cantidades, tasas y porcentajes son valores numéricos con formato, no texto.'],
+            ['Compatibilidad','También puede importar respaldos CSV creados por versiones anteriores de JAM POS.'],
+            ['Generado',new Date(data.timestamp).toLocaleString('es-ES')],
+            ...Object.keys(EXCEL_HOJAS_RESPALDO).filter(s => (data[s] || []).length).map(s => [EXCEL_HOJAS_RESPALDO[s],`${data[s].length} registro(s) incluidos en este archivo.`])
+        ];
+        excelEstilizarHoja(ws,'JAM POS · RESPALDO PROFESIONAL','Lea esta guía antes de editar o importar el archivo',['Sección','Descripción'],filas,['seccion','descripcion'],new Set());
+        ws.autoFilter = null; ws.getColumn(1).width = 24; ws.getColumn(2).width = 100;
+        ws.pageSetup.orientation = 'portrait'; ws.pageSetup.fitToHeight = 1;
+        for(let r=5;r<=ws.rowCount;r++){
+            ws.getCell(r,1).font = {name:'Calibri',size:10,bold:true,color:{argb:'FF'+EXCEL_COLOR}};
+            ws.getRow(r).height = 30; ws.getCell(r,2).alignment = {vertical:'middle',wrapText:true};
         }
-        if(data.tasaDiaria && data.tasaDiaria.length){
-            csvLines.push('# === TASADIARIA ===');
-            csvLines.push('fecha,hora,tasa,fijada');
-            data.tasaDiaria.forEach(h => { csvLines.push(celdaCSV(h.fecha) + ',' + celdaCSV(h.hora || '') + ',' + celdaCSV(h.tasa) + ',' + celdaCSV(h.fijada ? 1 : 0)); });
-            csvLines.push('');
+    }
+    function agregarMetadatosExcel(wb, data){
+        const ws = wb.addWorksheet('_sistema');
+        ws.addRow(['Clave','Parte','Total partes','Contenido']);
+        Object.keys(data).forEach(clave => {
+            const json = JSON.stringify(data[clave] == null ? null : data[clave]);
+            const partes = Math.max(1,Math.ceil(json.length / 30000));
+            for(let i=0;i<partes;i++) ws.addRow([clave,i+1,partes,json.slice(i*30000,(i+1)*30000)]);
+        });
+        ws.state = 'veryHidden';
+    }
+    async function construirRespaldoExcelProfesional(data){
+        const wb = excelWorkbookBase();
+        agregarGuiaExcel(wb,data);
+        Object.keys(EXCEL_HOJAS_RESPALDO).forEach(store => agregarHojaRespaldoExcel(wb,store,data[store] || []));
+        agregarMetadatosExcel(wb,data);
+        return wb.xlsx.writeBuffer();
+    }
+    async function exportarBackupExcel(){
+        try {
+            const data = await obtenerTodosLosDatos();
+            const buffer = await construirRespaldoExcelProfesional(data);
+            const ahora = new Date(), fecha = ahora.toISOString().slice(0,10), hora = String(ahora.getHours()).padStart(2,'0') + '-' + String(ahora.getMinutes()).padStart(2,'0');
+            await descargarBytesXlsx(`JAM_POS_Respaldo_${fecha}_${hora}.xlsx`,buffer,'Respaldo Excel profesional generado');
+        } catch(e) {
+            console.error('ERROR EXCEL RESPALDO:',e);
+            mostrarNotificacion('❌ No se pudo generar el Excel: ' + e.message,'error');
         }
-        const cajaExport = cargarCaja();
-        if((cajaExport.cierres && cajaExport.cierres.length) || cajaExport.abierta || cajaExport.ultimoArqueo){
-            csvLines.push('# === CAJA ===');
-            csvLines.push('json');
-            csvLines.push(celdaCSV(JSON.stringify(cajaExport)));
-            csvLines.push('');
-        }
-        if (esAppNativa()) {
-            asegurarCarpetaNativa(async () => {
-                try {
-                    const nombre = `jampos_export_${new Date().toISOString().slice(0,10)}.csv`;
-                    const res = await puenteResultado(AndroidBridge.guardarArchivo(nombre, 'text/csv', utf8ToBase64(csvLines.join('\n'))));
-                    if (res && res.startsWith('ok')) {
-                        mostrarNotificacion('✅ CSV guardado en ' + (carpetaNativa ? carpetaNativa.nombre : 'carpeta') + '/JAMPOS/' + nombre, 'success');
-                    } else {
-                        mostrarNotificacion('❌ No se pudo exportar: ' + (res || 'error desconocido'), 'error');
-                    }
-                } catch (e) { mostrarNotificacion('❌ Error al exportar: ' + e.message, 'error'); }
-            });
-            return;
-        }
-        let blob = new Blob([csvLines.join('\n')], {type: 'text/csv;charset=utf-8;'});
-        let url = URL.createObjectURL(blob);
-        let a = document.createElement('a'); a.href = url;
-        a.download = `jampos_export_${new Date().toISOString().slice(0,10)}.csv`;
-        a.click(); URL.revokeObjectURL(url);
-        mostrarNotificacion('✅ CSV exportado (ábralo con Excel)', 'success');
     }
     async function importarDesdeCarpeta(){
         if (!esAppNativa()) { alert('Esta opción solo está disponible en la app Android.'); return; }
@@ -5253,14 +5353,14 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
         let lista = [];
         try { lista = JSON.parse(await puenteResultado(AndroidBridge.listarArchivos()) || '[]'); } catch (e) { lista = []; }
         const jsonFiles = lista.filter(f => /\.json$/i.test(f));
-        const csvFiles = lista.filter(f => /\.(csv|txt)$/i.test(f));
+        const csvFiles = lista.filter(f => /\.(csv|txt|xlsx)$/i.test(f));
         if (jsonFiles.length === 0 && csvFiles.length === 0) {
             alert('No hay archivos de respaldo en la carpeta ' + (carpetaNativa ? carpetaNativa.nombre : 'JAMPOS') + '/JAMPOS');
             return;
         }
         let mensaje = 'Archivos disponibles:\n';
         if (jsonFiles.length) mensaje += '\n📦 JSON:\n' + jsonFiles.map(f => '  ' + f).join('\n');
-        if (csvFiles.length) mensaje += '\n📊 CSV:\n' + csvFiles.map(f => '  ' + f).join('\n');
+        if (csvFiles.length) mensaje += '\n📊 EXCEL / CSV:\n' + csvFiles.map(f => '  ' + f).join('\n');
         mensaje += '\n\nEscriba el nombre exacto del archivo a importar:';
         const nombre = await jamPrompt(mensaje);
         if (!nombre) return;
@@ -5268,8 +5368,10 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
         try { contenido = await puenteResultado(AndroidBridge.leerArchivo(nombre)); } catch (e) {}
         if (!contenido || contenido === 'null') { alert('No se encontró el archivo: ' + nombre); return; }
         try {
-            const texto = base64ToUtf8(contenido);
-            const file = new File([texto], nombre, { type: /\.json$/i.test(nombre) ? 'application/json' : 'text/csv' });
+            const esExcel = /\.xlsx$/i.test(nombre);
+            const contenidoArchivo = esExcel ? Uint8Array.from(atob(contenido), c => c.charCodeAt(0)) : base64ToUtf8(contenido);
+            const tipoArchivo = esExcel ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : (/\.json$/i.test(nombre) ? 'application/json' : 'text/csv');
+            const file = new File([contenidoArchivo], nombre, { type: tipoArchivo });
             if (/\.json$/i.test(nombre)) importarBackupJSON(file);
             else importarBackupCSV(file);
         } catch (e) { alert('Error al leer el archivo: ' + e.message); }
@@ -5402,7 +5504,135 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
         }
         return data;
     }
+    function excelNombreNormalizado(nombre){
+        return String(nombre || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9]/g,'').toUpperCase();
+    }
+    function excelLeerMetadatos(wb){
+        const ws = wb.getWorksheet('_sistema');
+        if(!ws) return {};
+        const partes = {};
+        ws.eachRow((row,n) => {
+            if(n === 1) return;
+            const clave = excelValorTexto(row.getCell(1).value);
+            if(!clave) return;
+            if(!partes[clave]) partes[clave] = [];
+            partes[clave].push({n:Number(row.getCell(2).value) || 1,texto:excelValorTexto(row.getCell(4).value)});
+        });
+        const data = {};
+        Object.keys(partes).forEach(clave => {
+            try { data[clave] = JSON.parse(partes[clave].sort((a,b) => a.n-b.n).map(p => p.texto).join('')); } catch(e) {}
+        });
+        return data;
+    }
+    function excelParsearValor(campo, valor){
+        if(valor == null) return '';
+        if(valor instanceof Date) return valor.toISOString();
+        if(typeof valor === 'number' || typeof valor === 'boolean') return valor;
+        const texto = excelValorTexto(valor);
+        return parsearValorCSV(campo,texto);
+    }
+    function excelLeerRegistros(ws){
+        const claves = [];
+        for(let c=1;c<=ws.columnCount;c++) claves.push(excelValorTexto(ws.getRow(3).getCell(c).value));
+        if(!claves.some(Boolean)) return [];
+        const registros = [];
+        for(let r=5;r<=ws.rowCount;r++){
+            const row = ws.getRow(r), item = {};
+            let tieneDatos = false;
+            claves.forEach((campo,i) => {
+                if(!campo || campo.startsWith('_')) return;
+                const valor = excelParsearValor(campo,row.getCell(i+1).value);
+                item[campo] = valor;
+                if(valor !== '') tieneDatos = true;
+            });
+            if(tieneDatos) registros.push(item);
+        }
+        return registros;
+    }
+    function leerRespaldoExcel(buffer){
+        const wb = new ExcelJS.Workbook();
+        return wb.xlsx.load(buffer).then(() => {
+            const meta = excelLeerMetadatos(wb);
+            const data = {
+                config:meta.config || null, timestamp:meta.timestamp || new Date().toISOString(), version:meta.version || 'Excel',
+                productos:[],clientes:[],proveedores:[],gastos:[],empleados:[],ventas:[],entregas:[],tickets:meta.tickets || [],
+                historialTasa:[],tasaDiaria:[],caja:meta.caja || null
+            };
+            const mapa = {};
+            Object.keys(EXCEL_HOJAS_RESPALDO).forEach(k => mapa[excelNombreNormalizado(EXCEL_HOJAS_RESPALDO[k])] = k);
+            wb.eachSheet(ws => {
+                const store = mapa[excelNombreNormalizado(ws.name)];
+                if(!store) return;
+                let registros = excelLeerRegistros(ws);
+                const originales = new Map((meta[store] || []).filter(x => x && x.id).map(x => [String(x.id),x]));
+                registros = registros.map(item => {
+                    const original = item.id != null ? originales.get(String(item.id)) : null;
+                    if(!original) return item;
+                    const combinado = Object.assign({},original,item);
+                    Object.keys(original).forEach(k => {
+                        if(original[k] && typeof original[k] === 'object' && item[k] === '') combinado[k] = original[k];
+                    });
+                    return combinado;
+                });
+                data[store] = registros;
+            });
+            return data;
+        });
+    }
+    async function integrarRespaldoExcel(data){
+        const stores = ['productos','clientes','proveedores','gastos','empleados','ventas','entregas','tickets'];
+        const total = stores.reduce((n,s) => n + (data[s] || []).length,0);
+        if(!total) { await jamAlert('No se encontraron registros válidos en el libro Excel.','error'); return; }
+        const resumen = stores.filter(s => (data[s] || []).length).map(s => `  • ${s}: ${data[s].length} registros`);
+        if(!(await jamConfirm(`¿INTEGRAR datos desde Excel?\nSe agregarán los registros que no existan ya:\n${resumen.join('\n')}\n\n✅ Los datos actuales NO se borrarán.`))) return;
+        const resumenFinal = [];
+        for(const s of stores){
+            if(!(data[s] || []).length) continue;
+            const r = combinarImportacion(D[s],data[s],s === 'productos' ? 'nombre' : null);
+            D[s] = r.lista;
+            if(DATA_STORES.includes(s)) await saveToIDB(s,r.lista); else localStorage.setItem(STORAGE_KEYS[s],JSON.stringify(r.lista));
+            resumenFinal.push(`${s}: +${r.agregados}${r.actualizados ? ' | ' + r.actualizados + ' actualizado(s)' : ''} | ${r.omitidos} duplicado(s) omitido(s)`);
+        }
+        if((data.historialTasa || []).length){
+            const n = importarHistorialTasaDesde(data.historialTasa);
+            if(n > 0) resumenFinal.push(`historial de tasa: +${n} día(s) con tasa`);
+        }
+        if((data.tasaDiaria || []).length){
+            const n = await importarTasaDiariaDesde(data.tasaDiaria);
+            if(n > 0) resumenFinal.push(`tasa diaria: +${n} día(s)`);
+        }
+        if(data.config){
+            const aplicar = await jamConfirm('Los registros se integraron correctamente.\n\n¿Restaurar también la configuración del archivo (empresa, tasa del dólar y tema)?\nPulsa NO para conservar la configuración actual.');
+            if(aplicar){
+                const info = aplicarConfigInteligente(data.config,data.timestamp);
+                if(info) resumenFinal.push(info);
+            }
+        }
+        if(data.caja && typeof data.caja === 'object'){
+            const cj = data.caja;
+            if((cj.cierres && cj.cierres.length) || cj.abierta || cj.ultimoArqueo){
+                guardarCaja(cj); resumenFinal.push(`cierre de caja: historial de ${(cj.cierres || []).length} cierre(s) restaurado(s)`);
+            }
+        }
+        mostrarNotificacion('✅ Integración de Excel completada\n' + resumenFinal.join('\n'),'success');
+        if(currentModule === 'home') renderHome(); else renderConfig();
+    }
+    async function importarBackupExcel(file){
+        try {
+            if(typeof ExcelJS === 'undefined') throw new Error('El módulo Excel no está disponible');
+            const buffer = await new Promise((resolve,reject) => {
+                const reader = new FileReader(); reader.onload = e => resolve(e.target.result); reader.onerror = () => reject(reader.error); reader.readAsArrayBuffer(file);
+            });
+            const data = await leerRespaldoExcel(buffer);
+            await integrarRespaldoExcel(data);
+        } catch(e) {
+            console.error('ERROR IMPORTAR EXCEL:',e);
+            await jamAlert('No se pudo importar el Excel. Verifique que sea un respaldo .xlsx de JAM POS y que no esté dañado.\n\nDetalle: ' + e.message,'error');
+        }
+    }
     function importarBackupCSV(file){
+        if(/\.xlsx$/i.test(file.name || '')) return importarBackupExcel(file);
+        if(/\.xls$/i.test(file.name || '')) { alert('El formato antiguo .xls no es compatible. Ábralo en Excel y guárdelo como .xlsx antes de importarlo.'); return; }
         let reader = new FileReader();
         reader.onload = async function(e){
             try {
@@ -5580,30 +5810,59 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
             if(D.config.sonidoAlertas) reproducirSonidoAlerta();
         }
     }
-    const KEY_ULTIMA_ALERTA_TASA = 'jam_pos_ultima_alerta_tasa';
-    const INTERVALO_ALERTA_TASA_MS = 30 * 60 * 1000;
+    // ==================== CAMBIO REAL DE TASA (unico criterio de aviso) ====================
+    // El aviso suena UNA vez por cada cambio real de cualquiera de las tres
+    // tasas. La referencia NO es la ultima consulta sino la ultima tasa AVISADA,
+    // guardada por serie: por eso abrir, minimizar/expandir o quedarse en reposo
+    // no vuelve a avisar, reiniciar la app no repite el aviso, y un cambio real
+    // de USDT no se pierde porque hace poco aviso BCV.
+    const UMBRAL_TASA = 0.5;                // Bs: por debajo de esto no es un cambio
+    const DEDUPE_TASA_MS = 2 * 60 * 1000;    // solo evita el doble del MISMO valor
+    const KEY_ESTADO_TASA = 'jam_pos_tasa_estado_';
 
-    function puedeAlertarTasa(tasaAnterior, tasaNueva){
-        const anterior = Number(tasaAnterior);
-        const nueva = Number(tasaNueva);
-        if(!(anterior > 0) || !(nueva > 0)) return false;
-        if(Math.abs(nueva - anterior) <= 0.5) return false;
+    function leerEstadoTasa(serie) {
         try {
-            const ultimo = JSON.parse(localStorage.getItem(KEY_ULTIMA_ALERTA_TASA) || 'null');
-            if(ultimo && Number(ultimo.tasa) === nueva && (Date.now() - Number(ultimo.ts)) < INTERVALO_ALERTA_TASA_MS) return false;
-            if(ultimo && (Date.now() - Number(ultimo.ts)) < INTERVALO_ALERTA_TASA_MS) return false;
-            localStorage.setItem(KEY_ULTIMA_ALERTA_TASA, JSON.stringify({ ts: Date.now(), tasa: nueva }));
-        } catch(e) {}
-        return true;
+            const o = JSON.parse(localStorage.getItem(KEY_ESTADO_TASA + serie) || 'null');
+            return (o && typeof o === 'object') ? o : { ultima: 0, avisado: 0, ts: 0 };
+        } catch (e) { return { ultima: 0, avisado: 0, ts: 0 }; }
     }
 
+    function guardarEstadoTasa(serie, e) {
+        try { localStorage.setItem(KEY_ESTADO_TASA + serie, JSON.stringify(e)); } catch (err) {}
+    }
+
+    // Devuelve {desde, hasta} si hay un cambio REAL, o null. No emite nada:
+    // solo decide y actualiza la referencia de la serie.
+    function cambioRealTasa(serie, valor) {
+        const v = Number(valor);
+        if (!(v > 0)) return null;
+        const e = leerEstadoTasa(serie);
+        const base = Number(e.ultima);
+        if (!(base > 0)) {                     // primera vez: solo fijamos referencia
+            e.ultima = v;
+            guardarEstadoTasa(serie, e);
+            return null;
+        }
+        if (Math.abs(v - base) <= UMBRAL_TASA) return null;
+        const ahora = Date.now();
+        if (Number(e.avisado) === v && (ahora - Number(e.ts || 0)) < DEDUPE_TASA_MS) return null;
+        e.ultima = v;
+        e.avisado = v;
+        e.ts = ahora;
+        guardarEstadoTasa(serie, e);
+        return { desde: base, hasta: v };
+    }
+
+    // Adaptador del sub-proceso 2 para la tasa regidora. Comparte el mismo
+    // estado por serie que avisarCambiosTasa, asi que si ambos ven el cambio
+    // solo suena una vez.
     function notificarTasaActualizada(tasaAnterior, tasaNueva){
         if(!D.config.alertaTasa) return;
         if(D.config.silenciarNotif) return;
-        if(!puedeAlertarTasa(tasaAnterior, tasaNueva)) return;
-        mostrarNotificacion(`💱 La tasa USD cambió: ${fmtDolar(tasaAnterior)} → ${fmtDolar(tasaNueva)} Bs`, 'info');
-        mostrarNotificacionNativa('Tasa USD actualizada', `${fmtDolar(tasaAnterior)} → ${fmtDolar(tasaNueva)} Bs · JAM POS v1.1 By @felinuxs`, 'tasa');
-        if(D.config.sonidoAlertas) reproducirSonidoAlerta();
+        const serie = (D.config && D.config.fuenteTasa) || 'dolar';
+        const cambio = cambioRealTasa(serie, tasaNueva);
+        if(!cambio) return;
+        emitirAvisoTasa(`${fmtDolar(cambio.desde)} → ${fmtDolar(cambio.hasta)} Bs`);
     }
 
     
@@ -5691,7 +5950,7 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
                 <div class="config-section"><button id="btnToggleSeguridad" class="btn-azul-redondeado btn-redondeado w-full mb-2 py-2"><i class="fas fa-lock"></i> Seguridad (PIN)</button><div id="panelSeguridad" style="display:none;" class="mt-2 config-inner"><div class="mb-2"><label>PIN de acceso (4 dígitos, dejar vacío para deshabilitar)</label><input type="password" id="pinInput" value="${escapeHtml(D.config.pin)}" maxlength="4" pattern="[0-9]*" inputmode="numeric" class="border rounded-xl p-2 w-full text-center text-2xl tracking-widest" placeholder="****"></div><button id="guardarPinBtn" class="btn-azul-redondeado btn-redondeado w-full py-2"><i class="fas fa-lock"></i> Guardar PIN</button><p class="text-xs text-center mt-2 opacity-60">${D.config.pin ? '<i class="fas fa-circle-check"></i> PIN activo. Se pedirá al abrir la app.' : '<i class="fas fa-circle-info"></i> Sin PIN. Cualquiera puede acceder.'}</p></div></div>
                 <div class="config-section"><button id="btnToggleColores" class="btn-azul-redondeado btn-redondeado w-full mb-2 py-2"><i class="fas fa-palette"></i> Temas de color</button><div id="panelColores" style="display:none;" class="mt-2 config-inner"><div class="flex flex-wrap justify-center gap-2" id="paletaColores" style="max-width:290px;margin:0 auto"></div></div></div>
                 <div class="config-section"><button id="btnToggleSync" class="btn-azul-redondeado btn-redondeado w-full mb-2 py-2"><i class="fas fa-rotate"></i> Sincronización entre dispositivos</button><div id="panelSync" style="display:none;" class="mt-2 config-inner"><div class="text-xs opacity-70 mb-2">Conecta este equipo con otros (PC o teléfono) y comparte productos, clientes, ventas, proveedores, gastos, empleados, tasa y tickets, sin necesidad de servidores. Mientras dos equipos estén encendidos con Internet, los datos se copian solos.</div><button id="abrirSyncBtn" class="btn-redondeado py-2 px-4 w-full" style="background:#3b82f6;color:#fff"><i class="fas fa-link"></i> Abrir Sincronización</button><p class="text-xs text-center mt-2 opacity-60">Crea un círculo o únete escaneando el QR (o escribiendo ID + código)</p></div></div>
-                <div class="config-section"><button id="btnToggleBackup" class="btn-azul-redondeado btn-redondeado w-full mb-2 py-2"><i class="fas fa-floppy-disk"></i> Copia de seguridad</button><div id="panelBackup" style="display:none;" class="mt-2 config-inner"><div class="flex flex-col gap-3">${esAppNativa() ? `<div class="rounded-xl p-3" style="background:rgba(14,165,233,0.08);border:1px solid rgba(14,165,233,0.3)"><p class="text-sm font-semibold mb-1"><i class="fas fa-folder"></i> Carpeta de la aplicación</p><p id="carpetaEstado" class="text-xs opacity-70 mb-2"><i class="fas fa-circle-info"></i> Elija una carpeta para guardar tickets y respaldos (se creará la subcarpeta JAMPOS).</p><button id="elegirCarpetaBtn" class="btn-redondeado py-2 px-4 w-full" style="background:#0ea5e9;color:#fff"><i class="fas fa-folder-open"></i> Elegir carpeta</button></div>` : `<p class="text-xs text-center opacity-60"><i class="fas fa-lightbulb"></i> En la app Android podrás elegir una carpeta donde guardar los archivos.</p>`}<button id="exportJsonBtn" class="btn-redondeado py-2 px-4" style="background:#3b82f6;color:#fff"><i class="fas fa-download"></i> Exportar todo (JSON)</button><button id="exportCsvBtn" class="btn-redondeado py-2 px-4" style="background:#10b981;color:#fff"><i class="fas fa-download"></i> Exportar todo (CSV / Excel)</button><button id="importJsonBtn" class="btn-redondeado py-2 px-4" style="background:#8b5cf6;color:#fff"><i class="fas fa-upload"></i> Importar desde JSON</button><button id="importCsvBtn" class="btn-redondeado py-2 px-4" style="background:#f59e0b;color:#fff"><i class="fas fa-upload"></i> Importar desde CSV / Excel</button>${esAppNativa() ? `<button id="importCarpetaBtn" class="btn-redondeado py-2 px-4" style="background:#14b8a6;color:#fff"><i class="fas fa-folder-open"></i> Importar desde la carpeta JAMPOS</button><button id="restaurarBackupBtn" class="btn-redondeado py-2 px-4" style="background:#ef4444;color:#fff"><i class="fas fa-rotate"></i> Restaurar desde respaldo automático</button>` : ''}<input type="file" id="importFileInput" accept=".json" style="display:none"><input type="file" id="importCsvFileInput" accept=".csv,.xlsx,.xls,.txt" style="display:none"><p class="text-xs text-center mt-2 opacity-60">Los archivos CSV se abren directamente en Excel</p></div></div></div>
+                <div class="config-section"><button id="btnToggleBackup" class="btn-azul-redondeado btn-redondeado w-full mb-2 py-2"><i class="fas fa-floppy-disk"></i> Copia de seguridad</button><div id="panelBackup" style="display:none;" class="mt-2 config-inner"><div class="flex flex-col gap-3">${esAppNativa() ? `<div class="rounded-xl p-3" style="background:rgba(14,165,233,0.08);border:1px solid rgba(14,165,233,0.3)"><p class="text-sm font-semibold mb-1"><i class="fas fa-folder"></i> Carpeta de la aplicación</p><p id="carpetaEstado" class="text-xs opacity-70 mb-2"><i class="fas fa-circle-info"></i> Elija una carpeta para guardar tickets y respaldos (se creará la subcarpeta JAMPOS).</p><button id="elegirCarpetaBtn" class="btn-redondeado py-2 px-4 w-full" style="background:#0ea5e9;color:#fff"><i class="fas fa-folder-open"></i> Elegir carpeta</button></div>` : `<p class="text-xs text-center opacity-60"><i class="fas fa-lightbulb"></i> En la app Android podrás elegir una carpeta donde guardar los archivos.</p>`}<button id="exportJsonBtn" class="btn-redondeado py-2 px-4" style="background:#3b82f6;color:#fff"><i class="fas fa-download"></i> Exportar todo (JSON)</button><button id="exportCsvBtn" class="btn-redondeado py-2 px-4" style="background:#10b981;color:#fff"><i class="fas fa-download"></i> Exportar respaldo profesional (Excel)</button><button id="importJsonBtn" class="btn-redondeado py-2 px-4" style="background:#8b5cf6;color:#fff"><i class="fas fa-upload"></i> Importar desde JSON</button><button id="importCsvBtn" class="btn-redondeado py-2 px-4" style="background:#f59e0b;color:#fff"><i class="fas fa-upload"></i> Importar desde Excel / CSV</button>${esAppNativa() ? `<button id="importCarpetaBtn" class="btn-redondeado py-2 px-4" style="background:#14b8a6;color:#fff"><i class="fas fa-folder-open"></i> Importar desde la carpeta JAMPOS</button><button id="restaurarBackupBtn" class="btn-redondeado py-2 px-4" style="background:#ef4444;color:#fff"><i class="fas fa-rotate"></i> Restaurar desde respaldo automático</button>` : ''}<input type="file" id="importFileInput" accept=".json" style="display:none"><input type="file" id="importCsvFileInput" accept=".xlsx,.csv,.txt" style="display:none"><p class="text-xs text-center mt-2 opacity-60">El respaldo Excel incluye hojas organizadas, formatos y guía. También puede importar CSV de versiones anteriores.</p></div></div></div>
             <div class="text-center text-xs mt-4 opacity-60">By @felinuxs</div>
             </div>
         `;
@@ -5888,7 +6147,7 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
             stockMinInp.addEventListener('blur', () => aplicarStockMin(stockMinInp.value));
         }
         document.getElementById('exportJsonBtn').onclick = async () => await exportarBackupJSON();
-        document.getElementById('exportCsvBtn').onclick = async () => await exportarBackupCSV();
+        document.getElementById('exportCsvBtn').onclick = async () => await exportarBackupExcel();
         document.getElementById('importJsonBtn').onclick = () => document.getElementById('importFileInput').click();
         document.getElementById('importFileInput').onchange = e => { if(e.target.files[0]) importarBackupJSON(e.target.files[0]); };
         document.getElementById('importCsvBtn').onclick = () => document.getElementById('importCsvFileInput').click();
@@ -6426,13 +6685,11 @@ const totGan = ventasPer.filter(v => !v.credito).reduce((a,v)=>a+(v.gananciaTota
     // modulo), para que el selector de fuentes y el monitoreo de 30 min
     // funcionen siempre, independientemente de donde arranque la app.
     function iniciarCicloTasas() {
-        // 1) Al abrir la app se consultan TODAS las tasas (BCV, Al Cambio BCV y USDT)
-        //    para mostrar los montos en vivo en el selector de configuracion.
+        // Sub-proceso 1 (verificacion): al abrir se consulta una vez y luego cada
+        // 15 minutos. refrescarTasasVivas() ignora las llamadas fuera de ritmo,
+        // asi que abrir o minimizar la app no vuelve a consultar.
         refrescarTasasVivas();
-        // 2) Cada 30 minutos se vuelven a consultar (monitoreo constante).
-        setInterval(() => { refrescarTasasVivas(); actualizarTasa(false); }, 30 * 60 * 1000);
-        // 3) Al abrir la opcion Tasa de cambio en Configuracion, renderConfig()
-        //    tambien llama a refrescarTasasVivas() (bajo "al abrir la opcion").
+        setInterval(() => { refrescarTasasVivas(); actualizarTasa(false); }, VERIFICACION_TASA_MS);
     }
     loadAllData().then(() => {
         if(window.JAMUltimateTrial && window.JAMUltimateTrial.bloquearInmediato()) return;

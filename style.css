@@ -247,6 +247,16 @@ body.dark-mode .bg-gray-200{background:#333!important;color:#e0e0e0!important}
         .cliente-link { cursor: pointer; color: var(--accent); text-decoration: underline; }
         .notificacion-flotante { position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%); padding: 10px 20px; border-radius: 50px; z-index: 10000; font-size: 12px; font-weight: 500; animation: fadeOut 3s ease forwards; }
         @keyframes fadeOut { 0% { opacity: 1; transform: translateX(-50%) translateY(0); } 70% { opacity: 1; } 100% { opacity: 0; transform: translateX(-50%) translateY(-10px); visibility: hidden; } }
+        /* ===== PROMOCION CON IMAGEN (mismo aspecto en web/PWA, APK, EXE y DEB) ===== */
+        .notificacion-promo { position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; max-width: min(92vw, 460px); padding: 12px 14px; border-radius: 18px; z-index: 10001; background: #ffffff; color: #1f2937; box-shadow: 0 10px 30px rgba(0,0,0,.28); border: 1px solid rgba(0,0,0,.08); animation: promoEntra .28s ease, promoSale .4s ease 11.6s forwards; }
+        .notificacion-promo-img { width: 64px; height: 64px; flex: 0 0 auto; object-fit: contain; border-radius: 12px; background: rgba(127,127,127,.12); }
+        .notificacion-promo-txt { display: flex; flex-direction: column; gap: 3px; min-width: 0; font-size: 12px; font-weight: 500; text-align: left; overflow-wrap: anywhere; }
+        .notificacion-promo-txt strong { font-size: 13px; font-weight: 700; }
+        .notificacion-promo-cerrar { margin-left: auto; align-self: flex-start; flex: 0 0 auto; width: 22px; height: 22px; line-height: 1; font-size: 17px; border: 0; border-radius: 50%; cursor: pointer; background: rgba(127,127,127,.16); color: inherit; }
+        .notificacion-promo-cerrar:hover { background: rgba(127,127,127,.3); }
+        body.dark-mode .notificacion-promo { background: #0a0a0a; color: #e0e0e0; border-color: rgba(255,255,255,.14); box-shadow: 0 10px 30px rgba(0,0,0,.6); }
+        @keyframes promoEntra { from { opacity: 0; transform: translateX(-50%) translateY(14px) scale(.96); } to { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); } }
+        @keyframes promoSale { to { opacity: 0; transform: translateX(-50%) translateY(-8px); visibility: hidden; } }
         
         /* ===== SIDEBAR RESPONSIVE ===== */
         .sidebar{display:none}

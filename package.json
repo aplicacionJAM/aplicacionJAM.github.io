@@ -26,6 +26,7 @@
       "web-bridge.js",
       "html2canvas.min.js",
       "quagga.min.js",
+      "vendor/**/*",
       "tailwind.js",
       "fontawesome.min.css",
       "fa-*.ttf",

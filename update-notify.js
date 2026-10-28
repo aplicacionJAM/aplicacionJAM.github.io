@@ -27,9 +27,9 @@
     // version ya instalada (silencio). Un archivo distinto = un parche pendiente.
     var APP_ARCHIVO = {
         web: '',
-        apk: 'JAMPOS-1.1-estable-final.apk',
-        exe: 'JAM POS 1.1 estable final.exe',
-        deb: 'JAM POS 1.1 estable final (Linux).deb'
+        apk: 'JAMPOS-1.1-odoo.apk',
+        exe: 'JAM POS 1.1 Odoo - Setup - 1.1.0.exe',
+        deb: 'JAM POS 1.1 Odoo - 1.1.0 (Linux).deb'
     };
     var EXTENSION_INSTALABLE = { web: '', apk: '.apk', exe: '.exe', deb: '.deb' };
 

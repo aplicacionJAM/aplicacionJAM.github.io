@@ -1,4 +1,4 @@
-const CACHE_NAME = "jampos-web-cache-v12-a19-snd";
+const CACHE_NAME = "jampos-web-cache-v13-promoimg";
 const STATIC_ASSETS = [
   "./",
   "./index.html",
